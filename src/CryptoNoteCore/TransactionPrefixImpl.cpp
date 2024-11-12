@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "ITransaction.h"
+#include <memory>
 
 #include <numeric>
 #include <system_error>

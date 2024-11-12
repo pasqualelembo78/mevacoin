@@ -18,18 +18,18 @@
 namespace Crypto {
 
   extern "C" {
-#include "random.h"
+    #include "random.h"
   }
 
   extern std::mutex random_lock;
 
-struct EllipticCurvePoint {
-  uint8_t data[32];
-};
+  struct EllipticCurvePoint {
+    uint8_t data[32];
+  };
 
-struct EllipticCurveScalar {
-  uint8_t data[32];
-};
+  struct EllipticCurveScalar {
+    uint8_t data[32];
+  };
 
   class crypto_ops {
     crypto_ops();
@@ -98,23 +98,14 @@ struct EllipticCurveScalar {
   public:
     typedef T result_type;
 
-#ifdef __clang__
     constexpr static T min() {
-      return (std::numeric_limits<T>::min)();
+      return std::numeric_limits<T>::min();
     }
 
     constexpr static T max() {
-      return (std::numeric_limits<T>::max)();
-    }
-#else
-    static T(min)() {
-      return (std::numeric_limits<T>::min)();
+      return std::numeric_limits<T>::max();
     }
 
-    static T(max)() {
-      return (std::numeric_limits<T>::max)();
-    }
-#endif
     typename std::enable_if<std::is_unsigned<T>::value, T>::type operator()() {
       return rand<T>();
     }
@@ -158,12 +149,11 @@ struct EllipticCurveScalar {
     return crypto_ops::derive_public_key(derivation, output_index, base, derived_key);
   }
 
-
   inline bool underive_public_key_and_get_scalar(const KeyDerivation &derivation, std::size_t output_index,
     const PublicKey &derived_key, PublicKey &base, EllipticCurveScalar &hashed_derivation) {
     return crypto_ops::underive_public_key_and_get_scalar(derivation, output_index, derived_key, base, hashed_derivation);
   }
-  
+
   inline void derive_secret_key(const KeyDerivation &derivation, std::size_t output_index,
     const SecretKey &base, const uint8_t* prefix, size_t prefixLength, SecretKey &derived_key) {
     crypto_ops::derive_secret_key(derivation, output_index, base, prefix, prefixLength, derived_key);
@@ -173,7 +163,6 @@ struct EllipticCurveScalar {
     const SecretKey &base, SecretKey &derived_key) {
     crypto_ops::derive_secret_key(derivation, output_index, base, derived_key);
   }
-
 
   /* Inverse function of derive_public_key. It can be used by the receiver to find which "spend" key was used to generate a transaction. This may be useful if the receiver used multiple addresses which only differ in "spend" key.
    */
@@ -186,6 +175,7 @@ struct EllipticCurveScalar {
     const PublicKey &derived_key, PublicKey &base) {
     return crypto_ops::underive_public_key(derivation, output_index, derived_key, base);
   }
+
 
   /* Generation and checking of a standard signature.
    */

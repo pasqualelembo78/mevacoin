@@ -5,6 +5,7 @@
 #include "ITransaction.h"
 #include "TransactionApiExtra.h"
 #include "TransactionUtils.h"
+#include <memory>
 
 #include "Account.h"
 #include "CryptoNoteCore/CryptoNoteTools.h"

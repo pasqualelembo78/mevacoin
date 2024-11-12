@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #pragma once
+#include <algorithm>
 
 #include <vector>
 #include <boost/variant.hpp>

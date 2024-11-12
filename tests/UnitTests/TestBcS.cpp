@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "gtest/gtest.h"
+#include <thread>
 
 #include "Transfers/BlockchainSynchronizer.h"
 #include "Transfers/TransfersConsumer.h"

@@ -51,9 +51,11 @@
 // causes a memory reallocation.
 //
 // See doc/sparsetable.html for information about how to use this class.
+#define STDC_HEADERS 1
 
 #ifndef _SPARSETABLE_H_
 #define _SPARSETABLE_H_
+#include <cstring>
 
 #include <google/sparsehash/sparseconfig.h>
 #include <stdlib.h>             // for malloc/free

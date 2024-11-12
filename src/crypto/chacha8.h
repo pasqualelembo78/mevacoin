@@ -29,7 +29,6 @@ namespace Crypto {
     }
   };
 
-  // MS VC 2012 doesn't interpret `class chacha8_iv` as POD in spite of [9.0.10], so it is a struct
   struct chacha8_iv {
     uint8_t data[CHACHA8_IV_SIZE];
   };
@@ -45,8 +44,9 @@ namespace Crypto {
     static_assert(sizeof(chacha8_key) <= sizeof(Hash), "Size of hash must be at least that of chacha8_key");
     Hash pwd_hash;
     cn_slow_hash(context, password.data(), password.size(), pwd_hash);
-    memcpy(&key, &pwd_hash, sizeof(key));
-    memset(&pwd_hash, 0, sizeof(pwd_hash));
+    
+    // Usa memcpy per copiare i dati da pwd_hash a key.data
+    memcpy(key.data, &pwd_hash, CHACHA8_KEY_SIZE);
   }
 }
 
