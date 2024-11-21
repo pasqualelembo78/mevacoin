@@ -1,0 +1,107 @@
+Guida all'installazione di Mevacoin e configurazione del demone come servizio systemd
+1. Installazione delle dipendenze
+Prima di compilare il progetto, è necessario installare alcune dipendenze. Esegui i seguenti comandi per installare tutti gli strumenti e le librerie necessarie:
+
+bash
+Copia codice
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y build-essential cmake git ccache clang g++ python3 python3-pip libssl-dev libzmq3-dev libsodium-dev
+2. Installazione di Boost 1.55
+Il progetto richiede la versione 1.55 di Boost. Esegui i seguenti comandi per scaricarlo, compilarlo e installarlo:
+
+a. Scarica Boost 1.55:
+bash
+Copia codice
+wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.bz2
+b. Estrai il file:
+bash
+Copia codice
+tar --bzip2 -xf boost_1_55_0.tar.bz2
+cd boost_1_55_0
+c. Compila Boost:
+bash
+Copia codice
+./bootstrap.sh --prefix=/usr/local
+sudo ./b2 install
+3. Clonare il repository
+Clona il repository del progetto Mevacoin:
+
+bash
+Copia codice
+git clone https://github.com/pasqualelembo78/mevacoin.git
+cd mevacoin
+4. Compilazione del progetto
+Crea una directory per la compilazione e compila il progetto:
+
+bash
+Copia codice
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+5. Configurazione di systemd per il demone
+Per fare in modo che il demone mevacoind venga avviato automaticamente e continui a funzionare anche in caso di interruzione della connessione o riavvio del server, utilizzeremo systemd.
+
+a. Creare il file di servizio systemd
+Crea il file di servizio mevacoind.service in /etc/systemd/system/:
+
+bash
+Copia codice
+sudo nano /etc/systemd/system/mevacoind.service
+b. Aggiungere il contenuto al file di servizio
+Inserisci il seguente contenuto nel file:
+
+ini
+Copia codice
+[Unit]
+Description=Mevacoin Daemon
+After=network.target
+
+[Service]
+ExecStart=/root/mevacoin/build/src/mevacoind
+WorkingDirectory=/root/mevacoin/build/src
+Restart=always
+RestartSec=5
+User=root
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
+c. Ricaricare systemd
+Per fare in modo che systemd riconosca il nuovo servizio, ricarica la configurazione di systemd:
+
+bash
+Copia codice
+sudo systemctl daemon-reload
+d. Avviare il servizio
+Avvia il servizio Mevacoin:
+
+bash
+Copia codice
+sudo systemctl start mevacoind
+e. Abilitare l'avvio automatico
+Configura il servizio per avviarsi automaticamente al riavvio del sistema:
+
+bash
+Copia codice
+sudo systemctl enable mevacoind
+6. Verifica dello stato del servizio
+Per verificare che il servizio sia attivo, puoi eseguire:
+
+bash
+Copia codice
+sudo systemctl status mevacoind
+Per visualizzare i log del demone:
+
+bash
+Copia codice
+journalctl -u mevacoind -f
+7. Testare il servizio
+Prova a riavviare il server per verificare che il demone venga avviato automaticamente:
+
+bash
+Copia codice
+sudo reboot
+Il servizio dovrebbe avviarsi automaticamente e rimanere attivo anche in caso di riavvio del server o interruzione della connessione.
+
+Con questa configurazione, il demone mevacoind sarà sempre attivo e pronto a ripartire automaticamente se necessario.

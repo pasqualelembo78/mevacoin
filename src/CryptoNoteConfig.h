@@ -102,12 +102,12 @@ const uint32_t P2P_DEFAULT_CONNECTION_TIMEOUT                = 5000;          //
 const uint32_t P2P_DEFAULT_PING_CONNECTION_TIMEOUT           = 2000;          // 2 seconds
 const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT                    = 60 * 2 * 1000; // 2 minutes
 const size_t   P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT          = 5000;          // 5 seconds
-const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
+const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "9UrQBWKW3R9ZFeDS5EDimbP3CuBzecGcR12gkpHn82gqpLKjLHYKGzJzeQnnLjNNHR9a98xxe1icQkTsSsCUHsCqYyp4SBJiy44dJ5kSHQSrGtL55Rc94Nh5tvRxbW6YLApTNTyUVXjgECsgUQ4d8MLtqWMDEjT9CZKYJr4WTZ25VoLC8DgfzAwKFzzwtrvyVZw36ejBNNrn9mrLrHjsW2gr6ZVKHLki7XUcAVc41XXhkzFeuCXCSm2JBJmHcXQNkXfBP8Fv7";
 
 //TODO Add here your network seed nodes
 const std::initializer_list<const char*> SEED_NODES = {
-  //"195.231.76.77:18080",
-  //"217.61.63.148:18080",
+  "195.231.76.77:18080",
+  "217.61.63.148:18080",
 };
 
 struct CheckpointData {
