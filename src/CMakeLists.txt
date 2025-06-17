@@ -169,7 +169,7 @@ add_dependencies(wallet_service version)
 add_dependencies(zedwallet version)
 
 # Finally build the binaries
-set_property(TARGET kryptokronad PROPERTY OUTPUT_NAME "kryptokronad")
+set_property(TARGET kryptokronad PROPERTY OUTPUT_NAME "mevacoind")
 set_property(TARGET zedwallet PROPERTY OUTPUT_NAME "xkrwallet")
 set_property(TARGET zedwallet++ PROPERTY OUTPUT_NAME "xkrwallet-beta")
 set_property(TARGET service PROPERTY OUTPUT_NAME "kryptokrona-service")

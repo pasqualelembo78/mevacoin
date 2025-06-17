@@ -49,7 +49,7 @@ namespace cryptonote
         static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 
         /* Premine amount */
-        const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(0);
+        const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(10000000);
 
         /* How to generate a premine:
 
@@ -71,7 +71,7 @@ namespace cryptonote
         * You should see your premine appear in the previously generated wallet.
 
         */
-        const char GENESIS_COINBASE_TX_HEX[] = "010a01ff000188f3b501029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd088071210142694232c5b04151d9e4c27d31ec7a68ea568b19488cfcb422659a07a0e44dd5";
+        const char GENESIS_COINBASE_TX_HEX[] = "011401ff00010002a676417d54905c4f8baa5bcf96653ee8a29f9adfb254d3804b282e1229b6677f2101bcba61b3c6771ddc5e6b7ffda5bdc9a255e73b1b44cf2e92f9575f87a96c05bd";
         static_assert(sizeof(GENESIS_COINBASE_TX_HEX) / sizeof(*GENESIS_COINBASE_TX_HEX) != 1, "GENESIS_COINBASE_TX_HEX must not be empty.");
 
         /* This is the unix timestamp of the first "mined" block (technically block 2, not the genesis block)
@@ -233,11 +233,11 @@ namespace cryptonote
     const size_t COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT = 1000;
 
 #ifdef USE_TESTNET
-    const int P2P_DEFAULT_PORT = 11898;
-    const int RPC_DEFAULT_PORT = 11899;
+    const int P2P_DEFAULT_PORT = 17080;
+    const int RPC_DEFAULT_PORT = 17081;
 #else
-    const int P2P_DEFAULT_PORT = 11897;
-    const int RPC_DEFAULT_PORT = 11898;
+    const int P2P_DEFAULT_PORT = 17080;
+    const int RPC_DEFAULT_PORT = 17081;
 #endif
 
     const int SERVICE_DEFAULT_PORT = 8070;
@@ -286,16 +286,10 @@ namespace cryptonote
 #else
     const static boost::uuids::uuid CRYPTONOTE_NETWORK =
         {
-            {0xf1, 0x4b, 0xb8, 0xc8, 0xb2, 0x56, 0x45, 0x2e, 0xee, 0xf0, 0xb4, 0x99, 0xab, 0x71, 0x6c, 0xcc}};
+            {0x71, 0x2e, 0xa2, 0x77, 0xdc, 0x04, 0x4a, 0x8c, 0x81, 0x53, 0xa3, 0xec, 0x9e, 0x28, 0x9a, 0xef}};
 
     const char *const SEED_NODES[] = {
-        "185.238.128.190:11897", // dutchpool
-        "207.180.226.231:11897", // wasa
-        "172.94.14.157:11897",   // xkr.network
-        "95.216.136.222:11897", // TechyPool
-        "130.237.83.246:20191", // KTH Node
-        "149.28.87.122:11897", // node.xkr.la
-        "209.38.232.36:11897" // Northern Lights
+        "195.231.65.38:17080"
     };
 #endif
 
