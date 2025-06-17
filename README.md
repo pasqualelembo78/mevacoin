@@ -1,5 +1,5 @@
 <a href="https://github.com/kryptokrona/kryptokrona">
-  <img align="right" width="200" height="120" alt="Kryptokrona" src="resources/kryptokrona.svg">
+  <img align="right" width="200" height="120" alt="COVIDCOIN" src="resources/kryptokrona.svg">
 </a>
 
 # kryptokrona
@@ -9,7 +9,7 @@
 [![license](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://opensource.org/licenses/GPLv3)
 [![discord](https://img.shields.io/discord/562673808582901793?label=discord)](https://discord.gg/VTgsTGS9b7)
 
-Kryptokrona is a decentralized blockchain from the Nordic based on CryptoNote, which forms the basis for Monero, among others. CryptoNote is a so-called “application layer” protocol further developed by TurtleCoin that enables things like: private transactions, messages and arbitrary data storage, completely decentralized.
+Kryptocoronavirus is a moneygrab that will have it's chain destroyed first week.  promises made, promises kept.
 
 ## Table of Contents
 
