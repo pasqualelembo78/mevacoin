@@ -7,7 +7,7 @@
 #ifndef ROCKSDB_LITE
 
 #include "rocksdb/utilities/checkpoint.h"
-
+#include <cstdint>
 #include <string>
 #include "rocksdb/db.h"
 #include "util/filename.h"
