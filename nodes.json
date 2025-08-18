@@ -1,0 +1,22 @@
+{
+    "nodes": [
+        {
+            "name": "Nodo Pubblico Mevacoin",
+            "url": "195.231.65.38",
+            "port": 17081,
+            "ssl": false,
+            "cache": false,
+            "version": "1.0.0",
+            "fee": "0.0",
+            "proxy_url": ""
+        }
+    ],
+    "apis": [
+        {
+            "url": "http://195.231.65.38:17082",
+            "name": "Wallet RPC Mevacoin",
+            "description": "RPC wallet Mevacoin accessibile da remoto"
+        }
+    ],
+    "hugin": []
+}
