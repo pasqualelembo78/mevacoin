@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget tar bzip2 build-essential python3 cmake
+          sudo apt-get install -y wget tar bzip2 build-essential python3 cmake unzip
 
       - name: Download Android NDK
         run: |
@@ -43,7 +43,8 @@ jobs:
               --prefix=$HOME/boost-android install
 
       - name: Upload Boost artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: boost-android
           path: $HOME/boost-android
+          retention-days: 30
