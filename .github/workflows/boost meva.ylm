@@ -1,0 +1,51 @@
+name: Build Boost Android ARM64
+
+on:
+  workflow_dispatch:   # Avvio manuale dal tab Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ANDROID_NDK_VERSION: r23c
+      BOOST_VERSION_UNDERSCORE: 1_82_0
+      ANDROID_API: 24
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget tar bzip2 build-essential python3 cmake unzip
+
+      - name: Download Android NDK
+        run: |
+          wget https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          unzip android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          mv android-ndk-${ANDROID_NDK_VERSION} $HOME/android-ndk
+          echo "NDK path: $HOME/android-ndk"
+
+      - name: Download Boost
+        run: |
+          wget https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.bz2
+          tar xjf boost_1_82_0.tar.bz2
+
+      - name: Build Boost for Android ARM64
+        run: |
+          cd boost_1_82_0
+          ./bootstrap.sh
+          ./b2 toolset=clang-arm64 target-os=android threading=multi link=static runtime-link=static \
+              cxxflags="-std=c++14" \
+              --with-system --with-filesystem --with-thread --with-date_time \
+              --with-chrono --with-regex --with-serialization --with-program_options \
+              --prefix=$HOME/boost-android install
+
+      - name: Upload Boost artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boost-android
+          path: $HOME/boost-android
+          retention-days: 30
