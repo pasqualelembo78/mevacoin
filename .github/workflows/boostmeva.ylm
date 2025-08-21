@@ -1,4 +1,4 @@
-name: Build Boost
+name: Build
 
 on:
   workflow_dispatch:   # Avvio manuale dal tab Actions
