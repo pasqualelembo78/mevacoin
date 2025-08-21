@@ -9,7 +9,6 @@ jobs:
 
     env:
       ANDROID_NDK_VERSION: r23c
-      BOOST_VERSION: 1.82.0
       BOOST_VERSION_UNDERSCORE: 1_82_0
       ANDROID_API: 24
 
@@ -31,12 +30,12 @@ jobs:
 
       - name: Download Boost
         run: |
-          wget https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source/boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
-          tar xjf boost_${BOOST_VERSION_UNDERSCORE}.tar.bz2
+          wget https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.bz2
+          tar xjf boost_1_82_0.tar.bz2
 
       - name: Build Boost for Android ARM64
         run: |
-          cd boost_${BOOST_VERSION_UNDERSCORE}
+          cd boost_1_82_0
           ./bootstrap.sh
           ./b2 toolset=clang-arm64 target-os=android threading=multi link=static runtime-link=static \
               cxxflags="-std=c++14" \
