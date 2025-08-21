@@ -1,0 +1,85 @@
+name: Build Boost full
+
+on:
+  workflow_dispatch:   # Avvio manuale dal tab Actions
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git unzip cmake ninja-build
+          pip install "conan==1.60.2"
+
+      - name: Download Android NDK
+        run: |
+          wget https://dl.google.com/android/repository/android-ndk-r26d-linux.zip
+          unzip android-ndk-r26d-linux.zip
+          mv android-ndk-r26d $HOME/android-ndk
+
+      - name: Create Conan profile (Android arm64-v8a)
+        run: |
+          mkdir -p ~/.conan/profiles
+          echo "[settings]" > ~/.conan/profiles/android_21_arm64_v8a
+          echo "os=Android" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "os.api_level=21" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "arch=armv8" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "compiler=clang" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "compiler.version=9" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "compiler.libcxx=libstdc++" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "build_type=Release" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "[env]" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "ANDROID_NDK=$HOME/android-ndk" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "CC=$HOME/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "CXX=$HOME/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "AR=$HOME/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "RANLIB=$HOME/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "[conf]" >> ~/.conan/profiles/android_21_arm64_v8a
+          echo "tools.android:ndk_path=$HOME/android-ndk" >> ~/.conan/profiles/android_21_arm64_v8a
+
+      - name: Clone Conan Center Index
+        run: |
+          git clone https://github.com/conan-io/conan-center-index.git
+
+      - name: Create minimal test_package
+        run: |
+          mkdir -p conan-center-index/recipes/boost/all/test_package
+          cat > conan-center-index/recipes/boost/all/test_package/conanfile.py <<'EOF'
+          from conan import ConanFile
+
+          class BoostTestConan(ConanFile):
+              settings = "os", "compiler", "arch", "build_type"
+              generators = "CMakeDeps", "CMakeToolchain"
+
+              def requirements(self):
+                  self.requires("boost/1.81.0@conan/stable")
+
+              def test(self):
+                  pass
+          EOF
+
+      - name: Build Boost (full build)
+        run: |
+          cd conan-center-index/recipes/boost/all
+          conan create . boost/1.81.0@conan/stable \
+            --profile android_21_arm64_v8a \
+            --build=missing
+
+      - name: Upload Conan cache as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: conan-cache
+          path: ~/.conan/data
