@@ -42,7 +42,7 @@
 #if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__ANDROID__)
 #include <sys/timeb.h>
 #else
-#include <syst/time.h>
+#include <sys/time.h>
 #endif
 
 #ifdef _WIN32
