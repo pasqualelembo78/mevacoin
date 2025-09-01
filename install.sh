@@ -72,7 +72,7 @@ Description=Mevacoin Wallet API
 After=network.target
 
 [Service]
-ExecStart=/opt/mevacoin/build/src/wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
+ExecStart=/usr/bin/screen -DmS wallet-api /opt/mevacoin/build/src/wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
 WorkingDirectory=/opt/mevacoin/build/src
 Restart=always
 RestartSec=5
