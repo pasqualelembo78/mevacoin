@@ -13,7 +13,7 @@ This is a place for issue reports that are not exactly bugs (wrong unintentional
 **Double-check**
 
 * If the behavior is strange, surprising, and undocumented, it could be a good idea to file a "Bug report" instead.
-* Is this still relevant with the latest version of Kryptokrona? We could have changed this already.
+* Is this still relevant with the latest version of MevaCoin? We could have changed this already.
 * Maybe there are good reasons for the existing behavior. Please try searching for existing discussions of the problem.
 
 -->

@@ -1,5 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2019, The Kryptokrona Developers
+// Copyright (c) 2024, MevaCoin Project.
 //
 // Please see the included LICENSE file for more information.
 
@@ -28,7 +28,10 @@ namespace mevacoin
                       << " If you did not receive a copy of the LICENSE, please visit:" << std::endl
                       << " " << mevacoin::LICENSE_URL
                       << std::endl
-                      << std::endl;
+                  << std::endl
+                  << " 🎉 Block initialized on Desy's Birthday: 18 December 2011 🎉"
+                  << std::endl
+                  << std::endl;
 
         return programHeader.str();
     }

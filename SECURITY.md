@@ -1,14 +1,14 @@
-# Security Policy
 
-## Supported Versions
+---
 
-The current supported version is v1.1.0, but we encourage everyone to update to latest versions as often as possible. But it's not a requirement as long as it's above or the same as the supported version in the table below.
+**Politica di Sicurezza**
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.1.x   | :white_check_mark: |
+**Versioni supportate**
+La versione attualmente supportata è **v1.1.0**, ma incoraggiamo tutti ad aggiornare alle versioni più recenti il più spesso possibile. Tuttavia, non è obbligatorio, purché la versione sia uguale o superiore a quella supportata indicata nella tabella qui sotto.
 
-## Reporting a Vulnerability
+| Versione | Supportata |
+| -------- | ---------- |
+| 1.1.x    | ✅          |
 
-If you find any vulnerability, please report them as an issue here or on [Discord](https://discord.gg/VTgsTGS9b7) or Hugin Messenger in the group "Kryptokrona". 
-Join the group by using this group key: `33909fb89783fb15b5c2df50ff7107c112c3b232681f77814c024c909c07e932` or by pressing "join" on the dashboard.
+**Segnalazione di una vulnerabilità**
+Se trovi una vulnerabilità, ti preghiamo di segnalarla come **issue** qui

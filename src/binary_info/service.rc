@@ -21,7 +21,7 @@ VS_VERSION_INFO VERSIONINFO
       BLOCK "000004b0"
       BEGIN
         VALUE "CompanyName",      PROJECT_SITE
-        VALUE "FileDescription",  PROJECT_NAME " Kryptokrona-Service " PROJECT_VERSION
+        VALUE "FileDescription",  PROJECT_NAME " MevaCoin-Service " PROJECT_VERSION
         VALUE "FileVersion",      ""
         VALUE "LegalCopyright",   PROJECT_COPYRIGHT
         VALUE "OriginalFilename", "mevacoin-service.exe"

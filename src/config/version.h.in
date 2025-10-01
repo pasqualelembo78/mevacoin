@@ -1,9 +1,9 @@
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
-#define PROJECT_NAME "Kryptokrona"
+#define PROJECT_NAME "MevaCoin"
 #define PROJECT_SITE "https://www.mevacoin.org"
-#define PROJECT_COPYRIGHT "Copyright 2019, The Kryptokrona Developers"
+#define PROJECT_COPYRIGHT "Copyright 2024, The MevaCoin Developers"
 #define APP_VER_MAJOR 1
 #define APP_VER_MINOR 1
 #define APP_VER_REV 6

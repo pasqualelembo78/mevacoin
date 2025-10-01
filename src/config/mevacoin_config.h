@@ -2,7 +2,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2019, The Kryptokrona Developers
+// Copyright (c) 2024, MevaCoin Project.
 //
 // Please see the included LICENSE file for more information.
 
@@ -78,7 +78,7 @@ namespace mevacoin
         /* This is the unix timestamp of the first "mined" block (technically block 2, not the genesis block)
            You can get this value by doing "print_block 2" in TurtleCoind. It is used to know what timestamp
            to import from when the block height cannot be found in the node or the node is offline. */
-        const uint64_t GENESIS_BLOCK_TIMESTAMP = 1729612800;
+        const uint64_t GENESIS_BLOCK_TIMESTAMP = 1324214400;
 
         const size_t MEVACOIN_REWARD_BLOCKS_WINDOW = 100;
         const size_t MEVACOIN_BLOCK_GRANTED_FULL_REWARD_ZONE = 100000; // size of block (bytes) after which reward for block calculated using block size
@@ -275,8 +275,8 @@ namespace mevacoin
     const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 100;
     const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 2;
 
-    const char LATEST_VERSION_URL[] = "https://github.com/mevacoin/mevacoin";
-    const std::string LICENSE_URL = "https://github.com/mevacoin/mevacoin/blob/master/LICENSE";
+    const char LATEST_VERSION_URL[] = "https://github.com/pasqualelembo78/mevacoin.git";
+    const std::string LICENSE_URL = "https://github.com/pasqualelembo78/mevacoin/blob/master/LICENSE";
 
 #ifdef USE_TESTNET
     const static boost::uuids::uuid MEVACOIN_NETWORK =

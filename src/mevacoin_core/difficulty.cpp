@@ -1,6 +1,6 @@
 // Copyright (c) 2025, The Mevacoin Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2019, The Kryptokrona Developers
+// Copyright (c) 2024, MevaCoin Project.
 //
 // Please see the included LICENSE file for more information.
 

@@ -11,10 +11,10 @@ assignees: ''
 **Double-check**
 
 * Maybe this feature is already here?
-  - Did you check the latest version of Kryptokrona?
+  - Did you check the latest version of MevaCoin?
   - Maybe it's in a form you didn't expect? Consider asking on [Discord](https://discord.gg/VTgsTGS9b7). The community will likely come up with some code that solves your need, and faster than it would take us to answer the issue!
 * Do you actually *need* this feature? 
-* Is the specific functionality in Kryptokrona the best place for this feature? Maybe it would be better suited for some third-party library?
+* Is the specific functionality in MevaCoin the best place for this feature? Maybe it would be better suited for some third-party library?
 -->
 
 **Use case**

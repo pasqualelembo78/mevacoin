@@ -1,4 +1,4 @@
-name: Kryptokrona Master Pipeline
+name: MevaCoin Master Pipeline
 
 env:
   GITHUB_REGISTRY: "ghcr.io"

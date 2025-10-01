@@ -1,5 +1,5 @@
 <a href="https://github.com/mevacoin/mevacoin">
-  <img align="right" width="200" height="120" alt="Kryptokrona" src="resources/mevacoin.svg">
+  <img align="right" width="200" height="120" alt="MevaCoin" src="resources/mevacoin.svg">
 </a>
 Per installare correttamente mevacoin in un sistema basato su Ubuntu, puoi copiare il contenuto seguente in un file chiamato mevacoin.sh (o come piu ti piace),
 dare chmod +x per i permessi

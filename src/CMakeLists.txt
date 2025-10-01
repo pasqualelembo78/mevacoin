@@ -170,8 +170,8 @@ add_dependencies(zedwallet version)
 
 # Finally build the binaries
 set_property(TARGET mevacoind PROPERTY OUTPUT_NAME "mevacoind")
-set_property(TARGET zedwallet PROPERTY OUTPUT_NAME "xkrwallet")
-set_property(TARGET zedwallet++ PROPERTY OUTPUT_NAME "xkrwallet-beta")
+set_property(TARGET zedwallet PROPERTY OUTPUT_NAME "mvcwallet")
+set_property(TARGET zedwallet++ PROPERTY OUTPUT_NAME "mvcwallet-beta")
 set_property(TARGET service PROPERTY OUTPUT_NAME "mevacoin-service")
 set_property(TARGET miner PROPERTY OUTPUT_NAME "miner")
 set_property(TARGET crypto_test PROPERTY OUTPUT_NAME "crypto_test")

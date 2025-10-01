@@ -1,5 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2019, The Kryptokrona Developers
+// Copyright (c) 2024, MevaCoin Project.
 //
 // Please see the included LICENSE file for more information.
 
@@ -14,7 +14,7 @@ namespace wallet_config
     const std::string_view addressPrefix = "bick";
 
     /* Your coins 'Ticker', e.g. Monero = XMR, Bitcoin = BTC */
-    const std::string ticker = "XKR";
+    const std::string ticker = "MVC";
 
     /* The filename to output the CSV to in save_csv */
     const std::string csvFilename = "transactions.csv";
@@ -27,7 +27,7 @@ namespace wallet_config
     const std::string daemonName = "mevacoind";
 
     /* The name to call this wallet */
-    const std::string walletName = "xkrwallet";
+    const std::string walletName = "mvcwallet";
 
     /* The name of service/walletd, the programmatic rpc interface to a
        wallet */
@@ -37,7 +37,7 @@ namespace wallet_config
     const std::string coinName = std::string(mevacoin::MEVACOIN_NAME);
 
     /* Where can your users contact you for support? E.g. discord */
-    const std::string contactLink = "https://mevacoin.org";
+    const std::string contactLink = "https://www.mevacoin.com";
 
     /* The number of decimals your coin has */
     const uint8_t numDecimalPlaces = mevacoin::parameters ::MEVACOIN_DISPLAY_DECIMAL_POINT;
