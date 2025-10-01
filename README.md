@@ -5,6 +5,7 @@ Per installare correttamente mevacoin in un sistema basato su Ubuntu, puoi copia
 dare chmod +x per i permessi
 e avviare con ./mevacoin.sh
 
+il file è presente anche come file install.sh
 
 #!/bin/bash
 
