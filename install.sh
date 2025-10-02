@@ -11,6 +11,18 @@ sudo apt install -y build-essential cmake git ccache clang g++ python3 python3-p
 libssl-dev libzmq3-dev libsodium-dev libbz2-dev zlib1g-dev liblzma-dev \
 libboost-all-dev apache2 ufw
 
+echo "Configurazione variabili d'ambiente Boost..."
+{
+  echo 'export BOOST_ROOT=/usr'
+  echo 'export BOOST_INCLUDEDIR=/usr/include'
+  echo 'export BOOST_LIBRARYDIR=/usr/lib/x86_64-linux-gnu'
+} >> /root/.bashrc
+
+# Carico subito le variabili anche per questa sessione
+export BOOST_ROOT=/usr
+export BOOST_INCLUDEDIR=/usr/include
+export BOOST_LIBRARYDIR=/usr/lib/x86_64-linux-gnu
+
 echo "Configurazione del firewall UFW..."
 sudo ufw allow 22/tcp         # SSH
 sudo ufw allow 21/tcp         # FTP
@@ -29,12 +41,71 @@ sudo ufw --force enable
 echo "Firewall configurato."
 
 echo "Clonazione di Mevacoin in /opt/mevacoin..."
-
-# Rimuove qualsiasi cartella esistente
 sudo rm -rf /opt/mevacoin
-
-# Clona il repository
 git clone https://github.com/pasqualelembo78/mevacoin.git /opt/mevacoin
+
+echo "Compilazione..."
+cd /opt/mevacoin
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+
+echo "Configurazione del servizio mevacoind..."
+sudo tee /etc/systemd/system/mevacoind.service > /dev/null <<EOF
+[Unit]
+Description=Mevacoin Daemon
+After=network.target
+
+[Service]
+ExecStart=/opt/mevacoin/build/src/mevacoind --rpc-bind-ip 0.0.0.0
+WorkingDirectory=/opt/mevacoin/build/src
+Restart=always
+RestartSec=5
+User=root
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl start mevacoind
+sudo systemctl enable mevacoind
+
+echo "Configurazione del servizio wallet-api..."
+sudo tee /etc/systemd/system/wallet-api.service > /dev/null <<EOF
+[Unit]
+Description=Mevacoin Wallet API
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/screen -DmS wallet-api /opt/mevacoin/build/src/wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
+WorkingDirectory=/opt/mevacoin/build/src
+Restart=always
+RestartSec=5
+User=root
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl start wallet-api
+sudo systemctl enable wallet-api
+
+echo "Imposto permessi corretti..."
+sudo chown -R root:root /opt/mevacoin
+sudo chmod -R 755 /opt/mevacoin
+sudo mkdir -p /opt/mevacoin/logs
+sudo chmod -R 775 /opt/mevacoin/logs
+sudo chmod +x /opt/mevacoin/build/src/mevacoind
+sudo chmod +x /opt/mevacoin/build/src/wallet-api
+
+echo "Verifica UFW:"
+sudo ufw status verbose
+
+echo "Installazione e configurazione completata con successo."git clone https://github.com/pasqualelembo78/mevacoin.git /opt/mevacoin
 
 # Compilazione
 cd /opt/mevacoin || exit 1
