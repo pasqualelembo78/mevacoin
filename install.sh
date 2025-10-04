@@ -143,11 +143,23 @@ Description=Mevacoin Wallet API
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/screen -DmS wallet-api /opt/mevacoin/build/src/wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
+# Imposta la variabile TERM prima di lanciare lo screen
+Environment=TERM=xterm
+
+# Avvia in una sessione screen staccata
+ExecStart=/usr/bin/screen -DmS wallet-api /opt/mevacoin/build/src/wallet-api --port 17082 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password desy2011
+
+# Cartella di lavoro
 WorkingDirectory=/opt/mevacoin/build/src
+
+# Mantieni il servizio attivo
 Restart=always
 RestartSec=5
+
+# Utente (puoi lasciare root se stai già usando così)
 User=root
+
+# Aumenta i limiti file se serve
 LimitNOFILE=4096
 
 [Install]
