@@ -6,10 +6,13 @@ set -e
 echo "Aggiornamento del sistema..."
 sudo apt update && sudo apt upgrade -y
 
-echo "Installazione pacchetti di base e Apache..."
-sudo apt install -y build-essential cmake git ccache clang g++ python3 python3-pip \
+echo "Installazione pacchetti di base, Python, PHP, cURL e Apache..."
+sudo apt update
+sudo apt install -y build-essential cmake git ccache clang g++ \
+python3 python3-pip python3-pyqt5 \
 libssl-dev libzmq3-dev libsodium-dev libbz2-dev zlib1g-dev liblzma-dev \
-libboost-all-dev apache2 ufw
+libboost-all-dev apache2 ufw \
+php php-cli php-curl curl
 
 echo "Configurazione variabili d'ambiente Boost..."
 {
