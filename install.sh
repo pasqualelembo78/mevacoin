@@ -104,7 +104,7 @@ sudo mkdir -p /opt/mevacoin/logs
 sudo chmod -R 775 /opt/mevacoin/logs
 sudo chmod +x /opt/mevacoin/build/src/mevacoind
 sudo chmod +x /opt/mevacoin/build/src/wallet-api
-
+chmod o+rx /opt /opt/mevacoin /opt/mevacoin/build /opt/mevacoin/build/src
 echo "Verifica UFW:"
 sudo ufw status verbose
 
