@@ -10,18 +10,22 @@ jobs:
   build-windows:
     runs-on: windows-2022
 
-    env:
-      BOOST_ROOT: ${{ runner.temp }}\boost
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Set BOOST_ROOT
+      run: |
+        set "BOOST_ROOT=C:\boost"
+        echo BOOST_ROOT=%BOOST_ROOT%
+      shell: cmd
+
     - name: Download precompiled Boost 1.89
       run: |
         curl -L -o boost.exe https://downloads.sourceforge.net/project/boost/boost-binaries/1.89.0/boost_1_89_0-msvc-14.3-64.exe
-        mkdir "%BOOST_ROOT%"
-        Start-Process -FilePath .\boost.exe -ArgumentList "-y","-o${env:BOOST_ROOT}" -Wait
+        mkdir C:\boost
+        Start-Process -FilePath .\boost.exe -ArgumentList "-y","-oC:\boost" -Wait
+      shell: powershell
 
     - name: Set up Visual Studio environment
       shell: cmd
@@ -30,7 +34,7 @@ jobs:
 
     - name: Configure CMake
       shell: cmd
-      run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DBOOST_ROOT=%BOOST_ROOT%
+      run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DBOOST_ROOT=C:\boost
 
     - name: Build Mevacoin
       shell: cmd
