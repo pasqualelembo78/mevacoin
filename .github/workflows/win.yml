@@ -14,18 +14,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Scarica Boost precompilato per MSVC 2022 (x64)
+      # 2️⃣ Scarica Boost precompilato (ZIP)
       - name: Download Boost prebuilt binaries
         run: |
-          curl -L -o boost.exe https://sourceforge.net/projects/boost/files/latest/download
-          mkdir C:\boost
+          curl -L -o boost.zip https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe/download
+          Rename-Item boost.zip boost.exe
           Start-Process -FilePath .\boost.exe -ArgumentList "-y","-oC:\boost" -Wait
+        shell: pwsh
 
       # 3️⃣ Imposta variabile BOOST_ROOT
       - name: Set BOOST_ROOT
         run: echo "BOOST_ROOT=C:\boost" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      # 4️⃣ Installa CMake (se non già incluso)
+      # 4️⃣ Installa CMake
       - name: Install CMake
         uses: lukka/get-cmake@latest
 
@@ -36,10 +37,9 @@ jobs:
 
       # 6️⃣ Compila il progetto
       - name: Build Mevacoin
-        run: |
-          cmake --build build --config Release
+        run: cmake --build build --config Release
 
-      # 7️⃣ (Opzionale) Carica gli eseguibili compilati come artefatti
+      # 7️⃣ Salva gli eseguibili come artefatti
       - name: Upload compiled binaries
         uses: actions/upload-artifact@v4
         with:
