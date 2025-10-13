@@ -2,7 +2,7 @@ name: Build Mevacoin Windows
 
 on:
   push:
-    branches: [main]   # modifica se il tuo branch principale si chiama diversamente
+    branches: [master]   # modifica se il tuo branch principale si chiama diversamente
   pull_request:
 
 jobs:
