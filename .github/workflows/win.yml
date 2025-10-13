@@ -1,47 +1,43 @@
-name: Build Mevacoin for Windows
+name: Build Mevacoin Windows
 
 on:
   push:
+    branches: [ main ]
   pull_request:
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022
+
+    env:
+      BOOST_ROOT: ${{ runner.temp }}\boost
 
     steps:
-      # 1️⃣ Clona il repository
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      # 2️⃣ Scarica Boost precompilato (ZIP)
-      - name: Download Boost prebuilt binaries
-        run: |
-          curl -L -o boost.zip https://sourceforge.net/projects/boost/files/boost-binaries/1.86.0/boost_1_86_0-msvc-14.3-64.exe/download
-          Rename-Item boost.zip boost.exe
-          Start-Process -FilePath .\boost.exe -ArgumentList "-y","-oC:\boost" -Wait
-        shell: pwsh
+    - name: Download precompiled Boost 1.89
+      run: |
+        curl -L -o boost.exe https://downloads.sourceforge.net/project/boost/boost-binaries/1.89.0/boost_1_89_0-msvc-14.3-64.exe
+        mkdir "%BOOST_ROOT%"
+        Start-Process -FilePath .\boost.exe -ArgumentList "-y","-o${env:BOOST_ROOT}" -Wait
 
-      # 3️⃣ Imposta variabile BOOST_ROOT
-      - name: Set BOOST_ROOT
-        run: echo "BOOST_ROOT=C:\boost" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Set up Visual Studio environment
+      shell: cmd
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
 
-      # 4️⃣ Installa CMake
-      - name: Install CMake
-        uses: lukka/get-cmake@latest
+    - name: Configure CMake
+      shell: cmd
+      run: cmake -B build -S . -G "Visual Studio 17 2022" -A x64 -DBOOST_ROOT=%BOOST_ROOT%
 
-      # 5️⃣ Configura il progetto
-      - name: Configure Mevacoin with CMake
-        run: |
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DBOOST_ROOT=C:\boost
+    - name: Build Mevacoin
+      shell: cmd
+      run: cmake --build build --config Release
 
-      # 6️⃣ Compila il progetto
-      - name: Build Mevacoin
-        run: cmake --build build --config Release
-
-      # 7️⃣ Salva gli eseguibili come artefatti
-      - name: Upload compiled binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mevacoin-Windows
-          path: build/**/*.exe
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: mevacoin-windows
+        path: build/Release/
