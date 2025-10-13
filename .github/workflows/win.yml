@@ -1,0 +1,50 @@
+name: Build Mevacoin Windows
+
+on:
+  push:
+    branches: [main]   # modifica se il tuo branch principale si chiama diversamente
+  pull_request:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    # Step 1: Clona il repository
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    # Step 2: Installa CMake
+    - name: Install CMake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: "3.28.0"
+
+    # Step 3: Installa vcpkg e Boost
+    - name: Install vcpkg and Boost
+      shell: powershell
+      run: |
+        Write-Host "Cloning vcpkg..."
+        git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+        Write-Host "Bootstrapping vcpkg..."
+        C:\vcpkg\bootstrap-vcpkg.bat
+        Write-Host "Installing Boost..."
+        C:\vcpkg\vcpkg.exe install boost:x64-windows
+        C:\vcpkg\vcpkg.exe integrate install
+
+    # Step 4: Configura CMake per Visual Studio 2022 x64
+    - name: Configure CMake
+      shell: cmd
+      run: cmake .. -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+
+    # Step 5: Compila Mevacoin
+    - name: Build Mevacoin
+      shell: cmd
+      run: cmake --build build --config Release
+
+    # Step 6: Salva l'eseguibile come artifact
+    - name: Upload mevacoind.exe
+      uses: actions/upload-artifact@v3
+      with:
+        name: mevacoind-win
+        path: build\Release\mevacoind.exe
