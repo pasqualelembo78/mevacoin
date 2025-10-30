@@ -1,8 +1,18 @@
 {
     "nodes": [
         {
-            "name": "Nodo Pubblico Mevacoin",
-            "url": "195.231.65.38",
+            "name": "Nodo Pubblico Mevacoin IPv4",
+            "url": "82.165.218.56",
+            "port": 17081,
+            "ssl": false,
+            "cache": false,
+            "version": "1.0.0",
+            "fee": "0.0",
+            "proxy_url": ""
+        },
+        {
+            "name": "Nodo Pubblico Mevacoin IPv6",
+            "url": "2a02:2479:7e:e500::1",
             "port": 17081,
             "ssl": false,
             "cache": false,
@@ -13,9 +23,14 @@
     ],
     "apis": [
         {
-            "url": "http://195.231.65.38:17082",
-            "name": "Wallet RPC Mevacoin",
-            "description": "RPC wallet Mevacoin accessibile da remoto"
+            "url": "http://82.165.218.56:17082",
+            "name": "Wallet RPC Mevacoin IPv4",
+            "description": "RPC wallet Mevacoin accessibile da remoto via IPv4"
+        },
+        {
+            "url": "http://[2a02:2479:7e:e500::1]:17082",
+            "name": "Wallet RPC Mevacoin IPv6",
+            "description": "RPC wallet Mevacoin accessibile da remoto via IPv6"
         }
     ],
     "hugin": []
