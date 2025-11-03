@@ -1226,6 +1226,8 @@ struct COMMAND_RPC_SYNC
         uint64_t network_height;
         std::string status;
 
+std::vector<BlockFullInfo> blocks;
+
         template <class T>
         void serialize(T& s)
         {
