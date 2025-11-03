@@ -79,6 +79,10 @@ namespace mevacoin
         bool onGetTransactionDetailsByHashes(const COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::request &req, COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::response &rsp);
         bool onGetTransactionHashesByPaymentId(const COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::request &req, COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::response &rsp);
         bool on_get_height(const COMMAND_RPC_GET_HEIGHT::request &req, COMMAND_RPC_GET_HEIGHT::response &res);
+// handler per /sync
+bool on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::response& res);
+
+
         bool on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request &req, COMMAND_RPC_GET_TRANSACTIONS::response &res);
         bool on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request &req, COMMAND_RPC_SEND_RAW_TX::response &res);
         bool on_get_fee_info(const COMMAND_RPC_GET_FEE_ADDRESS::request &req, COMMAND_RPC_GET_FEE_ADDRESS::response &res);
