@@ -1209,5 +1209,36 @@ namespace mevacoin
             }
         };
     };
+//-----------------------------------------------
+// Mevacoin custom endpoint: /sync
+//-----------------------------------------------
+struct COMMAND_RPC_SYNC
+{
+    struct request
+    {
+        template <class T>
+        void serialize(T& s) { /* niente da serializzare */ }
+    };
+
+    struct response
+    {
+        uint64_t height;
+        uint64_t network_height;
+        std::string status;
+
+        template <class T>
+        void serialize(T& s)
+        {
+            s(height, common::StringView{"height"});
+            s(network_height, common::StringView{"network_height"});
+            s(status, common::StringView{"status"});
+        }
+    };
+
+    typedef request request_type;
+    typedef response response_type;
+
+    static const char* method; // qui solo la dichiarazione, NON la definizione
+};
 
 }
