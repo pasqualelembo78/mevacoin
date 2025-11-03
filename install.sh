@@ -60,7 +60,7 @@ Description=Mevacoin Daemon
 After=network.target
 
 [Service]
-ExecStart=/opt/mevacoin/build/src/mevacoind --rpc-bind-ip 0.0.0.0
+ExecStart=/opt/mevacoin/build/src/mevacoind --config-file /opt/mevacoin/mevacoind.conf
 WorkingDirectory=/opt/mevacoin/build/src
 Restart=always
 RestartSec=5
