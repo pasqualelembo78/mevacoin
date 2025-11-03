@@ -282,11 +282,24 @@ namespace mevacoin
 
 bool RpcServer::on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::response& res)
 {
-    res.height = m_core.get_current_blockchain_height();       // altezza del blocco locale
-    res.network_height = m_core.get_current_blockchain_height(); // oppure m_p2p.getObservedHeight() se vuoi l'altezza osservata
+    res.height = m_core.get_current_blockchain_height();
+    res.network_height = m_core.get_current_blockchain_height();
     res.status = CORE_RPC_STATUS_OK;
+
+    res.blocks.clear();
+
+    // Esempio: popolamento blocchi
+    size_t max_blocks = 100;
+    size_t current_height = res.height;
+    for (size_t i = 0; i < std::min(max_blocks, current_height); i++) {
+        BlockFullInfo info;
+        m_core.get_block_info(i, info); // assicurati che esista get_block_info che riempie BlockFullInfo
+        res.blocks.push_back(info);
+    }
+
     return true;
 }
+
 
 
     bool RpcServer::enableCors(const std::vector<std::string> domains)
