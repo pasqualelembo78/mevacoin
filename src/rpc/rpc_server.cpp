@@ -136,6 +136,8 @@ namespace mevacoin
         // old json handlers - remove me in 2019
         {"/getinfo", {jsonMethod<COMMAND_RPC_GET_INFO>(&RpcServer::on_get_info), true}},
         {"/getheight", {jsonMethod<COMMAND_RPC_GET_HEIGHT>(&RpcServer::on_get_height), true}},
+{"/sync", {jsonMethod<COMMAND_RPC_SYNC>(&RpcServer::on_sync), true}},
+
         {"/feeinfo", {jsonMethod<COMMAND_RPC_GET_FEE_ADDRESS>(&RpcServer::on_get_fee_info), true}},
         {"/getpeers", {jsonMethod<COMMAND_RPC_GET_PEERS>(&RpcServer::on_get_peers), true}},
 
@@ -276,6 +278,16 @@ namespace mevacoin
         m_fee_amount = fee_amount;
         return true;
     }
+
+
+bool RpcServer::on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::response& res)
+{
+    res.height = m_core.get_current_blockchain_height();       // altezza del blocco locale
+    res.network_height = m_core.get_current_blockchain_height(); // oppure m_p2p.getObservedHeight() se vuoi l'altezza osservata
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+}
+
 
     bool RpcServer::enableCors(const std::vector<std::string> domains)
     {
