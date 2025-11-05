@@ -153,6 +153,14 @@ namespace mevacoin
         {"/queryblockslite", {jsonMethod<COMMAND_RPC_QUERY_BLOCKS_LITE>(&RpcServer::on_query_blocks_lite), false}},
         {"/queryblocksdetailed", {jsonMethod<COMMAND_RPC_QUERY_BLOCKS_DETAILED>(&RpcServer::on_query_blocks_detailed), false}},
         {"/getwalletsyncdata", {jsonMethod<COMMAND_RPC_GET_WALLET_SYNC_DATA>(&RpcServer::on_get_wallet_sync_data), false}},
+
+// Inizio chiamate RPC SYNC personalizzate Mevacoin
+
+{"/sync", {jsonMethod<COMMAND_RPC_GET_WALLET_SYNC_DATA>(&RpcServer::on_sync), false}},
+
+// Fine chiamate RPC SYNC personalizzate Mevacoin
+
+
         {"/get_o_indexes", {jsonMethod<COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES>(&RpcServer::on_get_indexes), false}},
         {"/getrandom_outs", {jsonMethod<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS>(&RpcServer::on_get_random_outs), false}},
         {"/get_pool", {jsonMethod<COMMAND_RPC_GET_POOL>(&RpcServer::onGetPool), false}},
@@ -396,8 +404,10 @@ namespace mevacoin
 
 bool RpcServer::on_sync(const COMMAND_RPC_GET_WALLET_SYNC_DATA::request& req, COMMAND_RPC_GET_WALLET_SYNC_DATA::response& res)
 {
+    std::cout << "[SYNC] Chiamata ricevuta da TonChan" << std::endl;
     return on_get_wallet_sync_data(req, res);
 }
+
 
 
     bool RpcServer::onGetTransactionsStatus(
