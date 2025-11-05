@@ -132,8 +132,6 @@ namespace mevacoin
         virtual std::vector<crypto::Hash> getTransactionHashesByPaymentId(const crypto::Hash &paymentId) const override;
 
         virtual uint64_t get_current_blockchain_height() const;
-        virtual bool get_block_info(uint32_t height, BlockFullInfo &info) const;
-
 
     private:
         const Currency &currency;

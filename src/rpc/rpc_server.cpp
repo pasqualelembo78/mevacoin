@@ -136,8 +136,6 @@ namespace mevacoin
         // old json handlers - remove me in 2019
         {"/getinfo", {jsonMethod<COMMAND_RPC_GET_INFO>(&RpcServer::on_get_info), true}},
         {"/getheight", {jsonMethod<COMMAND_RPC_GET_HEIGHT>(&RpcServer::on_get_height), true}},
-{"/sync", {jsonMethod<COMMAND_RPC_SYNC>(&RpcServer::on_sync), true}},
-
         {"/feeinfo", {jsonMethod<COMMAND_RPC_GET_FEE_ADDRESS>(&RpcServer::on_get_fee_info), true}},
         {"/getpeers", {jsonMethod<COMMAND_RPC_GET_PEERS>(&RpcServer::on_get_peers), true}},
 
@@ -279,29 +277,6 @@ namespace mevacoin
         return true;
     }
 
-
-bool RpcServer::on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::response& res)
-{
-    res.height = m_core.get_current_blockchain_height();
-    res.network_height = m_core.get_current_blockchain_height();
-    res.status = CORE_RPC_STATUS_OK;
-
-    res.blocks.clear();
-
-    // Esempio: popolamento blocchi
-    size_t max_blocks = 100;
-    size_t current_height = res.height;
-    for (size_t i = 0; i < std::min(max_blocks, current_height); i++) {
-        BlockFullInfo info;
-        m_core.get_block_info(i, info); // assicurati che esista get_block_info che riempie BlockFullInfo
-        res.blocks.push_back(info);
-    }
-
-    return true;
-}
-
-
-
     bool RpcServer::enableCors(const std::vector<std::string> domains)
     {
         m_cors_domains = domains;
@@ -418,6 +393,12 @@ bool RpcServer::on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::
 
         return true;
     }
+
+bool RpcServer::on_sync(const COMMAND_RPC_GET_WALLET_SYNC_DATA::request& req, COMMAND_RPC_GET_WALLET_SYNC_DATA::response& res)
+{
+    return on_get_wallet_sync_data(req, res);
+}
+
 
     bool RpcServer::onGetTransactionsStatus(
         const COMMAND_RPC_GET_TRANSACTIONS_STATUS::request &req,

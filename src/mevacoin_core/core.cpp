@@ -3507,11 +3507,4 @@ namespace mevacoin
         return start_time;
     }
 
-bool Core::get_block_info(uint32_t height, BlockFullInfo &info) const
-    {
-        (void)height;
-        (void)info;
-        // Per ora non popoliamo info; ritorniamo false
-        return false;
-    }
 }

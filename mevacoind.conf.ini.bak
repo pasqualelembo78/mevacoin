@@ -1,0 +1,13 @@
+# Porta RPC per le chiamate del wallet / Tonchan
+rpc-bind-ip=0.0.0.0
+rpc-bind-port=17081
+
+# Porta P2P per i nodi della rete
+p2p-bind-ip=0.0.0.0
+p2p-bind-port=17080
+
+# Directory dei dati della blockchain
+data-dir=/root/.mevacoin
+
+# Consenti connessioni remote
+allow-local-ip=false

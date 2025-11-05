@@ -58,6 +58,10 @@ namespace mevacoin
         bool on_query_blocks_lite(const COMMAND_RPC_QUERY_BLOCKS_LITE::request &req, COMMAND_RPC_QUERY_BLOCKS_LITE::response &res);
         bool on_query_blocks_detailed(const COMMAND_RPC_QUERY_BLOCKS_DETAILED::request &req, COMMAND_RPC_QUERY_BLOCKS_DETAILED::response &res);
         bool on_get_wallet_sync_data(const COMMAND_RPC_GET_WALLET_SYNC_DATA::request &req, COMMAND_RPC_GET_WALLET_SYNC_DATA::response &res);
+
+bool on_sync(const COMMAND_RPC_GET_WALLET_SYNC_DATA::request &req, COMMAND_RPC_GET_WALLET_SYNC_DATA::response &res);
+
+
         bool on_get_indexes(const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request &req, COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response &res);
 
         bool onGetTransactionsStatus(
@@ -79,10 +83,6 @@ namespace mevacoin
         bool onGetTransactionDetailsByHashes(const COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::request &req, COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::response &rsp);
         bool onGetTransactionHashesByPaymentId(const COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::request &req, COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::response &rsp);
         bool on_get_height(const COMMAND_RPC_GET_HEIGHT::request &req, COMMAND_RPC_GET_HEIGHT::response &res);
-// handler per /sync
-bool on_sync(const COMMAND_RPC_SYNC::request& req, COMMAND_RPC_SYNC::response& res);
-
-
         bool on_get_transactions(const COMMAND_RPC_GET_TRANSACTIONS::request &req, COMMAND_RPC_GET_TRANSACTIONS::response &res);
         bool on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request &req, COMMAND_RPC_SEND_RAW_TX::response &res);
         bool on_get_fee_info(const COMMAND_RPC_GET_FEE_ADDRESS::request &req, COMMAND_RPC_GET_FEE_ADDRESS::response &res);
