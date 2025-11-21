@@ -76,26 +76,9 @@ sudo systemctl start mevacoind
 sudo systemctl enable mevacoind
 
 echo "Configurazione del servizio wallet-api..."
-sudo tee /etc/systemd/system/wallet-api.service > /dev/null <<EOF
-[Unit]
-Description=Mevacoin Wallet API
-After=network.target
+cd /opt/mevacoin/build/src
 
-[Service]
-ExecStart=/usr/bin/screen -DmS wallet-api /opt/mevacoin/build/src/wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
-WorkingDirectory=/opt/mevacoin/build/src
-Restart=always
-RestartSec=5
-User=root
-LimitNOFILE=4096
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl start wallet-api
-sudo systemctl enable wallet-api
+screen -S wallet-api ./wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "desy2011"
 
 echo "Imposto permessi corretti..."
 sudo chown -R root:root /opt/mevacoin
