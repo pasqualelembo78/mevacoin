@@ -1,0 +1,111 @@
+
+---
+
+✅ 1. CREA da zero una chiave ellittica GPG (modalità expert)
+
+Lancia:
+
+gpg --full-generate-key --expert
+
+Poi scegli:
+
+1️⃣ (9) ECC and ECC
+2️⃣ (1) Curve 25519
+3️⃣ Conferma SC (sign + certify)
+4️⃣ Imposta validità: 0 = never expires
+5️⃣ Nome: mevacoin
+6️⃣ Email: 
+7️⃣ Commento: lascia vuoto
+8️⃣ Conferma (O)kay
+9️⃣ Metti la passphrase (la useremo come password API)
+
+👉 Questa passphrase sarà LA password da usare su tutto il sistema.
+
+
+---
+
+📌 IMPORTANTE
+
+La passphrase della chiave GPG NON DEVE essere troppo lunga o complessa, altrimenti wallet-api non la accetta.
+
+Usa, ad esempio:
+
+Pass0@
+
+O quella che vuoi ma breve e semplice.
+
+
+---
+
+✅ 2. Estrai l’ID della chiave
+
+gpg --list-keys
+
+Troverai una riga simile:
+
+pub   ed25519 2025-11-22 [SC]
+      ABCDEF1234567890ABCDEF1234567890ABCDEF12
+
+Copiati l’ID (esempio: ABCDEF1234567890ABCDEF1234567890ABCDEF12).
+
+
+---
+
+✅ 3. Salva la password API (la passphrase della chiave) in un file protetto
+
+echo "Pass0@" > /etc/mevacoin/api.key
+chmod 600 /etc/mevacoin/api.key
+
+(Sostituisci la password con quella scelta durante la creazione della chiave.)
+
+
+---
+
+🔐 PERCHÉ METTERLA IN UN FILE?
+
+Sia wallet-api sia api.php la leggeranno da qui, garantendo lo stesso valore e evitando errori umani.
+
+
+---
+
+✅ 4. CONFIGURA wallet-api per usare questa password
+
+Lancia:
+
+PASS=$(cat /etc/mevacoin/api.key)
+
+screen -DmS wallet-api ./wallet-api \
+  --port 8070 \
+  --rpc-bind-ip 0.0.0.0 \
+  --enable-cors "*" \
+  --rpc-password "$PASS"
+
+Ora wallet-api accetta solo richieste con quella password.
+
+
+---
+
+✅ 5. Configura api.php per usare la stessa password
+
+Nel tuo api.php, metti:
+
+$api_key = trim(file_get_contents("/etc/mevacoin/api.key"));
+
+Poi aggiungi a ogni chiamata curl:
+
+'X-API-KEY: ' . $api_key,
+
+
+---
+
+🎯 RISULTATO FINALE
+
+Ora hai:
+
+✔ Una sola chiave ellittica GPG creata correttamente
+✔ Una singola password (la passphrase) usata ovunque
+✔ wallet-api avviato con quella password
+✔ api.php che usa la stessa password per autenticarsi
+✔ Sicurezza pulita, semplice e coerente
+✔ Niente chiavi duplicate
+✔ Niente confusione tra GPG e RPC
