@@ -58,8 +58,14 @@ chmod 600 /etc/mevacoin/api.key
 
 (Sostituisci la password con quella scelta durante la creazione della chiave.)
 
-
+Volendo puoi anche generare una pass complicatissima con il comando openssl rand -hex 32  
+QUINDI O METTI UNA TUA PASS ALL'INTERNO DEL FILE API.KEY OPPURE LA GENERI CON OPENSSL 
 ---
+
+Alla fine meglio cryptare con 
+gpg --output /etc/mevacoin/keys/server1.key.gpg \
+    --encrypt --recipient key ottenuta con gpg \
+    /root/server1.key
 
 🔐 PERCHÉ METTERLA IN UN FILE?
 
