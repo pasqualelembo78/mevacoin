@@ -1,86 +1,94 @@
+Perfetto! Ecco una versione pulita e passo-passo della guida per creare una singola chiave ellittica GPG e configurare wallet-api e api.php con la stessa password, pronta da seguire senza confusione:
+
 
 ---
 
-✅ 1. CREA da zero una chiave ellittica GPG (modalità expert)
+Guida Pulita – API Key GPG per Mevacoin
 
-Lancia:
+1️⃣ Creare da zero una chiave ellittica GPG (modalità expert)
 
 gpg --full-generate-key --expert
 
 Poi scegli:
 
-1️⃣ (9) ECC and ECC
-2️⃣ (1) Curve 25519
-3️⃣ Conferma SC (sign + certify)
-4️⃣ Imposta validità: 0 = never expires
-5️⃣ Nome: mevacoin
-6️⃣ Email: 
-7️⃣ Commento: lascia vuoto
-8️⃣ Conferma (O)kay
-9️⃣ Metti la passphrase (la useremo come password API)
+1. (9) ECC and ECC
 
-👉 Questa passphrase sarà LA password da usare su tutto il sistema.
+
+2. Curve: (1) Curve 25519
+
+
+3. Tipo: SC (sign + certify) → conferma
+
+
+4. Validità: 0 = never expires
+
+
+5. Nome: mevacoin
+
+
+6. Email: (lascia vuoto o metti una tua email)
+
+
+7. Commento: lascia vuoto
+
+
+8. Conferma Okay
+
+
+9. Inserisci la passphrase che diventerà la password API (es. Pass0@)
+
+
+
+> ⚠️ Nota: breve e semplice, perché wallet-api non accetta password troppo complesse.
+
+
 
 
 ---
 
-📌 IMPORTANTE
-
-La passphrase della chiave GPG NON DEVE essere troppo lunga o complessa, altrimenti wallet-api non la accetta.
-
-Usa, ad esempio:
-
-Pass0@
-
-O quella che vuoi ma breve e semplice.
-
-
----
-
-✅ 2. Estrai l’ID della chiave
+2️⃣ Estrarre l’ID/Fingerprint della chiave
 
 gpg --list-keys
 
-Troverai una riga simile:
+Otterrai una riga simile:
 
-pub   ed25519 2025-11-22 [SC]
-      ABCDEF1234567890ABCDEF1234567890ABCDEF12
+pub   ed25519 2025-11-23 [SC]
+      310CC08B2EB44CCA56D0BB014E6E127308A9E53C
+uid                      mevacoin <ls@js.it>
 
-Copiati l’ID (esempio: ABCDEF1234567890ABCDEF1234567890ABCDEF12).
+> Copia il fingerprint completo: 310CC08B2EB44CCA56D0BB014E6E127308A9E53C.
+
+
 
 
 ---
 
-✅ 3. Salva la password API (la passphrase della chiave) in un file protetto
+3️⃣ Salvare la password API in un file protetto
 
 echo "Pass0@" > /etc/mevacoin/api.key
 chmod 600 /etc/mevacoin/api.key
 
-(Sostituisci la password con quella scelta durante la creazione della chiave.)
+> Puoi usare la passphrase scelta prima o generarne una nuova con openssl rand -hex 32.
 
-Volendo puoi anche generare una pass complicatissima con il comando openssl rand -hex 32  
-QUINDI O METTI UNA TUA PASS ALL'INTERNO DEL FILE API.KEY OPPURE LA GENERI CON OPENSSL 
----
 
-Alla fine meglio cryptare con 
-gpg --encrypt -r PUBFINGERPRINT /etc/mevacoin/api.key
 
-PUBFINGERPRINT corrisponde al valore trovato in precedenza con uso di gpg
+Cifrare il file con la chiave GPG
 
-Per sicurezza meglio cancellare la api.key dove sta la chiave originale e conservare solo la chiave cryptata
-Con il comando shred -u /etc/mevacoin/api.key
-🔐 PERCHÉ METTERLA IN UN FILE?
+gpg --encrypt -r 310CC08B2EB44CCA56D0BB014E6E127308A9E53C /etc/mevacoin/api.key
 
-Sia wallet-api sia api.php la leggeranno da qui, garantendo lo stesso valore e evitando errori umani.
+Questo creerà /etc/mevacoin/api.key.gpg
+
+Elimina il file originale per sicurezza:
+
+
+shred -u /etc/mevacoin/api.key
 
 
 ---
 
-✅ 4. CONFIGURA wallet-api per usare questa password
+4️⃣ Configurare wallet-api per usare la stessa password
 
-Lancia:
-
-PASS=$(cat /etc/mevacoin/api.key)
+PASS=$(gpg --decrypt /etc/mevacoin/api.key.gpg 2>/dev/null)
 
 screen -DmS wallet-api ./wallet-api \
   --port 8070 \
@@ -88,32 +96,50 @@ screen -DmS wallet-api ./wallet-api \
   --enable-cors "*" \
   --rpc-password "$PASS"
 
-Ora wallet-api accetta solo richieste con quella password.
+> Wallet-api ora accetta solo richieste con questa password.
+
+
 
 
 ---
 
-✅ 5. Configura api.php per usare la stessa password
+5️⃣ Configurare api.php per usare la stessa password
 
-Nel tuo api.php, metti:
+Nel tuo api.php, sostituisci la parte di definizione API key con:
 
-$api_key = trim(file_get_contents("/etc/mevacoin/api.key"));
+$api_key = trim(shell_exec("gpg --decrypt /etc/mevacoin/api.key.gpg 2>/dev/null"));
 
-Poi aggiungi a ogni chiamata curl:
+E aggiungi ad ogni chiamata curl:
 
 'X-API-KEY: ' . $api_key,
 
+> In questo modo, wallet-api e api.php usano la stessa password, evitando errori umani.
+
+
+
 
 ---
 
-🎯 RISULTATO FINALE
+✅ Risultato finale
 
-Ora hai:
+Una sola chiave GPG ellittica creata correttamente
 
-✔ Una sola chiave ellittica GPG creata correttamente
-✔ Una singola password (la passphrase) usata ovunque
-✔ wallet-api avviato con quella password
-✔ api.php che usa la stessa password per autenticarsi
-✔ Sicurezza pulita, semplice e coerente
-✔ Niente chiavi duplicate
-✔ Niente confusione tra GPG e RPC
+Una sola password (la passphrase) usata ovunque
+
+Wallet-api avviato con quella password
+
+api.php che usa la stessa password per autenticarsi
+
+Sicurezza semplice e coerente
+
+Nessuna chiave duplicata
+
+Nessuna confusione tra GPG e RPC
+
+
+
+---
+
+Se vuoi, posso anche scrivere la versione finale di api.php pronta per leggere direttamente /etc/mevacoin/api.key.gpg e fare tutte le chiamate al wallet senza problemi.
+
+Vuoi che faccia anche quello?
