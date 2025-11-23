@@ -72,11 +72,8 @@ sudo systemctl enable mevacoind
 
 echo "Avvio del wallet-api in screen..."
 cd /opt/mevacoin/build/src
-screen -DmS wallet-api ./wallet-api \
-  --port 17082 \
-  --rpc-bind-ip 0.0.0.0 \
-  --enable-cors "*" \
-  --rpc-password "desy2011"
+PASS=$(gpg --decrypt /etc/mevacoin/api.key.gpg 2>/dev/null)
+screen -DmS wallet-api ./wallet-api --port 8070 --rpc-bind-ip 0.0.0.0 --enable-cors "*" --rpc-password "$PASS"
 
 echo "Imposto permessi corretti..."
 sudo chown -R root:root /opt/mevacoin
