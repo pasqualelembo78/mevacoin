@@ -63,10 +63,12 @@ QUINDI O METTI UNA TUA PASS ALL'INTERNO DEL FILE API.KEY OPPURE LA GENERI CON OP
 ---
 
 Alla fine meglio cryptare con 
-gpg --output /etc/mevacoin/keys/server1.key.gpg \
-    --encrypt --recipient key ottenuta con gpg \
-    /root/server1.key
+gpg --encrypt -r PUBFINGERPRINT /etc/mevacoin/api.key
 
+PUBFINGERPRINT corrisponde al valore trovato in precedenza con uso di gpg
+
+Per sicurezza meglio cancellare la api.key dove sta la chiave originale e conservare solo la chiave cryptata
+Con il comando shred -u /etc/mevacoin/api.key
 🔐 PERCHÉ METTERLA IN UN FILE?
 
 Sia wallet-api sia api.php la leggeranno da qui, garantendo lo stesso valore e evitando errori umani.
