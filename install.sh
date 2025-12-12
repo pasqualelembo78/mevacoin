@@ -72,8 +72,7 @@ sudo systemctl enable mevacoind
 
 echo "Avvio del wallet-api in screen..."
 cd /opt/mevacoin/build/src
-export $(grep -v '^#' /opt/mevacoin_config/.env | xargs)
-
+export API_KEY=$(grep ^API_KEY= /opt/mevacoin_config/.env | cut -d '=' -f2-)
 screen -DmS wallet-api \
   ./wallet-api \
   --port 8070 \
