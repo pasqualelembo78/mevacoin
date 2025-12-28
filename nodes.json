@@ -1,22 +1,10 @@
 {
-    "nodes": [
-        {
-            "name": "Nodo Secondario",
-            "url": "82.165.218.56",
-            "port": 17081,
-            "ssl": false,
-            "cache": false,
-            "version": "1.0.0",
-            "fee": "0.00",
-            "proxy_url": "mevabackup"
-        }
-    ],
-    "apis": [
-        {
-            "url": "http://82.165.218.56:8080",
-            "name": "API Mevacoin",
-            "description": "API pubblica del nodo Mevacoin"
-        }
-    ],
-    "hugin": []
+  "nodes": [
+    {
+      "name": "Nodo Mevacoin",
+      "host": "82.165.218.56",
+      "port": 17081,
+      "ssl": false
+    }
+  ]
 }
