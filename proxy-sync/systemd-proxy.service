@@ -1,0 +1,22 @@
+[Unit]
+Description=Mevacoin JSON Proxy Sync
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mevacoin/proxy-sync
+ExecStart=/root/.nvm/versions/node/v10.24.1/bin/node index.js
+
+Environment=BACKEND_URL=http://127.0.0.1:17081
+Environment=PORT=18081
+Environment=NODE_ENV=production
+
+Restart=always
+RestartSec=5
+
+StandardOutput=append:/var/log/mevacoin-proxy-sync.log
+StandardError=append:/var/log/mevacoin-proxy-sync.log
+
+[Install]
+WantedBy=multi-user.target
