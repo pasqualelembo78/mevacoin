@@ -3,7 +3,7 @@
     {
       "name": "Mevacoin Personal Node",
       "url": "82.165.218.56",
-      "port": 17081,
+      "port": 17080,
       "ssl": false,
       "cache": false,
       "version": "1.0.0",
