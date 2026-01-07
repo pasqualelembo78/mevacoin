@@ -1,10 +1,22 @@
 {
   "nodes": [
     {
-      "name": "Nodo Mevacoin",
-      "host": "82.165.218.56",
+      "name": "Mevacoin Personal Node",
+      "url": "82.165.218.56",
       "port": 17081,
-      "ssl": false
+      "ssl": false,
+      "cache": false,
+      "version": "1.0.0",
+      "fee": "0.0",
+      "proxy_url": "mevacoin"
     }
-  ]
+  ],
+  "apis": [
+    {
+      "url": "http://82.165.218.56:17081",
+      "name": "Mevacoin RPC API",
+      "description": "API del nodo personale Mevacoin"
+    }
+  ],
+  "hugin": []
 }
