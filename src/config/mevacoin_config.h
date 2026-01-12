@@ -105,10 +105,10 @@ namespace mevacoin
         const uint64_t MAXIMUM_MIXIN_V4 = 5;
 
         /* The heights to activate the mixin limits at */
-        const uint32_t MIXIN_LIMITS_V1_HEIGHT = 440000;
-        const uint32_t MIXIN_LIMITS_V2_HEIGHT = 620000;
-        const uint32_t MIXIN_LIMITS_V3_HEIGHT = 800000;
-        const uint32_t MIXIN_LIMITS_V4_HEIGHT = 1250000;
+        const uint32_t MIXIN_LIMITS_V1_HEIGHT = 0;         // subito V1
+const uint32_t MIXIN_LIMITS_V2_HEIGHT = 10001;     // Variante 2
+const uint32_t MIXIN_LIMITS_V3_HEIGHT = 50001;     // Variante 3
+const uint32_t MIXIN_LIMITS_V4_HEIGHT = 1250001;   // Variante 4 / rete piena
 
         /* The mixin to use by default with zedwallet and turtle-service */
         /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -161,12 +161,11 @@ namespace mevacoin
         const size_t FUSION_TX_MIN_INPUT_COUNT = 12;
         const size_t FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 
-        const uint32_t UPGRADE_HEIGHT_V2 = 1;
-        const uint32_t UPGRADE_HEIGHT_V3 = 2;
-        const uint32_t UPGRADE_HEIGHT_V4 = 3; // Upgrade height for CN-Lite Variant 1 switch.
-        const uint32_t UPGRADE_HEIGHT_V5 = 4; // Upgrade height for CN-Turtle Variant 2 switch.
-        const uint32_t UPGRADE_HEIGHT_CURRENT = UPGRADE_HEIGHT_V5;
-
+        const uint32_t UPGRADE_HEIGHT_V2 = 10001;   // inizio Variante 2
+const uint32_t UPGRADE_HEIGHT_V3 = 50001;   // inizio Variante 3
+const uint32_t UPGRADE_HEIGHT_V4 = 800001;  // inizio Variante 4
+const uint32_t UPGRADE_HEIGHT_V5 = 1250001; // inizio Variante 5
+const uint32_t UPGRADE_HEIGHT_CURRENT = UPGRADE_HEIGHT_V5;
         const unsigned UPGRADE_VOTING_THRESHOLD = 90;                             // percent
         const uint32_t UPGRADE_VOTING_WINDOW = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY; // blocks
         const uint32_t UPGRADE_WINDOW = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;        // blocks
@@ -175,24 +174,16 @@ namespace mevacoin
 
         /* Block heights we are going to have hard forks at */
         const uint64_t FORK_HEIGHTS[] =
-            {
-                187000,  // 0
-                350000,  // 1
-                440000,  // 2
-                620000,  // 3
-                700000,  // 4
-                800000,  // 5
-                1000000, // 6
-                1200000, // 7
-                1300000, // 8
-                1400000, // 9
-                1600000, // 10
-                1800000, // 11
-                2200000, // 12
-        };
-
-        /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 12;
+{
+    10000,    // primo passaggio V1 → V2
+    50000,    // V2 → V3
+    800000,   // V3 → V4
+    1250000,  // V4 → V5
+    1600000,  // eventuali upgrade futuri
+    1800000,
+    2200000,
+};
+const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 6;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
