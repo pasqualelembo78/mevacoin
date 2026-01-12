@@ -63,7 +63,7 @@ namespace mevacoin
         --print-genesis-tx --genesis-block-reward-address <premine wallet address>
 
         For example:
-        mevacoind --print-genesis-tx --genesis-block-reward-address TRTLv2Fyavy8CXG8BPEbNeCHFZ1fuDCYCZ3vW5H5LXN4K2M2MHUpTENip9bbavpHvvPwb4NDkBWrNgURAd5DB38FHXWZyoBh4wW
+        ./mevacoind --print-genesis-tx --genesis-block-reward-address bickxBCAYfuEwTVioJKoHDcqAAEAMt2fx6bHDij62k496FFbUHDxfioL8pdPd23AQUf7gCYjzfuAR9NU7Rk3k8pe4S7Parg5Rh
 
         * Take the hash printed, and replace it with the hash below in GENESIS_COINBASE_TX_HEX
 
