@@ -52,7 +52,26 @@ namespace mevacoin
 
         /* Premine amount */
         const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(200000000000000); // 2.000.000.000 MVC considerando 5 decimali
+/* How to generate a premine:
 
+        * Compile your code
+
+        * Run zedwallet, ignore that it can't connect to the daemon, and generate an
+          address. Save this and the keys somewhere safe.
+
+        * Launch the daemon with these arguments:
+        --print-genesis-tx --genesis-block-reward-address <premine wallet address>
+
+        For example:
+        mevacoind --print-genesis-tx --genesis-block-reward-address TRTLv2Fyavy8CXG8BPEbNeCHFZ1fuDCYCZ3vW5H5LXN4K2M2MHUpTENip9bbavpHvvPwb4NDkBWrNgURAd5DB38FHXWZyoBh4wW
+
+        * Take the hash printed, and replace it with the hash below in GENESIS_COINBASE_TX_HEX
+
+        * Recompile, setup your seed nodes, and start mining
+
+        * You should see your premine appear in the previously generated wallet.
+
+        */
 
         const char GENESIS_COINBASE_TX_HEX[] = "011401ff000100024e8627e5eb3afae39f847029dda8986de3175e6ec043317a0c45065f4a5898c221011616e1e1a1f7bfe50cd57213f01bfde3cad7813181bf2e940d34ed8de42c9d46";
         static_assert(sizeof(GENESIS_COINBASE_TX_HEX) / sizeof(*GENESIS_COINBASE_TX_HEX) != 1, "GENESIS_COINBASE_TX_HEX must not be empty.");
