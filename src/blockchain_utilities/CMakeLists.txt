@@ -57,38 +57,10 @@ monero_private_headers(blockchain_export
 	  ${blockchain_export_private_headers})
 
 
-set(blockchain_blackball_sources
-  blockchain_blackball.cpp
-  )
-
-set(blockchain_blackball_private_headers
-  bootstrap_file.h
-  blocksdat_file.h
-  bootstrap_serialization.h
-  )
-
-monero_private_headers(blockchain_blackball
-	  ${blockchain_blackball_private_headers})
-
-set(blockchain_usage_sources
-  blockchain_usage.cpp
-  )
-
-set(blockchain_usage_private_headers)
-
-monero_private_headers(blockchain_usage
-	  ${blockchain_usage_private_headers})
 
 
 
-set(blockchain_prune_known_spent_data_sources
-  blockchain_prune_known_spent_data.cpp
-  )
 
-set(blockchain_prune_known_spent_data_private_headers)
-
-monero_private_headers(blockchain_prune_known_spent_data
-	  ${blockchain_prune_known_spent_data_private_headers})
 
 
 
@@ -103,34 +75,10 @@ monero_private_headers(blockchain_prune
 
 
 
-set(blockchain_ancestry_sources
-  blockchain_ancestry.cpp
-  )
-
-set(blockchain_ancestry_private_headers)
-
-monero_private_headers(blockchain_ancestry
-	  ${blockchain_ancestry_private_headers})
 
 
 
-set(blockchain_depth_sources
-  blockchain_depth.cpp
-  )
 
-set(blockchain_depth_private_headers)
-
-monero_private_headers(blockchain_depth
-	  ${blockchain_depth_private_headers})
-
-set(blockchain_stats_sources
-  blockchain_stats.cpp
-  )
-
-set(blockchain_stats_private_headers)
-
-monero_private_headers(blockchain_stats
-	  ${blockchain_stats_private_headers})
 
 
 monero_add_executable(blockchain_import
@@ -181,134 +129,12 @@ set_property(TARGET blockchain_export
 	OUTPUT_NAME "export")
 install(TARGETS blockchain_export DESTINATION bin)
 
-monero_add_executable(blockchain_blackball
-  ${blockchain_blackball_sources}
-  ${blockchain_blackball_private_headers})
-
-target_link_libraries(blockchain_blackball
-  PRIVATE
-    wallet
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_blackball
-	PROPERTY
-	OUTPUT_NAME "mark-spent-outputs")
-install(TARGETS blockchain_blackball DESTINATION bin)
 
 
-monero_add_executable(blockchain_usage
-  ${blockchain_usage_sources}
-  ${blockchain_usage_private_headers})
 
-target_link_libraries(blockchain_usage
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
 
-set_property(TARGET blockchain_usage
-	PROPERTY
-	OUTPUT_NAME "usage")
-install(TARGETS blockchain_usage DESTINATION bin)
 
-monero_add_executable(blockchain_ancestry
-  ${blockchain_ancestry_sources}
-  ${blockchain_ancestry_private_headers})
 
-target_link_libraries(blockchain_ancestry
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_ancestry
-	PROPERTY
-	OUTPUT_NAME "ancestry")
-install(TARGETS blockchain_ancestry DESTINATION bin)
-
-monero_add_executable(blockchain_depth
-  ${blockchain_depth_sources}
-  ${blockchain_depth_private_headers})
-
-target_link_libraries(blockchain_depth
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_depth
-	PROPERTY
-	OUTPUT_NAME "depth")
-install(TARGETS blockchain_depth DESTINATION bin)
-
-monero_add_executable(blockchain_stats
-  ${blockchain_stats_sources}
-  ${blockchain_stats_private_headers})
-
-target_link_libraries(blockchain_stats
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_stats
-	PROPERTY
-	OUTPUT_NAME "stats")
-install(TARGETS blockchain_stats DESTINATION bin)
-
-monero_add_executable(blockchain_prune_known_spent_data
-  ${blockchain_prune_known_spent_data_sources}
-  ${blockchain_prune_known_spent_data_private_headers})
-
-target_link_libraries(blockchain_prune_known_spent_data
-  PRIVATE
-    cryptonote_core
-    blockchain_db
-    p2p
-    version
-    epee
-    ${Boost_FILESYSTEM_LIBRARY}
-    ${Boost_SYSTEM_LIBRARY}
-    ${Boost_THREAD_LIBRARY}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${EXTRA_LIBRARIES})
-
-set_property(TARGET blockchain_prune_known_spent_data
-	PROPERTY
-	OUTPUT_NAME "prune-known-spent-data")
-install(TARGETS blockchain_prune_known_spent_data DESTINATION bin)
 
 monero_add_executable(blockchain_prune
   ${blockchain_prune_sources}
@@ -316,7 +142,7 @@ monero_add_executable(blockchain_prune
 
 set_property(TARGET blockchain_prune
 	PROPERTY
-	OUTPUT_NAME "monero-blockchain-prune")
+	OUTPUT_NAME "mevacoin-blockchain-prune")
 install(TARGETS blockchain_prune DESTINATION bin)
 
 target_link_libraries(blockchain_prune
