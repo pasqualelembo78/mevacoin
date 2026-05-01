@@ -178,6 +178,11 @@ void HardFork::init()
     last_versions[n] = 0;
   current_fork_index = 0;
 
+  // MEVACOIN: force fork index based on chain height (skip voting)
+  for (current_fork_index = heights.size() - 1; current_fork_index > 0; --current_fork_index)
+    if (db.height() >= heights[current_fork_index].height)
+      break;
+
   // restore state from DB
   uint64_t height = db.height();
   if (height > window_size)

@@ -40,6 +40,9 @@
 #include <unordered_map>
 #include <boost/multiprecision/cpp_int.hpp>
 
+// MevaCoin: versione minima del blocco per abilitare RandomX PoW
+#define RX_BLOCK_VERSION  12
+
 namespace epee
 {
   class wipeable_string;
