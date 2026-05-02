@@ -32,68 +32,34 @@
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "blockchain.hardforks"
 
-// MevaCoin: hard fork progressivi a 1 blocco di distanza
-// Ogni versione ha un'altezza DIVERSA (obbligatorio per Monero)
-// I blocchi 1-11 usano CryptoNight (minati in secondi, difficoltà bassissima)
-// Dal blocco 12 in poi: RandomX attivo (RX_BLOCK_VERSION = 12)
+// MevaCoin: solo 2 fork
+//   - versione 1 dal blocco 1  (CryptoNight)
+//   - versione 12 dal blocco 12 (RandomX, RX_BLOCK_VERSION = 12)
+//
+// Con solo 2 entry non serve il voting: il nodo passa da v1 a v12
+// per altezza, senza attendere che i miner votino versioni intermedie.
+// Il miner riceve get_ideal_version(height) e produce il blocco con
+// major_version = 12 non appena supera il blocco 12.
+//
+// REGOLE hardfork.cpp che devono essere rispettate (righe 81-86):
+//   version, height e time devono essere TUTTI strettamente crescenti.
+
 const hardfork_t mainnet_hard_forks[] = {
-  { 1,  1,  0, 1341378000 },
-  { 2,  2,  0, 1341378000 },
-  { 3,  3,  0, 1341378000 },
-  { 4,  4,  0, 1341378000 },
-  { 5,  5,  0, 1341378000 },
-  { 6,  6,  0, 1341378000 },
-  { 7,  7,  0, 1341378000 },
-  { 8,  8,  0, 1341378000 },
-  { 9,  9,  0, 1341378000 },
-  { 10, 10, 0, 1341378000 },
-  { 11, 11, 0, 1341378000 },
-  { 12, 12, 0, 1341378000 },  // RandomX PoW attivo dal blocco 12
-  { 13, 13, 0, 1341378000 },
-  { 14, 14, 0, 1341378000 },
-  { 15, 15, 0, 1341378000 },
-  { 16, 16, 0, 1341378000 },
+  { 1,  1, 0, 1341378000 },   // CryptoNight
+  { 12, 12, 0, 1341378001 },  // RandomX attivo dal blocco 12
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 0;
 
 const hardfork_t testnet_hard_forks[] = {
-  { 1,  1,  0, 1341378000 },
-  { 2,  2,  0, 1341378000 },
-  { 3,  3,  0, 1341378000 },
-  { 4,  4,  0, 1341378000 },
-  { 5,  5,  0, 1341378000 },
-  { 6,  6,  0, 1341378000 },
-  { 7,  7,  0, 1341378000 },
-  { 8,  8,  0, 1341378000 },
-  { 9,  9,  0, 1341378000 },
-  { 10, 10, 0, 1341378000 },
-  { 11, 11, 0, 1341378000 },
-  { 12, 12, 0, 1341378000 },
-  { 13, 13, 0, 1341378000 },
-  { 14, 14, 0, 1341378000 },
-  { 15, 15, 0, 1341378000 },
-  { 16, 16, 0, 1341378000 },
+  { 1,  1, 0, 1341378000 },
+  { 12, 12, 0, 1341378001 },
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 0;
 
 const hardfork_t stagenet_hard_forks[] = {
-  { 1,  1,  0, 1341378000 },
-  { 2,  2,  0, 1341378000 },
-  { 3,  3,  0, 1341378000 },
-  { 4,  4,  0, 1341378000 },
-  { 5,  5,  0, 1341378000 },
-  { 6,  6,  0, 1341378000 },
-  { 7,  7,  0, 1341378000 },
-  { 8,  8,  0, 1341378000 },
-  { 9,  9,  0, 1341378000 },
-  { 10, 10, 0, 1341378000 },
-  { 11, 11, 0, 1341378000 },
-  { 12, 12, 0, 1341378000 },
-  { 13, 13, 0, 1341378000 },
-  { 14, 14, 0, 1341378000 },
-  { 15, 15, 0, 1341378000 },
-  { 16, 16, 0, 1341378000 },
+  { 1,  1, 0, 1341378000 },
+  { 12, 12, 0, 1341378001 },
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);
