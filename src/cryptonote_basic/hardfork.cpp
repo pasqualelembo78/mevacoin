@@ -108,8 +108,10 @@ uint8_t HardFork::get_effective_version(uint8_t voting_version) const
 
 bool HardFork::do_check(uint8_t block_version, uint8_t voting_version) const
 {
-  return block_version == heights[current_fork_index].version
-      && voting_version >= heights[current_fork_index].version;
+  // MEVACOIN: accetta il blocco se ha la versione corretta per l'altezza attuale.
+  // Non richiediamo che voting_version corrisponda: con solo 2 fork nella tabella
+  // (v1 e v12) il miner non ha versioni intermedie da votare.
+  return block_version == heights[current_fork_index].version;
 }
 
 bool HardFork::check(const cryptonote::block &block) const
@@ -121,8 +123,8 @@ bool HardFork::check(const cryptonote::block &block) const
 bool HardFork::do_check_for_height(uint8_t block_version, uint8_t voting_version, uint64_t height) const
 {
   int fork_index = get_voted_fork_index(height);
-  return block_version == heights[fork_index].version
-      && voting_version >= heights[fork_index].version;
+  // MEVACOIN: stesso criterio semplificato, solo block_version
+  return block_version == heights[fork_index].version;
 }
 
 bool HardFork::check_for_height(const cryptonote::block &block, uint64_t height) const
@@ -178,7 +180,7 @@ void HardFork::init()
     last_versions[n] = 0;
   current_fork_index = 0;
 
-  // MEVACOIN: force fork index based on chain height (skip voting)
+  // MEVACOIN: forza il fork index basandosi sull'altezza della chain (senza voting)
   for (current_fork_index = heights.size() - 1; current_fork_index > 0; --current_fork_index)
     if (db.height() >= heights[current_fork_index].height)
       break;
@@ -307,7 +309,7 @@ void HardFork::on_block_popped(uint64_t nblocks)
     last_versions[version]++;
   }
 
-  // does not take voting into account
+  // MEVACOIN: forza fork index basato sull'altezza (senza voting)
   for (current_fork_index = heights.size() - 1; current_fork_index > 0; --current_fork_index)
     if (new_chain_height >= heights[current_fork_index].height)
       break;
@@ -316,16 +318,16 @@ void HardFork::on_block_popped(uint64_t nblocks)
 int HardFork::get_voted_fork_index(uint64_t height) const
 {
   CRITICAL_REGION_LOCAL(lock);
-  uint32_t accumulated_votes = 0;
+
+  // MEVACOIN: attivazione fork basata solo sull'altezza del blocco,
+  // senza richiedere voti dai miner. Scorre la tabella dall'alto verso
+  // il basso e restituisce il primo fork la cui height è <= all'altezza corrente.
   for (int n = heights.size() - 1; n >= 0; --n) {
-    uint8_t v = heights[n].version;
-    accumulated_votes += last_versions[v];
-    uint32_t threshold = (window_size * heights[n].threshold + 99) / 100;
-    if (height >= heights[n].height && accumulated_votes >= threshold) {
+    if (height >= heights[n].height) {
       return n;
     }
   }
-  return current_fork_index;
+  return 0;
 }
 
 HardFork::State HardFork::get_state(time_t t) const
@@ -426,4 +428,3 @@ bool HardFork::get_voting_info(uint8_t version, uint32_t &window, uint32_t &vote
   voting = heights.back().version;
   return enabled;
 }
-
