@@ -959,7 +959,7 @@ include(CheckTrezor)
 
   set(DEBUG_FLAGS "-g3")
 
-  # At least some CLANGs default to not enough for monero
+  # At least some CLANGs default to not enough for mevacoin
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth=900")
 
   if(NOT DEFINED USE_LTO_DEFAULT)

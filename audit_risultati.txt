@@ -1,0 +1,203 @@
+============================================================
+   AUDIT MEVACOIN — Riferimenti Monero
+   Repository: /root/mevacoin
+   Data: Sun May  3 10:56:58 UTC 2026
+============================================================
+
+============================================================
+  1. CONTEGGIO TOTALE
+============================================================
+  Riferimenti totali: 1109
+  File coinvolti:     71
+
+============================================================
+  2. URL MONERO (PERICOLOSI — puntano a siti Monero)
+============================================================
+grep: ./audit_risultati.txt: input file is also the output
+./audit_mevacoin.sh:26:TOTAL=$(grep -rciI "monero\|xmr\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:29:FILES=$(grep -rciI "monero\|xmr\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:40:grep -rnI "getmonero\|monero\.org\|monero\.com\|moneroworld\|moneropulse\|monero-project" \
+./audit_mevacoin.sh:74:grep -rnI "monero\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:84:grep -rnI "monero\|monerod\|getmonero" \
+./audit_mevacoin.sh:138:grep -ciI "monero\|xmr\|getmonero" translations/*.ts 2>/dev/null \
+./audit_mevacoin.sh:151:URL_COUNT=$(grep -rciI "getmonero\|monero\.org\|moneroworld\|moneropulse" \
+./rebrand_mevacoin.sh:54:  -e 's|github.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_mevacoin.sh:55:  -e 's/getmonero\.org/mevacoin.org/g' \
+./rebrand_mevacoin.sh:93:  -e 's/donate\.getmonero\.org/donate.mevacoin.org/g' \
+./rebrand_mevacoin.sh:139:  -e 's|github.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_mevacoin.sh:304:  -e 's/getmonero\.org/mevacoin.org/g' \
+./rebrand_mevacoin.sh:306:  -e 's/donate\.getmonero\.org/donate.mevacoin.org/g' \
+./rebrand_mevacoin.sh:350:  -e 's|getmonero\.org|mevacoin.org|g' \
+./rebrand_mevacoin.sh:352:  -e 's|github\.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_mevacoin.sh:353:  -e 's|github\.com/monero-project|github.com/pasqualelembo78|g' \
+./rebrand_mevacoin.sh:425:    -e 's|getmonero\.org|mevacoin.org|g' \
+./rebrand_mevacoin.sh:426:    -e 's|github\.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_mevacoin.sh:451:    -e 's|getmonero\.org|mevacoin.org|g' \
+./rebrand_mevacoin.sh:452:    -e 's|github\.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./external/supercop/README.md:34:> the `monero-project/monero/src/crypto/crypto.h` functions - specifically
+./external/randomx/README.md:30:The first audit was generously funded by [Arweave](https://www.arweave.org/), one of the early adopters of RandomX. The remaining three audits were funded by donations from the [Monero community](https://ccs.getmonero.org/proposals/RandomX-audit.html). All four audits were coordinated by [OSTIF](https://ostif.org/).
+./external/randomx/README.md:63:RandomX was primarily designed as a PoW algorithm for [Monero](https://www.getmonero.org/). The recommended usage is following:
+./.gitmodules:12:	url = https://github.com/monero-project/supercop
+./fix.sh:140:apply_fix 5 ".gitmodules: monero-project/supercop → pasqualelembo78/supercop"
+./fix.sh:142:if grep -q 'monero-project/supercop' .gitmodules 2>/dev/null; then
+./fix.sh:144:        -e 's|https://github.com/monero-project/supercop|https://github.com/pasqualelembo78/supercop|g' \
+./fix.sh:148:    echo -e "  ${YELLOW}⚠ RICORDA: forkare monero-project/supercop nel tuo GitHub e rinominare il branch a 'mevacoin'${NC}"
+./fix.sh:257:echo -e "  1. Forkare monero-project/supercop nel tuo GitHub"
+./rebrand_phase2.sh:29:  -e 's/getmonero\.org/mevacoin.org/g' \
+./rebrand_phase2.sh:30:  -e 's|github.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_phase2.sh:58:  -e 's|github.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_phase2.sh:80:  -e 's|github.com/monero-project/monero|github.com/pasqualelembo78/mevacoin|g' \
+./rebrand_phase2.sh:81:  -e 's/getmonero\.org/mevacoin.org/g' \
+
+============================================================
+  3. RIFERIMENTI A 'monerod' (nome binario daemon)
+============================================================
+
+============================================================
+  4. RIFERIMENTI A 'monero-wallet-gui' (nome binario GUI)
+============================================================
+grep: ./audit_risultati.txt: input file is also the output
+./audit_mevacoin.sh:55:# ---- 4. monero-wallet-gui (nome binario GUI) ----
+./audit_mevacoin.sh:57:echo "  4. RIFERIMENTI A 'monero-wallet-gui' (nome binario GUI)"
+./audit_mevacoin.sh:59:grep -rnI "monero-wallet-gui\|monero_wallet_gui" \
+
+============================================================
+  5. RIFERIMENTI A '.bitmonero' (directory dati)
+============================================================
+grep: ./audit_risultati.txt: input file is also the output
+./audit_mevacoin.sh:26:TOTAL=$(grep -rciI "monero\|xmr\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:29:FILES=$(grep -rciI "monero\|xmr\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:63:# ---- 5. .bitmonero (directory dati) ----
+./audit_mevacoin.sh:65:echo "  5. RIFERIMENTI A '.bitmonero' (directory dati)"
+./audit_mevacoin.sh:67:grep -rnI "bitmonero" --exclude-dir=".git" --exclude-dir="build" .
+./audit_mevacoin.sh:74:grep -rnI "monero\|monerod\|bitmonero\|getmonero" \
+./audit_mevacoin.sh:158:BITM_COUNT=$(grep -rciI "bitmonero" \
+./audit_mevacoin.sh:165:echo "  Riferimenti a '.bitmonero':   $BITM_COUNT"
+./rebrand_mevacoin.sh:111:    -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:138:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:225:    -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:226:    -e 's/bitmonero\.log/mevacoin.log/g' \
+./rebrand_mevacoin.sh:320:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:354:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:355:  -e 's/bitmonero/mevacoin/g' \
+./rebrand_mevacoin.sh:397:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:423:    -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:424:    -e 's/bitmonero/mevacoin/g' \
+./rebrand_mevacoin.sh:449:    -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_mevacoin.sh:450:    -e 's/bitmonero/mevacoin/g' \
+./rebrand_phase2.sh:24:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_phase2.sh:25:  -e 's/bitmonero/mevacoin/g' \
+./rebrand_phase2.sh:68:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_phase2.sh:73:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_phase2.sh:74:  -e 's/bitmonero/mevacoin/g' \
+./rebrand_phase2.sh:90:  -e 's/\.bitmonero/.mevacoin/g' \
+./rebrand_phase2.sh:91:  -e 's/bitmonero/mevacoin/g' \
+
+============================================================
+  6. RIFERIMENTI NEL CODICE C++/H (esclusi copyright/namespace)
+============================================================
+./src/device_trezor/trezor/messages_map.cpp:34:#include "messages/messages-monero.pb.h"
+./src/device_trezor/trezor/messages_map.cpp:55:      "hw.trezor.messages.monero."
+./src/device_trezor/trezor/protocol.cpp:511:    tsx_data.set_monero_version(std::string(MEVACOIN_VERSION) + "|" + MEVACOIN_VERSION_TAG);
+
+============================================================
+  7. RIFERIMENTI NEI FILE QML (interfaccia utente)
+============================================================
+
+============================================================
+  8. FILE/DIRECTORY CON 'monero' NEL NOME
+============================================================
+./contrib/rlwrap/monerocommands_bitmonerod.txt
+./contrib/rlwrap/monerocommands_monero-wallet-cli.txt
+./contrib/valgrind/monero.supp
+./src/device_trezor/trezor/protob/messages-monero.proto
+./utils/gpg_keys/moneromooo.asc
+
+============================================================
+  9. PORTE MONERO HARDCODED (18080/18081/18082/18083)
+============================================================
+./tests/libwallet_api_tests/main.cpp:90:std::string MAINNET_DAEMON_ADDRESS = "localhost:18081";
+./tests/unit_tests/bootstrap_node_selector.cpp:48:      "white_node_2:18081", true
+./tests/unit_tests/bootstrap_node_selector.cpp:53:      "gray_node_1:18081", false
+./tests/unit_tests/net.cpp:866:    na_host_and_port_test("9.9.9.9:18081", "9.9.9.9", "18081");
+./tests/unit_tests/net.cpp:883:    na_host_and_port_test("xmrchain.net:18081", "xmrchain.net", "18081");
+./tests/unit_tests/util.cpp:34:TEST(LocalAddress, localhost_port) { ASSERT_TRUE(tools::is_local_address("localhost:18081")); }
+./tests/unit_tests/util.cpp:37:TEST(LocalAddress, loopback_port) { ASSERT_TRUE(tools::is_local_address("127.0.0.1:18081")); }
+./src/cryptonote_config.h:234:  uint16_t const P2P_DEFAULT_PORT = 18080;
+./src/cryptonote_config.h:235:  uint16_t const RPC_DEFAULT_PORT = 18081;
+./src/cryptonote_config.h:236:  uint16_t const ZMQ_RPC_DEFAULT_PORT = 18082;
+./src/p2p/net_node.cpp:151:    const command_line::arg_descriptor<std::vector<std::string> > arg_anonymous_inbound = {"anonymous-inbound", "<hidden-service-address>,<[bind-ip:]port>[,max_connections] i.e. \"x.onion,127.0.0.1:18083,100\""};
+./src/wallet/wallet2.cpp:252:  const command_line::arg_descriptor<int> daemon_port = {"daemon-port", tools::wallet2::tr("Use daemon instance at port <arg> instead of 18081"), 0};
+./src/crypto/crypto_ops_builder/ref10/base.h:612:  { -5152875,-3800936,-9306475,-6071583,16243069,14684434,-25673088,-16180800,13491506,4641841 },
+./src/crypto/crypto_ops_builder/ref10/base.h:1330:  { 16918416,11729663,-18083579,3022987,-31015732,-13339659,-28741185,-12227393,32851222,11717399 },
+./src/crypto/crypto_ops_builder/ref10CommentedCombined/base.h:612:  { -5152875,-3800936,-9306475,-6071583,16243069,14684434,-25673088,-16180800,13491506,4641841 },
+./src/crypto/crypto_ops_builder/ref10CommentedCombined/base.h:1330:  { 16918416,11729663,-18083579,3022987,-31015732,-13339659,-28741185,-12227393,32851222,11717399 },
+./src/debug_utilities/dns_checks.cpp:126:static void check_seed_ips(const std::vector<std::string> &ips, int port = 18080)
+./src/debug_utilities/dns_checks.cpp:202:  // Verifica reachability su porta 18080 (P2P)
+./src/debug_utilities/dns_checks.cpp:203:  check_seed_ips(seed_ips, 18080);
+./src/debug_utilities/dns_checks.cpp:206:  // check_seed_ips(seed_ips, 18081); // controllo porta RPC (se esposta)
+./external/rapidjson/test/unittest/readertest.cpp:453:            "9901307162382212792841250337753635104375932649918180817996189"
+./external/randomx/src/soft_aes.cpp:74:	0xb46c6cd8, 0xfa5656ac, 0x07f4f4f3, 0x25eaeacf, 0xaf6565ca, 0x8e7a7af4, 0xe9aeae47, 0x18080810,
+./external/randomx/src/soft_aes.cpp:179:	0xd8b46c6c, 0xacfa5656, 0xf307f4f4, 0xcf25eaea, 0xcaaf6565, 0xf48e7a7a, 0x47e9aeae, 0x10180808,
+
+============================================================
+  10. RIFERIMENTI NEI FILE DI BUILD (CMake, Docker, CI/CD)
+============================================================
+./src/device_trezor/CMakeLists.txt:33:        trezor/messages/messages-monero.pb.h
+./src/device_trezor/CMakeLists.txt:40:        trezor/messages/messages-monero.pb.cc
+./CMakeLists.txt:962:  # At least some CLANGs default to not enough for monero
+
+============================================================
+  11. TOP 30 FILE CON PIU' OCCORRENZE
+============================================================
+  FILE                                                         OCCORRENZE
+  ----                                                         ----------
+  ./rebrand_mevacoin.sh                                        316
+  ./src/device_trezor/trezor/protob/messages-monero.proto      138
+  ./audit_risultati.txt                                        82
+  ./rebrand_phase2.sh                                          78
+  ./src/device_trezor/trezor/protocol.hpp                      50
+  ./src/device_trezor/trezor/protocol.cpp                      47
+  ./src/device_trezor/trezor/protob/messages.proto             37
+  ./src/device_trezor/device_trezor.cpp                        37
+  ./rebrand_phase3.sh                                          37
+  ./audit_mevacoin.sh                                          35
+  ./external/supercop/crypto_sign/ed25519/amd64-51-30k/consts.s 23
+  ./fix.sh                                                     22
+  ./external/supercop/README.md                                20
+  ./fix_crypto_paths.sh                                        18
+  ./rebrand_final.sh                                           17
+  ./external/supercop/crypto_sign/ed25519/amd64-64-24k/consts.s 17
+  ./src/device_trezor/device_trezor_base.hpp                   7
+  ./src/device_trezor/device_trezor.hpp                        7
+  ./src/device_trezor/trezor/transport.hpp                     6
+  ./src/device_trezor/trezor/messages_map.cpp                  6
+  ./src/device_trezor/README.md                                6
+  ./src/device_trezor/trezor.hpp                               5
+  ./external/randomx/README.md                                 5
+  ./src/device_trezor/trezor/messages_map.hpp                  4
+  ./src/device_trezor/trezor/exceptions.hpp                    4
+  ./src/device_trezor/trezor/debug_link.hpp                    4
+  ./rebrand_last6.sh                                           4
+  ./src/device_trezor/CMakeLists.txt                           3
+  ./CMakeLists.txt                                             3
+  ./external/supercop/src/amd64/amd64.c.inc                    2
+
+============================================================
+  12. FILE DI TRADUZIONE (.ts) — conteggio per file
+============================================================
+
+============================================================
+  RIEPILOGO FINALE
+============================================================
+
+  Riferimenti totali:     1109
+  File coinvolti:         71
+
+  URL Monero (pericolosi):      42
+  Riferimenti a 'monerod':      0
+  Riferimenti a '.bitmonero':   60
+  File con 'monero' nel nome:   5
+
+  Output salvato in: /root/mevacoin/audit_risultati.txt
+============================================================

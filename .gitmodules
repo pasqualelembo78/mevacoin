@@ -9,7 +9,7 @@
 	url = https://github.com/tevador/RandomX
 [submodule "external/supercop"]
 	path = external/supercop
-	url = https://github.com/monero-project/supercop
+	url = https://github.com/pasqualelembo78/supercop
 	branch = monero
 [submodule "external/gtest"]
 	path = external/gtest
