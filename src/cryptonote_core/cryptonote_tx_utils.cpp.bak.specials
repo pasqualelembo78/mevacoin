@@ -43,7 +43,6 @@ using namespace epee;
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "ringct/rctSigs.h"
-#include "mevacoin_specials.h"  // MEVA_SPECIALS_V2
 
 using namespace crypto;
 
@@ -103,30 +102,6 @@ namespace cryptonote
     LOG_PRINT_L1("Creating block template: reward " << block_reward <<
       ", fee " << fee);
 #endif
-
-  // MEVA_SPECIALS_V2 — Applica bonus alla creazione del blocco
-  {
-    time_t now = time(nullptr);
-    uint64_t adjusted = meva::calculate_final_reward(block_reward, height, now);
-
-    if (adjusted != block_reward) {
-      const char* evt_name = nullptr;
-      const char* evt_msg = nullptr;
-      int bp = 0; int bm = 1;
-
-      if (meva::find_special_date(now, bp, evt_name, evt_msg)) {
-        LOG_PRINT_L0("[MEVA] " << evt_name << " — " << evt_msg);
-        if (bp > 0) LOG_PRINT_L0("[MEVA] Reward bonus: +" << bp << "%");
-      }
-
-      if (meva::find_special_block(height, bm, evt_name, evt_msg)) {
-        LOG_PRINT_L0("[MEVA] " << evt_name << " — " << evt_msg);
-        LOG_PRINT_L0("[MEVA] Reward: x" << bm);
-      }
-
-      block_reward = adjusted;
-    }
-  }
     block_reward += fee;
 
     // from hard fork 2, we cut out the low significant digits. This makes the tx smaller, and

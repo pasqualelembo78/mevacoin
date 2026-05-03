@@ -59,7 +59,6 @@
 #include "common/pruning.h"
 #include "common/data_cache.h"
 #include "time_helper.h"
-#include "mevacoin_specials.h"  // MEVA_SPECIALS_V2
 
 #undef MEVACOIN_DEFAULT_LOG_CATEGORY
 #define MEVACOIN_DEFAULT_LOG_CATEGORY "blockchain"
@@ -1408,44 +1407,6 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   }
   if (!get_block_reward(median_weight, cumulative_block_weight, already_generated_coins, base_reward, version))
   {
-
-  // MEVA_SPECIALS_V2 — Sistema blocchi speciali e commemorativi
-  // Applica bonus reward per date speciali e blocchi milestone
-  {
-    time_t block_ts = static_cast<time_t>(b.timestamp);
-    uint64_t block_h = boost::get<txin_gen>(b.miner_tx.vin[0]).height;
-    uint64_t final_reward = meva::calculate_final_reward(base_reward, block_h, block_ts);
-
-    if (final_reward != base_reward) {
-      const char* evt_name = nullptr;
-      const char* evt_msg = nullptr;
-      int bp = 0; int bm = 1;
-
-      // Log data commemorativa
-      if (meva::find_special_date(block_ts, bp, evt_name, evt_msg)) {
-        MGINFO("");
-        MGINFO("  ============================================");
-        MGINFO("  [MEVA] " << evt_name);
-        MGINFO("  " << evt_msg);
-        if (bp > 0) MGINFO("  Reward bonus: +" << bp << "%");
-        MGINFO("  ============================================");
-        MGINFO("");
-      }
-
-      // Log blocco bonus
-      if (meva::find_special_block(block_h, bm, evt_name, evt_msg)) {
-        MGINFO("");
-        MGINFO("  ********************************************");
-        MGINFO("  [MEVA] " << evt_name);
-        MGINFO("  " << evt_msg);
-        MGINFO("  Reward: x" << bm << " (" << print_money(final_reward) << " MEVA)");
-        MGINFO("  ********************************************");
-        MGINFO("");
-      }
-
-      base_reward = final_reward;
-    }
-  }
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
