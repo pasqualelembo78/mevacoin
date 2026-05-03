@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (c) 2019-2024, The Monero Project
+# Copyright (c) 2019-2024, The Mevacoin Project
 # 
 # All rights reserved.
 # 
@@ -93,7 +93,7 @@ class AddressValidationTest():
     def check_openalias_addresses(self):
         print('Validating openalias addresses')
         addresses = [
-            ['donate@getmonero.org', '888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H']
+            ['donate@mevacoin.org', '888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H']
         ]
         for address in addresses:
             res = self.wallet.validate_address(address[0])

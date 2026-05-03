@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -55,8 +55,8 @@
 using namespace std;
 using namespace cryptonote;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "WalletAPI"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "WalletAPI"
 
 #define LOCK_REFRESH() \
     bool refresh_enabled = m_refreshEnabled; \
@@ -92,7 +92,7 @@ using namespace cryptonote;
     } \
   } while (0)
 
-namespace Monero {
+namespace Mevacoin {
 
 namespace {
     // copy-pasted from simplewallet
@@ -107,7 +107,7 @@ namespace {
     std::string get_default_ringdb_path(cryptonote::network_type nettype)
     {
       boost::filesystem::path dir = tools::get_default_data_dir();
-      // remove .bitmonero, replace with .shared-ringdb
+      // remove .mevacoin, replace with .shared-ringdb
       dir = dir.remove_filename();
       dir /= ".shared-ringdb";
       if (nettype == cryptonote::TESTNET)
@@ -408,19 +408,19 @@ void Wallet::init(const char *argv0, const char *default_log_base_name, const st
 }
 
 void Wallet::debug(const std::string &category, const std::string &str) {
-    MCDEBUG(category.empty() ? MONERO_DEFAULT_LOG_CATEGORY : category.c_str(), str);
+    MCDEBUG(category.empty() ? MEVACOIN_DEFAULT_LOG_CATEGORY : category.c_str(), str);
 }
 
 void Wallet::info(const std::string &category, const std::string &str) {
-    MCINFO(category.empty() ? MONERO_DEFAULT_LOG_CATEGORY : category.c_str(), str);
+    MCINFO(category.empty() ? MEVACOIN_DEFAULT_LOG_CATEGORY : category.c_str(), str);
 }
 
 void Wallet::warning(const std::string &category, const std::string &str) {
-    MCWARNING(category.empty() ? MONERO_DEFAULT_LOG_CATEGORY : category.c_str(), str);
+    MCWARNING(category.empty() ? MEVACOIN_DEFAULT_LOG_CATEGORY : category.c_str(), str);
 }
 
 void Wallet::error(const std::string &category, const std::string &str) {
-    MCERROR(category.empty() ? MONERO_DEFAULT_LOG_CATEGORY : category.c_str(), str);
+    MCERROR(category.empty() ? MEVACOIN_DEFAULT_LOG_CATEGORY : category.c_str(), str);
 }
 
 ///////////////////////// WalletImpl implementation ////////////////////////

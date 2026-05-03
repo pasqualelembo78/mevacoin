@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -39,8 +39,8 @@
 #include <boost/filesystem.hpp>
 #include <algorithm>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "i18n"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "i18n"
 
 #define MAX_LANGUAGE_SIZE 16
 

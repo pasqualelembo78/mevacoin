@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -37,11 +37,11 @@ set(cryptonote_core_sources
 
 set(cryptonote_core_headers)
 
-monero_find_all_headers(cryptonote_core_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(cryptonote_core_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(cryptonote_core
+mevacoin_private_headers(cryptonote_core
   ${cryptonote_core_private_headers})
-monero_add_library(cryptonote_core
+mevacoin_add_library(cryptonote_core
   ${cryptonote_core_sources}
   ${cryptonote_core_headers}
   ${cryptonote_core_private_headers})

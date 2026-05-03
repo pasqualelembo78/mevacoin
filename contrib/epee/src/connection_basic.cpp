@@ -1,8 +1,8 @@
 /// @file
-/// @author rfree (current maintainer in monero.cc project)
+/// @author rfree (current maintainer in mevacoin.cc project)
 /// @brief base for connection, contains e.g. the ratelimit hooks
 
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -46,8 +46,8 @@
 // TODO:
 #include "net/network_throttle-detail.hpp"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net.conn"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net.conn"
 
 // ################################################################################################
 // local (TU local) headers

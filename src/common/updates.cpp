@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2024, The Monero Project
+// Copyright (c) 2017-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -32,8 +32,8 @@
 #include "dns_utils.h"
 #include "updates.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "updates"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "updates"
 
 namespace tools
 {
@@ -44,7 +44,7 @@ namespace tools
 
     MDEBUG("Checking updates for " << buildtag << " " << software);
 
-    // All four MoneroPulse domains have DNSSEC on and valid
+    // All four MevacoinPulse domains have DNSSEC on and valid
     static const std::vector<std::string> dns_urls = {
         "www.mevacoin.com"
     };

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2024, The Monero Project
+// Copyright (c) 2017-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -57,7 +57,7 @@ namespace hw {
 
     #ifdef WITH_DEVICE_LEDGER
 
-    // Origin: https://github.com/LedgerHQ/ledger-app-monero/blob/master/src/monero_types.h
+    // Origin: https://github.com/LedgerHQ/ledger-app-mevacoin/blob/master/src/mevacoin_types.h
     #define SW_OK                                   0x9000
     #define SW_WRONG_LENGTH                         0x6700
     #define SW_SECURITY_PIN_LOCKED                  0x6910

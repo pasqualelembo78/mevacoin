@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2024, The Monero Project
+// Copyright (c) 2021-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -48,8 +48,8 @@
 #include <vector>
 
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "multisig"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "multisig"
 
 namespace multisig
 {
@@ -179,7 +179,7 @@ namespace multisig
   * 
   * brief: generate_multisig_aggregate_key - generates a multisig public spend key via key aggregation
   *    Key aggregation via aggregation coefficients prevents key cancellation attacks.
-  *    See: https://www.getmonero.org/resources/research-lab/pubs/MRL-0009.pdf
+  *    See: https://www.mevacoin.org/resources/research-lab/pubs/MRL-0009.pdf
   * param: final_keys - address components (public keys) obtained from other participants (not shared with local)
   * param: privkeys_inout - private keys of address components known by local; each key will be multiplied by an aggregation
   *                         coefficient (return by reference)

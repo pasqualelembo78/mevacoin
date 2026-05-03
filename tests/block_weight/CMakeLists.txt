@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -33,7 +33,7 @@ set(block_weight_sources
 
 set(block_weight_headers)
 
-monero_add_minimal_executable(block_weight
+mevacoin_add_minimal_executable(block_weight
   ${block_weight_sources}
   ${block_weight_headers})
 target_link_libraries(block_weight

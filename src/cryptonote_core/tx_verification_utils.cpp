@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024, The Monero Project
+// Copyright (c) 2023-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -35,8 +35,8 @@
 #include "hardforks/hardforks.h"
 #include "ringct/rctSigs.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "verify"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "verify"
 
 #define VER_ASSERT(cond, msgexpr) CHECK_AND_ASSERT_MES(cond, false, msgexpr)
 
@@ -326,7 +326,7 @@ uint64_t get_transaction_weight_limit(const uint8_t hf_version)
 
 bool ver_input_proofs_rings(transaction& tx, const rct::ctkeyM &dereferenced_mix_ring)
 {
-    // Hello future Monero dev! If you got this assert, read the following carefully:
+    // Hello future Mevacoin dev! If you got this assert, read the following carefully:
     //
     // For this version of RCT, the way we guaranteed that verification caches do not generate false
     // positives (and thus possibly enabling double spends) is we take a hash of two things. One,

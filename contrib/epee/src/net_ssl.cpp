@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024, The Monero Project
+// Copyright (c) 2018-2024, The Mevacoin Project
 
 // 
 // All rights reserved.
@@ -44,14 +44,14 @@
 #include "net/net_utils_base.h"
 #include "file_io_utils.h" // to validate .crt and .key paths
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net.ssl"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net.ssl"
 
 
 #if BOOST_VERSION >= 107300
-  #define MONERO_HOSTNAME_VERIFY boost::asio::ssl::host_name_verification
+  #define MEVACOIN_HOSTNAME_VERIFY boost::asio::ssl::host_name_verification
 #else
-  #define MONERO_HOSTNAME_VERIFY boost::asio::ssl::rfc2818_verification
+  #define MEVACOIN_HOSTNAME_VERIFY boost::asio::ssl::rfc2818_verification
 #endif
 
 // openssl genrsa -out /tmp/KEY 4096
@@ -535,7 +535,7 @@ void ssl_options_t::configure(
       // preverified means it passed system or user CA check. System CA is never loaded
       // when fingerprints are whitelisted.
       const bool verified = preverified &&
-        (verification != ssl_verification_t::system_ca || host.empty() || MONERO_HOSTNAME_VERIFY(host)(preverified, ctx));
+        (verification != ssl_verification_t::system_ca || host.empty() || MEVACOIN_HOSTNAME_VERIFY(host)(preverified, ctx));
 
       if (!verified && !has_fingerprint(ctx))
       {

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -689,7 +689,7 @@ namespace cryptonote
      *
      * The dynamic fee is based on the block weight in a past window, and
      * the current block reward. It is expressed per byte, and is based on
-     * https://github.com/ArticMine/Monero-Documents/blob/master/MoneroScaling2021-02.pdf
+     * https://github.com/ArticMine/Mevacoin-Documents/blob/master/MevacoinScaling2021-02.pdf
      *
      * @param Mnw min(Msw, 50*Mlw)
      * @param Mlw The median over the last 99990 and future 10 blocks of max(min(Mbw, 2*Ml), Zm, Ml/2)
@@ -703,7 +703,7 @@ namespace cryptonote
      *
      * The dynamic fee is based on the block weight in a past window, and
      * the current block reward. It is expressed per byte, and is based on
-     * https://github.com/ArticMine/Monero-Documents/blob/master/MoneroScaling2021-02.pdf
+     * https://github.com/ArticMine/Mevacoin-Documents/blob/master/MevacoinScaling2021-02.pdf
      * This function calculates an estimate for a dynamic fee which will be
      * valid for the next grace_blocks
      *
@@ -1630,7 +1630,7 @@ namespace cryptonote
      * @brief loads block hashes from compiled-in data set
      *
      * A (possibly empty) set of block hashes can be compiled into the
-     * monero daemon binary.  This function loads those hashes into
+     * mevacoin daemon binary.  This function loads those hashes into
      * a useful state.
      * 
      * @param get_checkpoints if set, will be called to get checkpoints data

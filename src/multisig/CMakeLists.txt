@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024, The Monero Project
+# Copyright (c) 2017-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -36,12 +36,12 @@ set(multisig_sources
 
 set(multisig_headers)
 
-monero_find_all_headers(multisig_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(multisig_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(multisig
+mevacoin_private_headers(multisig
   ${multisig_private_headers})
 
-monero_add_library(multisig
+mevacoin_add_library(multisig
   ${multisig_sources}
   ${multisig_headers}
   ${multisig_private_headers})

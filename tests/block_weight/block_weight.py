@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Simulate a maximal block attack on the Monero network
+# Simulate a maximal block attack on the Mevacoin network
 # This uses the scheme proposed by ArticMine
 # Written by Sarang Nother
-# Copyright (c) 2019-2024, The Monero Project
+# Copyright (c) 2019-2024, The Mevacoin Project
 import sys
 import math
 

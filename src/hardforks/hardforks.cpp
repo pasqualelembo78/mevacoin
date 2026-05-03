@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // Copyright (c) 2024, MevaCoin
 //
 // All rights reserved.
@@ -29,8 +29,8 @@
 
 #include "hardforks.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "blockchain.hardforks"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "blockchain.hardforks"
 
 // MevaCoin: solo 2 fork
 //   - versione 1 dal blocco 1  (CryptoNight)

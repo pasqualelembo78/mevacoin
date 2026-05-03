@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024, The Monero Project
+// Copyright (c) 2019-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -33,8 +33,8 @@
 #include "blockchain.h"
 #include "tx_sanity_check.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "verify"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "verify"
 
 namespace cryptonote
 {

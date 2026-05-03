@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -60,8 +60,8 @@
 #include "common/data_cache.h"
 #include "time_helper.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "blockchain"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "blockchain"
 
 #define FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE (100*1024*1024) // 100 MB
 
@@ -3607,7 +3607,7 @@ bool Blockchain::check_fee(size_t tx_weight, uint64_t fee) const
 void Blockchain::get_dynamic_base_fee_estimate_2021_scaling(uint64_t base_reward, uint64_t Mnw,
   uint64_t Mlw, std::vector<uint64_t> &fees)
 {
-  // variable names and calculations as per https://github.com/ArticMine/Monero-Documents/blob/master/MoneroScaling2021-02.pdf
+  // variable names and calculations as per https://github.com/ArticMine/Mevacoin-Documents/blob/master/MevacoinScaling2021-02.pdf
   // from (earlier than) this fork, the base fee is per byte
   const uint64_t Mfw = std::min(Mnw, Mlw);
 
@@ -4406,7 +4406,7 @@ bool Blockchain::check_blockchain_pruning()
   return m_db->check_pruning();
 }
 //------------------------------------------------------------------
-// returns min(Mb, 1.7*Ml) as per https://github.com/ArticMine/Monero-Documents/blob/master/MoneroScaling2021-02.pdf from HF_VERSION_LONG_TERM_BLOCK_WEIGHT
+// returns min(Mb, 1.7*Ml) as per https://github.com/ArticMine/Mevacoin-Documents/blob/master/MevacoinScaling2021-02.pdf from HF_VERSION_LONG_TERM_BLOCK_WEIGHT
 uint64_t Blockchain::get_next_long_term_block_weight(uint64_t block_weight) const
 {
   PERF_TIMER(get_next_long_term_block_weight);

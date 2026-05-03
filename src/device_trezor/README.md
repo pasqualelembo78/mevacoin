@@ -1,6 +1,6 @@
 # Trezor hardware wallet support
 
-This module adds [Trezor] hardware support to Monero.
+This module adds [Trezor] hardware support to Mevacoin.
 
 
 ## Basic information
@@ -55,7 +55,7 @@ USE_DEVICE_TREZOR=OFF make release
 
 ## Resources:
 
-- First pull request https://github.com/monero-project/monero/pull/4241
+- First pull request https://github.com/pasqualelembo78/mevacoin/pull/4241
 - Integration proposal https://github.com/ph4r05/monero-trezor-doc
 - Integration readme in trezor-firmware https://github.com/trezor/trezor-firmware/blob/master/core/src/apps/monero/README.md
 

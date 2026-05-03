@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -32,7 +32,7 @@
 #include <string>
 #include <ctime>
 
-namespace Monero {
+namespace Mevacoin {
 
 class TransactionHistoryImpl;
 

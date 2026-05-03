@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2024, The Monero Project
+// Copyright (c) 2021-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -53,8 +53,8 @@
 #include <unordered_set>
 #include <vector>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "multisig"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "multisig"
 
 namespace multisig {
 

@@ -75,9 +75,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
       // Fuzz the target function
       fuzz_targets[selector](*rpc_handler->rpc, provider);
     } catch (const std::runtime_error&) {
-      // Known runtime_error thrown from monero
+      // Known runtime_error thrown from mevacoin
     } catch (const cryptonote::DB_ERROR& e) {
-      // Known error thrown from monero on internal blockchain DB check
+      // Known error thrown from mevacoin on internal blockchain DB check
       // when fuzzing with random values
 #ifdef CATCH_ALL_EXCEPTIONS
     } catch (...) {

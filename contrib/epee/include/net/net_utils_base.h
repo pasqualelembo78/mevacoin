@@ -40,8 +40,8 @@
 #include "serialization/keyvalue_serialization.h"
 #include "int-util.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net"
 
 #ifndef MAKE_IP
 #define MAKE_IP( a1, a2, a3, a4 )	(a1|(a2<<8)|(a3<<16)|(((uint32_t)a4)<<24))
@@ -50,9 +50,9 @@
 /* Use the below function carefully. The executor and io_context are slightly
   different concepts. */
 #if BOOST_VERSION >= 107000
-  #define MONERO_GET_EXECUTOR(type) type . get_executor()
+  #define MEVACOIN_GET_EXECUTOR(type) type . get_executor()
 #else
-  #define MONERO_GET_EXECUTOR(type) type . get_io_context()
+  #define MEVACOIN_GET_EXECUTOR(type) type . get_io_context()
 #endif
 
 namespace net

@@ -1,7 +1,7 @@
 # Mevacoin (MVC)
 
 Copyright (c) 2024, Mevacoin Project  
-Portions Copyright (c) 2014-2024, The Monero Project (BSD-3-Clause, adattato)
+Portions Copyright (c) 2014-2024, The Mevacoin Project (BSD-3-Clause, adattato)
 
 ## Cos’è Mevacoin
 
@@ -54,7 +54,7 @@ BSD-3-Clause. Vedi [LICENSE](LICENSE).
 
 ---
 
-**Nota:** Questo README è basato su Monero README (BSD-3-Clause) e adattato a Mevacoin.
+**Nota:** Questo README è basato su Mevacoin README (BSD-3-Clause) e adattato a Mevacoin.
 
 ```
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -42,7 +42,7 @@
 
 using namespace epee;
 
-namespace Monero {
+namespace Mevacoin {
 
 TransactionHistory::~TransactionHistory() {}
 

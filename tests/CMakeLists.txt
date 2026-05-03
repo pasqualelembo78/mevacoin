@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 # 
 # All rights reserved.
 # 
@@ -28,7 +28,7 @@
 # 
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-set(MONERO_WALLET_CRYPTO_BENCH "auto" CACHE STRING "Select wallet crypto libraries for benchmarking")
+set(MEVACOIN_WALLET_CRYPTO_BENCH "auto" CACHE STRING "Select wallet crypto libraries for benchmarking")
 
 # The docs say this only affects grouping in IDEs
 set(folder "tests")
@@ -79,7 +79,7 @@ set(hash_targets_sources
 
 set(hash_targets_headers)
 
-monero_add_minimal_executable(hash-target-tests
+mevacoin_add_minimal_executable(hash-target-tests
   ${hash_targets_sources}
   ${hash_targets_headers})
 target_link_libraries(hash-target-tests
@@ -96,36 +96,36 @@ add_test(
 #
 # Configure wallet crypto benchmark
 #
-if (${MONERO_WALLET_CRYPTO_BENCH} STREQUAL "auto")
-  set(MONERO_WALLET_CRYPTO_BENCH "cn")
-  monero_crypto_autodetect(AVAILABLE BEST)
+if (${MEVACOIN_WALLET_CRYPTO_BENCH} STREQUAL "auto")
+  set(MEVACOIN_WALLET_CRYPTO_BENCH "cn")
+  mevacoin_crypto_autodetect(AVAILABLE BEST)
   if (DEFINED AVAILABLE)
-    list(APPEND MONERO_WALLET_CRYPTO_BENCH ${AVAILABLE})
+    list(APPEND MEVACOIN_WALLET_CRYPTO_BENCH ${AVAILABLE})
   endif ()
-  message("Wallet crypto bench is using ${MONERO_WALLET_CRYPTO_BENCH}")
+  message("Wallet crypto bench is using ${MEVACOIN_WALLET_CRYPTO_BENCH}")
 endif ()
 
-list(REMOVE_DUPLICATES MONERO_WALLET_CRYPTO_BENCH)
-list(REMOVE_ITEM MONERO_WALLET_CRYPTO_BENCH "cn") # always used for comparison
-set(MONERO_WALLET_CRYPTO_BENCH_NAMES "(cn)")
-foreach(BENCH IN LISTS MONERO_WALLET_CRYPTO_BENCH)
-  monero_crypto_valid(${BENCH} VALID)
+list(REMOVE_DUPLICATES MEVACOIN_WALLET_CRYPTO_BENCH)
+list(REMOVE_ITEM MEVACOIN_WALLET_CRYPTO_BENCH "cn") # always used for comparison
+set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "(cn)")
+foreach(BENCH IN LISTS MEVACOIN_WALLET_CRYPTO_BENCH)
+  mevacoin_crypto_valid(${BENCH} VALID)
   if (NOT VALID)
-    message(FATAL_ERROR "Invalid MONERO_WALLET_CRYPTO_BENCH option ${BENCH}")
+    message(FATAL_ERROR "Invalid MEVACOIN_WALLET_CRYPTO_BENCH option ${BENCH}")
   endif ()
 
-  monero_crypto_get_target(${BENCH} BENCH_LIBRARY)
+  mevacoin_crypto_get_target(${BENCH} BENCH_LIBRARY)
   list(APPEND BENCH_OBJECTS $<TARGET_OBJECTS:${BENCH_LIBRARY}>)
 
-  monero_crypto_get_namespace(${BENCH} BENCH_NAMESPACE)
-  set(MONERO_WALLET_CRYPTO_BENCH_NAMES "${MONERO_WALLET_CRYPTO_BENCH_NAMES}(${BENCH_NAMESPACE})")
+  mevacoin_crypto_get_namespace(${BENCH} BENCH_NAMESPACE)
+  set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "${MEVACOIN_WALLET_CRYPTO_BENCH_NAMES}(${BENCH_NAMESPACE})")
 endforeach ()
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/benchmark.h.in" "${MONERO_GENERATED_HEADERS_DIR}/tests/benchmark.h")
-monero_add_minimal_executable(monero-wallet-crypto-bench benchmark.cpp ${BENCH_OBJECTS})
-target_link_libraries(monero-wallet-crypto-bench cncrypto)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/benchmark.h.in" "${MEVACOIN_GENERATED_HEADERS_DIR}/tests/benchmark.h")
+mevacoin_add_minimal_executable(mevacoin-wallet-crypto-bench benchmark.cpp ${BENCH_OBJECTS})
+target_link_libraries(mevacoin-wallet-crypto-bench cncrypto)
 
-add_test(NAME wallet-crypto-bench COMMAND monero-wallet-crypto-bench)
+add_test(NAME wallet-crypto-bench COMMAND mevacoin-wallet-crypto-bench)
 
 
 set(enabled_tests

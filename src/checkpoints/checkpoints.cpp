@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -41,8 +41,8 @@
 
 using namespace epee;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "checkpoints"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "checkpoints"
 
 namespace cryptonote
 {
@@ -209,7 +209,7 @@ namespace cryptonote
       return true;
     }
     
-    // MAINNET - Tutti i checkpoint di Monero sono stati rimossi
+    // MAINNET - Tutti i checkpoint di Mevacoin sono stati rimossi
     // Aggiungi qui i tuoi checkpoint personalizzati quando necessario
     // Formato: ADD_CHECKPOINT2(height, "block_hash", "cumulative_difficulty");
     //

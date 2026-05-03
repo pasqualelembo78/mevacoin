@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -122,7 +122,7 @@ public:
    * @brief Gets a DNS address from OpenAlias format
    *
    * If the address looks good, but contains one @ symbol, replace that with a .
-   * e.g. donate@getmonero.org becomes donate.getmonero.org
+   * e.g. donate@mevacoin.org becomes donate.mevacoin.org
    *
    * @param oa_addr  OpenAlias address
    *

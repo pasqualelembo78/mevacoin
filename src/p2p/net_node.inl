@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -63,8 +63,8 @@
 #include <miniupnp/miniupnpc/upnpcommands.h>
 #include <miniupnp/miniupnpc/upnperrors.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net.p2p"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net.p2p"
 
 #define MIN_WANTED_SEED_NODES 12
 
@@ -1836,7 +1836,7 @@ std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() co
         {
           // seeds should have hostname converted to IP already
           MDEBUG("Seed node: " << full_addr);
-          server.m_seed_nodes.push_back(MONERO_UNWRAP(net::get_network_address(full_addr, default_port)));
+          server.m_seed_nodes.push_back(MEVACOIN_UNWRAP(net::get_network_address(full_addr, default_port)));
         }
         MDEBUG("Number of seed nodes: " << server.m_seed_nodes.size());
       }

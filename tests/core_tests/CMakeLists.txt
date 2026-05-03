@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -70,7 +70,7 @@ set(core_tests_headers
   rct2.h
   wallet_tools.h)
 
-monero_add_minimal_executable(core_tests
+mevacoin_add_minimal_executable(core_tests
   ${core_tests_sources}
   ${core_tests_headers})
 target_link_libraries(core_tests

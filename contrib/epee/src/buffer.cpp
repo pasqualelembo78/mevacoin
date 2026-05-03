@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024, The Monero Project
+// Copyright (c) 2018-2024, The Mevacoin Project
 
 // 
 // All rights reserved.
@@ -31,8 +31,8 @@
 #include <string.h>
 #include "net/buffer.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net.buffer"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net.buffer"
 
 namespace epee
 {

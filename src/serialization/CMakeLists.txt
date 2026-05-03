@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2024, The Monero Project
+# Copyright (c) 2016-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -31,11 +31,11 @@ set(serialization_sources
 
 set(serialization_headers)
 
-monero_find_all_headers(serialization_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(serialization_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(serialization
+mevacoin_private_headers(serialization
   ${serialization_private_headers})
-monero_add_library(serialization
+mevacoin_add_library(serialization
   ${serialization_sources}
   ${serialization_headers}
   ${serialization_private_headers})

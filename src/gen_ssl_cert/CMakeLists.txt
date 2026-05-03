@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2024, The Monero Project
+# Copyright (c) 2017-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -29,7 +29,7 @@
 set(gen_ssl_cert_sources
   gen_ssl_cert.cpp)
 
-monero_add_executable(gen_ssl_cert
+mevacoin_add_executable(gen_ssl_cert
   ${gen_ssl_cert_sources})
 target_link_libraries(gen_ssl_cert
   PRIVATE

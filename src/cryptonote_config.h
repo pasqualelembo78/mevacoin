@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -244,7 +244,7 @@ namespace config
   std::string const GENESIS_TX = "013c01ff0001ffffffffffff0302125fc635f8bfa8a40d2369704ddf914cc02aea88d4bb8af7cd1840dbc80c04a92101417d39b50624a496bfdf6a0c63f1901207cf37375f867d1a1a9681edceb6012e";
   uint32_t const GENESIS_NONCE = 10000;
 
-  // Hash domain separators - ORIGINALI DI MONERO (NON MODIFICARE!)
+  // Hash domain separators - ORIGINALI DI MEVACOIN (NON MODIFICARE!)
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
   const char HASH_KEY_BULLETPROOF_PLUS_EXPONENT[] = "bulletproof_plus";
   const char HASH_KEY_BULLETPROOF_PLUS_TRANSCRIPT[] = "bulletproof_plus_transcript";

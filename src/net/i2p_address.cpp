@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024, The Monero Project
+// Copyright (c) 2019-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -105,7 +105,7 @@ namespace net
     expect<i2p_address> i2p_address::make(const boost::string_ref address)
     {
         boost::string_ref host = address.substr(0, address.rfind(':'));
-        MONERO_CHECK(host_check(host));
+        MEVACOIN_CHECK(host_check(host));
 
         static_assert(b32_length + sizeof(tld) == sizeof(i2p_address::host_), "bad internal host size");
         return i2p_address{host};

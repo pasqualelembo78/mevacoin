@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -60,8 +60,8 @@ using namespace epee;
 #include "p2p/net_node.h"
 #include "version.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "daemon.rpc"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "daemon.rpc"
 
 #define MAX_RESTRICTED_FAKE_OUTS_COUNT 40
 #define MAX_RESTRICTED_GLOBAL_FAKE_OUTS_COUNT 5000
@@ -597,7 +597,7 @@ namespace cryptonote
     if (restricted)
       res.database_size = round_up(res.database_size, 5ull* 1024 * 1024 * 1024);
     res.update_available = restricted ? false : m_core.is_update_available();
-    res.version = restricted ? "" : MONERO_VERSION_FULL;
+    res.version = restricted ? "" : MEVACOIN_VERSION_FULL;
     res.synchronized = check_core_ready();
     res.busy_syncing = m_p2p.get_payload_object().is_busy_syncing();
     res.restricted = restricted;
@@ -3058,7 +3058,7 @@ namespace cryptonote
       return r;
 
     res.version = CORE_RPC_VERSION;
-    res.release = MONERO_VERSION_IS_RELEASE;
+    res.release = MEVACOIN_VERSION_IS_RELEASE;
     res.current_height = m_core.get_current_blockchain_height();
     res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     for (const auto &hf : m_core.get_blockchain_storage().get_hardforks())
@@ -3240,7 +3240,7 @@ namespace cryptonote
       res.status = "Error checking for updates";
       return true;
     }
-    if (tools::vercmp(version.c_str(), MONERO_VERSION) <= 0)
+    if (tools::vercmp(version.c_str(), MEVACOIN_VERSION) <= 0)
     {
       res.update = false;
       res.status = CORE_RPC_STATUS_OK;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2019-2021 The Bitcoin Core developers
-# Copyright (c) 2022-2024 The Monero Project
+# Copyright (c) 2022-2024 The Mevacoin Project
 # Distributed under the MIT software license, see the accompanying
 # file ../LICENSE.txt or http://www.opensource.org/licenses/mit-license.php.
 export LC_ALL=C
@@ -44,7 +44,7 @@ EOF
 
 ACTUAL_OUTDIR="${OUTDIR}"
 OUTDIR="${DISTSRC}/output"
-DISTNAME="monero-${HOST}-${VERSION}"
+DISTNAME="mevacoin-${HOST}-${VERSION}"
 
 # Use a fixed timestamp for depends builds so hashes match across commits that
 # don't make changes to the build system. This timestamp is only used for depends
@@ -250,7 +250,7 @@ DEPENDS_CACHE="$(make -C contrib/depends --no-print-directory ${BASE_CACHE+BASE_
 
 # Stop here if we're only building depends packages. This is useful when
 # debugging reproducibility issues in depends packages. Skips ahead to the next
-# target, so we don't spend time building Monero binaries.
+# target, so we don't spend time building Mevacoin binaries.
 if [[ -n "$DEPENDS_ONLY" ]]; then
     exit 0
 fi
@@ -263,7 +263,7 @@ fi
 export SOURCE_DATE_EPOCH=${COMMIT_TIMESTAMP}
 export TAR_OPTIONS="--owner=0 --group=0 --numeric-owner --mtime='@${SOURCE_DATE_EPOCH}' --sort=name"
 
-GIT_ARCHIVE="${DIST_ARCHIVE_BASE}/monero-source-${VERSION}.tar.gz"
+GIT_ARCHIVE="${DIST_ARCHIVE_BASE}/mevacoin-source-${VERSION}.tar.gz"
 
 # Create the source tarball if not already there
 # This uses `git ls-files --recurse-submodules` instead of `git archive` to make
@@ -272,7 +272,7 @@ if [ ! -e "$GIT_ARCHIVE" ]; then
     mkdir -p "$(dirname "$GIT_ARCHIVE")"
     git ls-files --recurse-submodules \
     | sort \
-    | tar --create --transform "s,^,monero-source-${VERSION}/," --mode='u+rw,go+r-w,a+X' --files-from=- \
+    | tar --create --transform "s,^,mevacoin-source-${VERSION}/," --mode='u+rw,go+r-w,a+X' --files-from=- \
     | gzip -9n > ${GIT_ARCHIVE}
     sha256sum "$GIT_ARCHIVE"
 fi
@@ -313,7 +313,7 @@ mkdir -p "$DISTSRC"
     # Extract the source tarball
     tar --strip-components=1 -xf "${GIT_ARCHIVE}"
 
-    # Setup the directory where our Monero build for HOST will be
+    # Setup the directory where our Mevacoin build for HOST will be
     # installed. This directory will also later serve as the input for our
     # binary tarballs.
     INSTALLPATH="${DISTSRC}/installed/${DISTNAME}"

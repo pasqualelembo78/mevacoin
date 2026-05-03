@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2024, The Monero Project
+// Copyright (c) 2021-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -83,9 +83,9 @@ namespace multisig
   *   when N - M > 1).
   * 
   * - Further reading
-  *   - MRL-0009: https://www.getmonero.org/resources/research-lab/pubs/MRL-0009.pdf
+  *   - MRL-0009: https://www.mevacoin.org/resources/research-lab/pubs/MRL-0009.pdf
   *   - MuSig2: https://eprint.iacr.org/2020/1261
-  *   - ZtM2: https://web.getmonero.org/library/Zero-to-Monero-2-0-0.pdf Ch. 9, especially Section 9.6.3
+  *   - ZtM2: https://web.mevacoin.org/library/Zero-to-Mevacoin-2-0-0.pdf Ch. 9, especially Section 9.6.3
   *   - FROST: https://eprint.iacr.org/2018/417
   */
   using multisig_keyset_map_memsafe_t = 

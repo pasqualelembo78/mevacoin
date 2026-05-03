@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -54,11 +54,11 @@ endif()
 
 set(common_headers)
 
-monero_find_all_headers(common_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(common_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(common
+mevacoin_private_headers(common
   ${common_private_headers})
-monero_add_library(common
+mevacoin_add_library(common
   ${common_sources}
   ${common_headers}
   ${common_private_headers}
@@ -81,5 +81,5 @@ target_include_directories(common
   PRIVATE
     ${Boost_INCLUDE_DIRS})
 
-#monero_install_headers(common
+#mevacoin_install_headers(common
 #  ${common_headers})

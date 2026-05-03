@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -42,7 +42,7 @@
 #include <vector>
 
 //  Public interface for libwallet library
-namespace Monero {
+namespace Mevacoin {
 
 enum NetworkType : uint8_t {
     MAINNET = 0,
@@ -1378,7 +1378,7 @@ struct WalletManager
     //! stops mining
     virtual bool stopMining() = 0;
 
-    //! resolves an OpenAlias address to a monero address
+    //! resolves an OpenAlias address to a mevacoin address
     virtual std::string resolveOpenAlias(const std::string &address, bool &dnssec_valid) const = 0;
 
     //! checks for an update and returns version, hash and url

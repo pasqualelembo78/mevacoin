@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024, The Monero Project
+// Copyright (c) 2018-2024, The Mevacoin Project
 
 // 
 // All rights reserved.
@@ -38,8 +38,8 @@
 #include "ringdb.h"
 #include "cryptonote_config.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "wallet.ringdb"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "wallet.ringdb"
 
 #define V1TAG ((uint64_t)798237759845202)
 

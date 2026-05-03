@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024, The Monero Project
+// Copyright (c) 2018-2024, The Mevacoin Project
 
 // All rights reserved.
 //
@@ -119,7 +119,7 @@ namespace lmdb
                 if (!txn)
                     return txn.error();
 
-                MONERO_PRECOND(*txn != nullptr);
+                MEVACOIN_PRECOND(*txn != nullptr);
                 const auto wrote = f(*(*txn));
                 if (wrote)
                 {
@@ -133,7 +133,7 @@ namespace lmdb
                     return wrote;
 
                 txn->reset();
-                MONERO_CHECK(this->resize());
+                MEVACOIN_CHECK(this->resize());
             }
             return {lmdb::error(MDB_MAP_FULL)};
         }

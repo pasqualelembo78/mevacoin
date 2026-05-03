@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2024, The Monero Project
+// Copyright (c) 2020-2024, The Mevacoin Project
 
 //
 // All rights reserved.
@@ -36,11 +36,11 @@
 namespace crypto {
   namespace wallet {
 // if C functions defined from external/supercop - cmake generates crypto/wallet/ops.h
-#if defined(monero_crypto_generate_key_derivation)
+#if defined(mevacoin_crypto_generate_key_derivation)
       inline
       bool generate_key_derivation(const public_key &tx_pub, const secret_key &view_sec, key_derivation &out)
       {
-        return monero_crypto_generate_key_derivation(out.data, tx_pub.data, view_sec.data) == 0;
+        return mevacoin_crypto_generate_key_derivation(out.data, tx_pub.data, view_sec.data) == 0;
       }
 
       inline
@@ -48,7 +48,7 @@ namespace crypto {
       {
         ec_scalar scalar;
         derivation_to_scalar(d, index, scalar);
-        return monero_crypto_generate_subaddress_public_key(out.data, output_pub.data, scalar.data) == 0;
+        return mevacoin_crypto_generate_subaddress_public_key(out.data, output_pub.data, scalar.data) == 0;
       }
 #else
     using ::crypto::generate_key_derivation;

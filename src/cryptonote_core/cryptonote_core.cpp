@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -61,8 +61,8 @@ using namespace epee;
 
 #include <boost/filesystem.hpp>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "cn"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "cn"
 
 DISABLE_VS_WARNINGS(4355)
 
@@ -1411,7 +1411,7 @@ namespace cryptonote
     return true;
   }
   
-  // Default Monero behavior: check protocol synchronization
+  // Default Mevacoin behavior: check protocol synchronization
   return m_pprotocol != nullptr && m_pprotocol->is_synchronized();
 }
   //-----------------------------------------------------------------------------------------------
@@ -1744,7 +1744,7 @@ namespace cryptonote
     if (!tools::check_updates(software, buildtag, version, hash))
       return false;
 
-    if (tools::vercmp(version.c_str(), MONERO_VERSION) <= 0)
+    if (tools::vercmp(version.c_str(), MEVACOIN_VERSION) <= 0)
     {
       m_update_available = false;
       return true;

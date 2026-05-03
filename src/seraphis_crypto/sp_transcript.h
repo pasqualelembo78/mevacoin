@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2024, The Monero Project
+// Copyright (c) 2022-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -308,7 +308,7 @@ private:
 // SpFSTranscript
 // - build a Fiat-Shamir transcript
 // - main format: prefix || domain_separator || object1_label || object1 || object2_label || object2 || ...
-// note: prefix defaults to "monero"
+// note: prefix defaults to "mevacoin"
 ///
 class SpFSTranscript final
 {
@@ -354,7 +354,7 @@ private:
 // - mainly intended for short transcripts (~128 bytes or less) with fixed-length and statically ordered components
 // - main format: prefix || domain_separator || object1 || object2 || ...
 // - simple transcript mode: no labels, flags, or lengths
-// note: prefix defaults to "monero"
+// note: prefix defaults to "mevacoin"
 ///
 class SpKDFTranscript final
 {

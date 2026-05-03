@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -42,8 +42,8 @@
 
 using namespace epee;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "cn"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "cn"
 
 // #define ENABLE_HASH_CASH_INTEGRITY_CHECK
 
@@ -1134,7 +1134,7 @@ namespace cryptonote
     switch (decimal_point)
     {
       case 12:
-        return "monero";
+        return "mevacoin";
       case 9:
         return "millinero";
       case 6:

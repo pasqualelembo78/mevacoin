@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 # 
 # All rights reserved.
 # 
@@ -27,7 +27,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set(lmdb_sources database.cpp error.cpp table.cpp value_stream.cpp)
-monero_find_all_headers(lmdb_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(lmdb_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_add_library(lmdb_lib ${lmdb_sources} ${lmdb_headers})
+mevacoin_add_library(lmdb_lib ${lmdb_sources} ${lmdb_headers})
 target_link_libraries(lmdb_lib common ${LMDB_LIBRARY})

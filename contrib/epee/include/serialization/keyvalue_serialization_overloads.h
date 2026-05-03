@@ -35,8 +35,8 @@
 #include <boost/mpl/vector.hpp>
 #include <boost/mpl/contains_fwd.hpp>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "serialization"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "serialization"
 
 namespace epee
 {

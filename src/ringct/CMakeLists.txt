@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2024, The Monero Project
+# Copyright (c) 2016-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -34,11 +34,11 @@ set(ringct_basic_sources
   bulletproofs.cc
   bulletproofs_plus.cc)
 
-monero_find_all_headers(ringct_basic_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(ringct_basic_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(ringct_basic
+mevacoin_private_headers(ringct_basic
   ${crypto_private_headers})
-monero_add_library(ringct_basic
+mevacoin_add_library(ringct_basic
   ${ringct_basic_sources}
   ${ringct_basic_private_headers})
 target_link_libraries(ringct_basic
@@ -59,9 +59,9 @@ set(ringct_private_headers
   rctSigs.h
 )
 
-monero_private_headers(ringct
+mevacoin_private_headers(ringct
   ${crypto_private_headers})
-monero_add_library(ringct
+mevacoin_add_library(ringct
   ${ringct_sources}
   ${ringct_headers}
   ${ringct_private_headers})

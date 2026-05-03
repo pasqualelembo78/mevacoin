@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2024, The Monero Project
+// Copyright (c) 2018-2024, The Mevacoin Project
 
 // 
 // All rights reserved.
@@ -33,8 +33,8 @@
 #include "misc_log_ex.h"
 #include "span.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "net.buffer"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "net.buffer"
 
 //#define NET_BUFFER_LOG(x) MDEBUG(x)
 #define NET_BUFFER_LOG(x) ((void)0)

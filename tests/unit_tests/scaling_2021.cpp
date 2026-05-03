@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2024, The Monero Project
+// Copyright (c) 2019-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -27,8 +27,8 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // References:
-// - https://github.com/ArticMine/Monero-Documents/blob/master/MoneroScaling2021.pdf
-// - https://github.com/monero-project/research-lab/issues/70
+// - https://github.com/ArticMine/Mevacoin-Documents/blob/master/MevacoinScaling2021.pdf
+// - https://github.com/mevacoin-project/research-lab/issues/70
 
 #include "gtest/gtest.h"
 #include "cryptonote_core/blockchain.h"

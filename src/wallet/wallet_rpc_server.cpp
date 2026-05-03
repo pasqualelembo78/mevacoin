@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -58,8 +58,8 @@ using namespace epee;
 #include "daemonizer/daemonizer.h"
 #include "fee_priority.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "wallet.rpc"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "wallet.rpc"
 
 #define DEFAULT_AUTO_REFRESH_PERIOD 20 // seconds
 #define REFRESH_INDICATIVE_BLOCK_CHUNK_SIZE 256    // just to split refresh in separate calls to play nicer with other threads
@@ -4919,7 +4919,7 @@ namespace tools
   bool wallet_rpc_server::on_get_version(const wallet_rpc::COMMAND_RPC_GET_VERSION::request& req, wallet_rpc::COMMAND_RPC_GET_VERSION::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     res.version = WALLET_RPC_VERSION;
-    res.release = MONERO_VERSION_IS_RELEASE;
+    res.release = MEVACOIN_VERSION_IS_RELEASE;
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -41,7 +41,7 @@
 
 class WalletApiAccessorTest;
 
-namespace Monero {
+namespace Mevacoin {
 class TransactionHistoryImpl;
 class PendingTransactionImpl;
 class UnsignedTransactionImpl;
@@ -263,9 +263,9 @@ private:
     mutable int m_status;
     mutable std::string m_errorString;
     // TODO: harden password handling in the wallet API, see relevant discussion
-    // https://github.com/monero-project/monero-gui/issues/1537
+    // https://github.com/pasqualelembo78/mevacoin-gui/issues/1537
     // https://github.com/feather-wallet/feather/issues/72#issuecomment-1405602142
-    // https://github.com/monero-project/monero/pull/8619#issuecomment-1632951461
+    // https://github.com/pasqualelembo78/mevacoin/pull/8619#issuecomment-1632951461
     std::string m_password;
     std::unique_ptr<TransactionHistoryImpl> m_history;
     std::unique_ptr<Wallet2CallbackImpl> m_wallet2Callback;

@@ -3,7 +3,7 @@
 To run all tests, run:
 
 ```bash
-cd /path/to/monero
+cd /path/to/mevacoin
 make [-jn] debug-test # where n is number of compiler processes
 ```
 
@@ -11,11 +11,11 @@ To test a release build, replace `debug-test` with `release-test` in the previou
 
 # Core tests
 
-Core tests take longer than any other Monero tests, due to the high amount of computational work involved in validating core components.
+Core tests take longer than any other Mevacoin tests, due to the high amount of computational work involved in validating core components.
 
 Tests are located in `tests/core_tests/`, and follow a straightforward naming convention. Most cases cover core functionality (`block_reward.cpp`, `chaingen.cpp`, `rct.cpp`, etc.), while some cover basic security tests (`double_spend.cpp` & `integer_overflow.cpp`).
 
-To run only Monero's core tests (after building):
+To run only Mevacoin's core tests (after building):
 
 ```bash
 cd build/debug/tests/core_tests
@@ -34,7 +34,7 @@ Crypto tests are located under the `tests/crypto` directory.
 
 Tests correspond to components under `src/crypto/`. A quick comparison reveals the pattern, and new tests should continue the naming convention.
 
-To run only Monero's crypto tests (after building):
+To run only Mevacoin's crypto tests (after building):
 
 ```bash
 cd build/debug/tests/crypto
@@ -55,7 +55,7 @@ pip install requests psutil monotonic zmq deepdiff
 
 First, run a regtest daemon in the offline mode and with a fixed difficulty:
 ```bash
-monerod --regtest --offline --fixed-difficulty 1
+mevacoind --regtest --offline --fixed-difficulty 1
 ```
 Alternatively, you can run multiple daemons and let them connect with each other by using `--add-exclusive-node`. In this case, make sure that the same fixed difficulty is given to all the daemons.
 
@@ -64,7 +64,7 @@ Next, restore a mainnet wallet with the following seed and restore height 0 (the
 velvet lymph giddy number token physics poetry unquoted nibs useful sabotage limits benches lifestyle eden nitrogen anvil fewest avoid batch vials washing fences goat unquoted
 ```
 
-Open the wallet file with `monero-wallet-rpc` with RPC port 18083. Finally, start tests by invoking ./blockchain.py or ./speed.py
+Open the wallet file with `mevacoin-wallet-rpc` with RPC port 18083. Finally, start tests by invoking ./blockchain.py or ./speed.py
 
 ## Parameters
 
@@ -93,26 +93,26 @@ An additional helper utility is provided `contrib/fuzz_testing/fuzz.sh`. AFL mus
 
 ## OSS-Fuzz
 
-Monero is integrated into [OSS-Fuzz](https://github.com/google/oss-fuzz) and the project integration
-is available [here](https://github.com/google/oss-fuzz/tree/master/projects/monero). OSS-Fuzz builds
-and runs the fuzzers continuously, so long as Monero's OSS-Fuzz [build script](https://github.com/google/oss-fuzz/blob/master/projects/monero/build.sh) builds them.
+Mevacoin is integrated into [OSS-Fuzz](https://github.com/google/oss-fuzz) and the project integration
+is available [here](https://github.com/google/oss-fuzz/tree/master/projects/mevacoin). OSS-Fuzz builds
+and runs the fuzzers continuously, so long as Mevacoin's OSS-Fuzz [build script](https://github.com/google/oss-fuzz/blob/master/projects/mevacoin/build.sh) builds them.
 
-Issues found by OSS-Fuzz are publicly available (following a disclosure deadline) on the OSS-Fuzz issue tracker [here](https://issues.oss-fuzz.com/issues?q=project%3Dmonero).
-The issue tracker only displays limited information, and only maintainers with emails listed in the [project.yaml](https://github.com/google/oss-fuzz/blob/master/projects/monero/project.yaml) have access to full details.
+Issues found by OSS-Fuzz are publicly available (following a disclosure deadline) on the OSS-Fuzz issue tracker [here](https://issues.oss-fuzz.com/issues?q=project%3Dmevacoin).
+The issue tracker only displays limited information, and only maintainers with emails listed in the [project.yaml](https://github.com/google/oss-fuzz/blob/master/projects/mevacoin/project.yaml) have access to full details.
 
-Coverage reports are built on a daily basis and data about this can be found at [introspector.oss-fuzz.com](https://introspector.oss-fuzz.com) [here](https://introspector.oss-fuzz.com/project-profile?project=monero).
+Coverage reports are built on a daily basis and data about this can be found at [introspector.oss-fuzz.com](https://introspector.oss-fuzz.com) [here](https://introspector.oss-fuzz.com/project-profile?project=mevacoin).
 
 ### Build and run fuzzers by way of OSS-Fuzz
 
-**Building Monero's fuzzers with OSS-Fuzz**
+**Building Mevacoin's fuzzers with OSS-Fuzz**
 
 ```sh
 $ git clone https://github.com/google/oss-fuzz
 $ cd oss-fuzz
-$ python3 infra/helper.py build_fuzzers monero
+$ python3 infra/helper.py build_fuzzers mevacoin
 
 # Display what was build
-$ ls build/out/monero/
+$ ls build/out/mevacoin/
 base58_fuzz_tests                       cold-outputs_fuzz_tests_seed_corpus.zip      llvm-symbolizer                              signature_fuzz_tests
 base58_fuzz_tests_seed_corpus.zip       cold-transaction_fuzz_tests                  load-from-binary_fuzz_tests                  signature_fuzz_tests_seed_corpus.zip
 block_fuzz_tests                        cold-transaction_fuzz_tests_seed_corpus.zip  load-from-binary_fuzz_tests_seed_corpus.zip  transaction_fuzz_tests
@@ -127,7 +127,7 @@ cold-outputs_fuzz_tests                 levin_fuzz_tests_seed_corpus.zip        
 Assuming you performed the above steps for building the fuzzers and are in the OSS-Fuzz root directory:
 
 ```sh
-$ python3 infra/helper.py run_fuzzer monero base58_fuzz_tests
+$ python3 infra/helper.py run_fuzzer mevacoin base58_fuzz_tests
 ...
 ...
 INFO: Loaded 1 modules   (9075 inline 8-bit counters): 9075 [0x55d1c3d6cfd8, 0x55d1c3d6f34b),
@@ -160,7 +160,7 @@ INFO: seed corpus: files: 1 min: 95b max: 95b total: 95b rss: 33Mb
 
 Hash tests exist under `tests/hash`, and include a set of target hashes in text files.
 
-To run only Monero's hash tests (after building):
+To run only Mevacoin's hash tests (after building):
 
 ```bash
 cd build/debug/tests/hash
@@ -187,7 +187,7 @@ ctest -R hash-blake2b
 
 Performance tests are located in `tests/performance_tests`, and test features for performance metrics on the host machine.
 
-To run only Monero's performance tests (after building):
+To run only Mevacoin's performance tests (after building):
 
 ```bash
 cd build/debug/tests/performance_tests
@@ -204,7 +204,7 @@ To run the same tests on a release build, replace `debug` with `release`.
 
 Unit tests are defined under the `tests/unit_tests` directory. Independent components are tested individually to ensure they work properly on their own.
 
-To run only Monero's unit tests (after building):
+To run only Mevacoin's unit tests (after building):
 
 ```bash
 cd build/debug/tests/unit_tests

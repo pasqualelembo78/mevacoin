@@ -1,4 +1,4 @@
-# Copyright (c) 2021-2024, The Monero Project
+# Copyright (c) 2021-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -29,9 +29,9 @@
 set(seraphis_crypto_sources
   dummy.cpp)
 
-monero_find_all_headers(seraphis_crypto_headers, "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(seraphis_crypto_headers, "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_add_library(seraphis_crypto
+mevacoin_add_library(seraphis_crypto
   ${seraphis_crypto_sources}
   ${seraphis_crypto_headers})
 

@@ -84,14 +84,14 @@ chain for " target " development."))
 (define base-gcc gcc-14)
 (define base-linux-kernel-headers linux-libre-headers-6.1)
 
-(define* (make-monero-cross-toolchain  target
+(define* (make-mevacoin-cross-toolchain  target
                                        #:key
                                        (base-gcc-for-libc linux-base-gcc)
                                        (base-kernel-headers base-linux-kernel-headers)
                                        (base-libc glibc-2.27)
                                        (base-gcc linux-base-gcc))
   "Convenience wrapper around MAKE-CROSS-TOOLCHAIN with default values
-desirable for building Monero release binaries."
+desirable for building Mevacoin release binaries."
   (make-cross-toolchain target
                         base-gcc-for-libc
                         base-kernel-headers
@@ -276,7 +276,7 @@ chain for " target " development."))
            (list
              gcc-toolchain-14
              (list gcc-toolchain-14 "static")
-             (make-monero-cross-toolchain target)))
+             (make-mevacoin-cross-toolchain target)))
           ((string-contains target "freebsd")
            (list
              xz ; used to unpack freebsd_base

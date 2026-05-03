@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 // 
 // All rights reserved.
 // 
@@ -96,8 +96,8 @@ namespace po = boost::program_options;
 typedef cryptonote::simple_wallet sw;
 using tools::fee_priority;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "wallet.simplewallet"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "wallet.simplewallet"
 
 #define EXTENDED_LOGS_FILE "wallet_details.log"
 
@@ -623,7 +623,7 @@ void simple_wallet::handle_transfer_exception(const std::exception_ptr &e, bool 
     }
     catch (const tools::error::deprecated_rpc_access&)
     {
-      fail_msg_writer() << tr("Daemon requires deprecated RPC payment. See https://github.com/monero-project/monero/issues/8722");
+      fail_msg_writer() << tr("Daemon requires deprecated RPC payment. See https://github.com/pasqualelembo78/mevacoin/issues/8722");
     }
     catch (const tools::error::no_connection_to_daemon&)
     {
@@ -2284,7 +2284,7 @@ bool simple_wallet::welcome(const std::vector<std::string> &args)
 
 bool simple_wallet::version(const std::vector<std::string> &args)
 {
-  message_writer() << "MevaCoin '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")";
+  message_writer() << "MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")";
   return true;
 }
 
@@ -3067,7 +3067,7 @@ bool simple_wallet::help(const std::vector<std::string> &args/* = std::vector<st
     message_writer() << tr("\"balance\" - Show balance.");
     message_writer() << tr("\"address all\" - Show all addresses.");
     message_writer() << tr("\"address new\" - Create new subaddress.");
-    message_writer() << tr("\"transfer <address> <amount>\" - Send XMR to an address.");
+    message_writer() << tr("\"transfer <address> <amount>\" - Send MEVA to an address.");
     message_writer() << tr("\"show_transfers [in|out|pending|failed|pool]\" - Show transactions.");
     message_writer() << tr("\"sweep_all <address>\" - Send whole balance to another wallet.");
     message_writer() << tr("\"seed\" - Show secret 25 words that can be used to recover this wallet.");
@@ -3076,7 +3076,7 @@ bool simple_wallet::help(const std::vector<std::string> &args/* = std::vector<st
     message_writer() << tr("\"version\" - Check software version.");
     message_writer() << tr("\"exit\" - Exit wallet.");
     message_writer() << "";
-    message_writer() << tr("\"donate <amount>\" - Donate XMR to the development team.");
+    message_writer() << tr("\"donate <amount>\" - Donate MEVA to the development team.");
     message_writer() << "";
   }
   else if ((args.size() == 1) && (args.front() == "all"))
@@ -5777,7 +5777,7 @@ bool simple_wallet::refresh_main(uint64_t start_height, enum ResetType reset, bo
   }
   catch (const tools::error::deprecated_rpc_access&)
   {
-    ss << tr("Daemon requires deprecated RPC payment. See https://github.com/monero-project/monero/issues/8722");
+    ss << tr("Daemon requires deprecated RPC payment. See https://github.com/pasqualelembo78/mevacoin/issues/8722");
   }
   catch (const tools::error::wallet_rpc_error& e)
   {
@@ -6116,7 +6116,7 @@ bool simple_wallet::rescan_spent(const std::vector<std::string> &args)
   }
   catch (const tools::error::deprecated_rpc_access&)
   {
-    fail_msg_writer() << tr("Daemon requires deprecated RPC payment. See https://github.com/monero-project/monero/issues/8722");
+    fail_msg_writer() << tr("Daemon requires deprecated RPC payment. See https://github.com/pasqualelembo78/mevacoin/issues/8722");
   }
   catch (const tools::error::is_key_image_spent_error&)
   {
@@ -6151,7 +6151,7 @@ std::pair<std::string, std::string> simple_wallet::show_outputs_line(const std::
   for (size_t j = 0; j < heights.size(); ++j)
     ostr << (j == highlight_idx ? " *" : " ") << heights[j];
 
-  // visualize the distribution, using the code by moneroexamples onion-monero-viewer
+  // visualize the distribution, using the code by mevacoinexamples onion-mevacoin-viewer
   const uint64_t resolution = 79;
   std::string ring_str(resolution, '_');
   for (size_t j = 0; j < heights.size(); ++j)
@@ -7554,23 +7554,23 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
   {
     // if not mainnet, convert donation address string to the relevant network type
     address_parse_info info;
-    if (!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, MONERO_DONATION_ADDR))
+    if (!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, MEVACOIN_DONATION_ADDR))
     {
-      fail_msg_writer() << tr("Failed to parse donation address: ") << MONERO_DONATION_ADDR;
+      fail_msg_writer() << tr("Failed to parse donation address: ") << MEVACOIN_DONATION_ADDR;
       return true;
     }
     address_str = cryptonote::get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address);
   }
   else
   {
-    address_str = MONERO_DONATION_ADDR;
+    address_str = MEVACOIN_DONATION_ADDR;
   }
   local_args.push_back(address_str);
   local_args.push_back(amount_str);
   if (!payment_id_str.empty())
     local_args.push_back(payment_id_str);
   if (m_wallet->nettype() == cryptonote::MAINNET)
-    message_writer() << (boost::format(tr("Donating %s %s to The MevaCoin Project (%s).")) % amount_str % cryptonote::get_unit(cryptonote::get_default_decimal_point()) % MONERO_DONATION_ADDR).str();
+    message_writer() << (boost::format(tr("Donating %s %s to The MevaCoin Project (%s).")) % amount_str % cryptonote::get_unit(cryptonote::get_default_decimal_point()) % MEVACOIN_DONATION_ADDR).str();
   else
     message_writer() << (boost::format(tr("Donating %s %s to %s.")) % amount_str % cryptonote::get_unit(cryptonote::get_default_decimal_point()) % address_str).str();
   transfer(local_args);
@@ -10645,18 +10645,18 @@ void simple_wallet::list_signers(const std::vector<mms::authorized_signer> &sign
   {
     const mms::authorized_signer &signer = signers[i];
     std::string label = signer.label.empty() ? tr("<not set>") : signer.label;
-    std::string monero_address;
-    if (signer.monero_address_known)
+    std::string mevacoin_address;
+    if (signer.mevacoin_address_known)
     {
-      monero_address = get_account_address_as_str(m_wallet->nettype(), false, signer.monero_address);
+      mevacoin_address = get_account_address_as_str(m_wallet->nettype(), false, signer.mevacoin_address);
     }
     else
     {
-      monero_address = tr("<not set>");
+      mevacoin_address = tr("<not set>");
     }
     std::string transport_address = signer.transport_address.empty() ? tr("<not set>") : signer.transport_address;
     message_writer() << boost::format("%2s %-20s %-s") % (i + 1) % label % transport_address;
-    message_writer() << boost::format("%2s %-20s %-s") % "" % signer.auto_config_token % monero_address;
+    message_writer() << boost::format("%2s %-20s %-s") % "" % signer.auto_config_token % mevacoin_address;
     message_writer() << "";
   }
 }
@@ -10856,7 +10856,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
   {
     transport_address = args[2];
   }
-  boost::optional<cryptonote::account_public_address> monero_address;
+  boost::optional<cryptonote::account_public_address> mevacoin_address;
   LOCK_IDLE_SCOPE();
   mms::multisig_wallet_state state = get_multisig_wallet_state();
   if (args.size() == 4)
@@ -10868,7 +10868,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
       fail_msg_writer() << tr("Invalid MevaCoin address");
       return;
     }
-    monero_address = info.address;
+    mevacoin_address = info.address;
     const std::vector<mms::message> &messages = ms.get_all_messages();
     if ((messages.size() > 0) || state.multisig)
     {
@@ -10876,7 +10876,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
       return;
     }
   }
-  ms.set_signer(state, index, label, transport_address, monero_address);
+  ms.set_signer(state, index, label, transport_address, mevacoin_address);
 }
 
 void simple_wallet::mms_list(const std::vector<std::string> &args)

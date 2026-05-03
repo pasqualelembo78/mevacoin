@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2024, The Monero Project
+// Copyright (c) 2014-2024, The Mevacoin Project
 //
 // All rights reserved.
 //
@@ -35,7 +35,7 @@
 #include <vector>
 
 
-namespace Monero {
+namespace Mevacoin {
 
 class WalletImpl;
 class PendingTransactionImpl : public PendingTransaction

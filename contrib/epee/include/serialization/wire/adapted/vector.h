@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2024, The Monero Project
+// Copyright (c) 2022-2024, The Mevacoin Project
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without modification, are

@@ -1,4 +1,4 @@
-# Copyright (c) 2014-2024, The Monero Project
+# Copyright (c) 2014-2024, The Mevacoin Project
 #
 # All rights reserved.
 #
@@ -31,11 +31,11 @@ set(simplewallet_sources
 
 set(simplewallet_headers)
 
-monero_find_all_headers(simplewallet_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(simplewallet_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(simplewallet
+mevacoin_private_headers(simplewallet
   ${simplewallet_private_headers})
-monero_add_executable(simplewallet
+mevacoin_add_executable(simplewallet
   ${simplewallet_sources}
   ${simplewallet_headers}
   ${simplewallet_private_headers})

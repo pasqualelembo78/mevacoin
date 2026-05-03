@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2024, Monero Research Labs
+// Copyright (c) 2016-2024, Mevacoin Research Labs
 //
 // Author: Shen Noether <shen.noether@gmx.com>
 // 
@@ -35,8 +35,8 @@
 using namespace crypto;
 using namespace std;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "ringct"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "ringct"
 
 namespace rct {
 
