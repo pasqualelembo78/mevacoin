@@ -86,6 +86,12 @@ namespace cryptonote
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const transaction_prefix& tx);
   bool add_additional_tx_pub_keys_to_extra(std::vector<uint8_t>& tx_extra, const std::vector<crypto::public_key>& additional_pub_keys);
   bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const blobdata& extra_nonce);
+
+  // MEVA — Notarizzazione On-Chain
+  bool add_meva_message_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& message);
+  bool add_meva_dochash_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& hash);
+  bool get_meva_message_from_extra(const std::vector<tx_extra_field>& fields, std::string& message);
+  bool get_meva_dochash_from_extra(const std::vector<tx_extra_field>& fields, crypto::hash& hash);
   bool add_mm_merkle_root_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& mm_merkle_root, uint64_t mm_merkle_tree_depth);
   bool remove_field_from_tx_extra(std::vector<uint8_t>& tx_extra, const std::type_info &type);
   void set_payment_id_to_tx_extra_nonce(blobdata& extra_nonce, const crypto::hash& payment_id);

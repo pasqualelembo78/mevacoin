@@ -205,4 +205,39 @@ inline uint64_t calculate_final_reward(uint64_t base_reward, uint64_t height, ti
     return reward;
 }
 
+
+// Controlla se mostrare il messaggio commemorativo
+// - Primo blocco del giorno: SEMPRE
+// - Poi: ogni 10 blocchi (non ad ogni singolo blocco)
+// Il REWARD bonus viene sempre applicato, solo il MESSAGGIO e' limitato
+inline bool should_show_commemorative_message(time_t timestamp) {
+    static int last_shown_day = -1;
+    static int last_shown_year = -1;
+    static int blocks_since_msg = 0;
+
+    struct tm* t = gmtime(&timestamp);
+    if (!t) return true;
+
+    int day = t->tm_yday;
+    int year = t->tm_year;
+
+    if (day != last_shown_day || year != last_shown_year) {
+        // Primo blocco di un nuovo giorno commemorativo
+        last_shown_day = day;
+        last_shown_year = year;
+        blocks_since_msg = 0;
+        return true;  // SEMPRE al primo blocco
+    }
+
+    blocks_since_msg++;
+
+    // Mostra ogni 10 blocchi
+    if (blocks_since_msg >= 10) {
+        blocks_since_msg = 0;
+        return true;
+    }
+
+    return false;
+}
+
 } // namespace meva

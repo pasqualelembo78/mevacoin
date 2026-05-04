@@ -50,6 +50,10 @@
 #define TX_EXTRA_TAG_ADDITIONAL_PUBKEYS     0x04
 #define TX_EXTRA_MYSTERIOUS_MINERGATE_TAG   0xDE
 
+#define TX_EXTRA_MEVA_MESSAGE_TAG           0x4D  // 'M' messaggio on-chain
+#define TX_EXTRA_MEVA_DOCHASH_TAG           0x44  // 'D' hash SHA-256 documento
+#define TX_EXTRA_MEVA_MESSAGE_MAX_COUNT     255
+
 #define TX_EXTRA_NONCE_PAYMENT_ID           0x00
 #define TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID 0x01
 
@@ -183,11 +187,29 @@ namespace cryptonote
     END_SERIALIZE()
   };
 
+  // MEVA — Notarizzazione On-Chain
+  struct tx_extra_meva_message
+  {
+    std::string data;   // max 255 byte UTF-8
+    BEGIN_SERIALIZE()
+      FIELD(data)
+      if(TX_EXTRA_MEVA_MESSAGE_MAX_COUNT < data.size()) return false;
+    END_SERIALIZE()
+  };
+
+  struct tx_extra_meva_dochash
+  {
+    crypto::hash hash;  // SHA-256 del documento (32 byte)
+    BEGIN_SERIALIZE()
+      FIELD(hash)
+    END_SERIALIZE()
+  };
+
   // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
   //   varint size;
   //   varint data[];
-  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_mysterious_minergate> tx_extra_field;
+  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_mysterious_minergate, tx_extra_meva_message, tx_extra_meva_dochash> tx_extra_field;
 }
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding, TX_EXTRA_TAG_PADDING);
@@ -196,3 +218,5 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERGE_MINING_TAG);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_meva_message, TX_EXTRA_MEVA_MESSAGE_TAG);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_meva_dochash, TX_EXTRA_MEVA_DOCHASH_TAG);

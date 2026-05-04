@@ -115,8 +115,10 @@ namespace cryptonote
       int bp = 0; int bm = 1;
 
       if (meva::find_special_date(now, bp, evt_name, evt_msg)) {
+       if (meva::should_show_commemorative_message(now)) {
         LOG_PRINT_L0("[MEVA] " << evt_name << " — " << evt_msg);
         if (bp > 0) LOG_PRINT_L0("[MEVA] Reward bonus: +" << bp << "%");
+       }
       }
 
       if (meva::find_special_block(height, bm, evt_name, evt_msg)) {

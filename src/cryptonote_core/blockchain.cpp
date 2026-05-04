@@ -1424,6 +1424,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
       const char* evt_msg = nullptr;
       int bp = 0; int bm = 1;
       if (meva::find_special_date(block_ts, bp, evt_name, evt_msg)) {
+       if (meva::should_show_commemorative_message(block_ts)) {
         MGINFO("");
         MGINFO("  ============================================");
         MGINFO("  [MEVA] " << evt_name);
@@ -1431,6 +1432,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
         if (bp > 0) MGINFO("  Reward bonus: +" << bp << "%");
         MGINFO("  ============================================");
         MGINFO("");
+       }
       }
       if (meva::find_special_block(block_h, bm, evt_name, evt_msg)) {
         MGINFO("");

@@ -122,6 +122,7 @@ namespace cryptonote
      * \return success status
      */
     bool seed_set_language(const std::vector<std::string> &args = std::vector<std::string>());
+    bool set_interface_language(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_always_confirm_transfers(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_print_ring_members(const std::vector<std::string> &args = std::vector<std::string>());
     bool set_store_tx_info(const std::vector<std::string> &args = std::vector<std::string>());
@@ -172,7 +173,12 @@ namespace cryptonote
     bool transfer(const std::vector<std::string> &args);
     bool sweep_main(uint32_t account, uint64_t below, const std::vector<std::string> &args);
     bool sweep_all(const std::vector<std::string> &args);
-    bool sweep_account(const std::vector<std::string> &args);
+    bool sweep_account(const std::vector<std::string>& args);
+
+    // MEVA Notarizzazione On-Chain
+    bool meva_notarize_message(const std::vector<std::string>& args);
+    bool meva_notarize_document(const std::vector<std::string>& args);
+    bool meva_read_tx(const std::vector<std::string>& args);
     bool sweep_below(const std::vector<std::string> &args);
     bool sweep_single(const std::vector<std::string> &args);
     bool sweep_unmixable(const std::vector<std::string> &args);

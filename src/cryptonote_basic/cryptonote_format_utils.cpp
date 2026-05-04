@@ -729,6 +729,71 @@ namespace cryptonote
     memcpy(&tx_extra[start_pos], extra_nonce.data(), extra_nonce.size());
     return true;
   }
+
+  // ════════════════════════════════════════════════
+  //  MEVA — Notarizzazione On-Chain
+  // ════════════════════════════════════════════════
+
+  bool add_meva_message_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& message)
+  {
+    CHECK_AND_ASSERT_MES(message.size() <= TX_EXTRA_MEVA_MESSAGE_MAX_COUNT, false,
+      "MEVA message too long (max 255 bytes)");
+
+    tx_extra_meva_message msg;
+    msg.data = message;
+    tx_extra_field field = msg;
+
+    std::ostringstream oss;
+    binary_archive<true> oar(oss);
+    if (!::do_serialize(oar, field))
+      return false;
+
+    std::string blob = oss.str();
+    tx_extra.insert(tx_extra.end(), blob.begin(), blob.end());
+    return true;
+  }
+
+  bool add_meva_dochash_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& hash)
+  {
+    tx_extra_meva_dochash dh;
+    dh.hash = hash;
+    tx_extra_field field = dh;
+
+    std::ostringstream oss;
+    binary_archive<true> oar(oss);
+    if (!::do_serialize(oar, field))
+      return false;
+
+    std::string blob = oss.str();
+    tx_extra.insert(tx_extra.end(), blob.begin(), blob.end());
+    return true;
+  }
+
+  bool get_meva_message_from_extra(const std::vector<tx_extra_field>& fields, std::string& message)
+  {
+    for (const auto& f : fields)
+    {
+      if (f.type() == typeid(tx_extra_meva_message))
+      {
+        message = boost::get<tx_extra_meva_message>(f).data;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool get_meva_dochash_from_extra(const std::vector<tx_extra_field>& fields, crypto::hash& hash)
+  {
+    for (const auto& f : fields)
+    {
+      if (f.type() == typeid(tx_extra_meva_dochash))
+      {
+        hash = boost::get<tx_extra_meva_dochash>(f).hash;
+        return true;
+      }
+    }
+    return false;
+  }
   //---------------------------------------------------------------
   bool add_mm_merkle_root_to_tx_extra(std::vector<uint8_t>& tx_extra, const crypto::hash& mm_merkle_root, uint64_t mm_merkle_tree_depth)
   {

@@ -91,6 +91,27 @@
 using namespace std;
 using namespace epee;
 using namespace cryptonote;
+
+// MEVA: Imposta la lingua dell'interfaccia in base alla lingua del wallet
+static void meva_set_interface_language(const std::string& seed_lang) {
+    std::string lang_code;
+    if (seed_lang == "Italiano" || seed_lang == "italiano") lang_code = "it";
+    else if (seed_lang == "Deutsch" || seed_lang == "deutsch") lang_code = "de";
+    else if (seed_lang == "FranÃ§ais" || seed_lang == "French" || seed_lang == "french") lang_code = "fr";
+    else if (seed_lang == "EspaÃ±ol" || seed_lang == "Spanish" || seed_lang == "spanish") lang_code = "es";
+    else if (seed_lang == "Nederlands" || seed_lang == "dutch") lang_code = "nl";
+    else if (seed_lang == "PortuguÃªs" || seed_lang == "Portuguese" || seed_lang == "portuguese") lang_code = "pt-br";
+    else if (seed_lang == "Japanese" || seed_lang == "japanese") lang_code = "ja";
+    else if (seed_lang == "Chinese" || seed_lang == "chinese") lang_code = "zh-cn";
+    else if (seed_lang == "Russian" || seed_lang == "russian") lang_code = "ru";
+    else if (seed_lang == "Esperanto" || seed_lang == "esperanto") lang_code = "eo";
+    else if (seed_lang == "Swedish" || seed_lang == "swedish") lang_code = "sv";
+    else lang_code = "en";  // Default: English
+
+    // i18n_entries.clear() in i18n.cpp svuota le vecchie traduzioni prima del caricamento.
+    // Per English: il file mevacoin_en.qm non esiste, quindi le entries restano vuote = inglese.
+    i18n_set_language("translations", "mevacoin", lang_code);
+}
 using boost::lexical_cast;
 namespace po = boost::program_options;
 typedef cryptonote::simple_wallet sw;
@@ -982,10 +1003,55 @@ bool simple_wallet::seed_set_language(const std::vector<std::string> &args/* = s
     return true;
 
   m_wallet->set_seed_language(std::move(mnemonic_language));
+
+    // MEVA: Aggiorna lingua interfaccia
+    meva_set_interface_language(m_wallet->get_seed_language());
   m_wallet->rewrite(m_wallet_file, password);
   return true;
 }
 
+// MEVA: Cambia solo la lingua dell'interfaccia (senza modificare il seed)
+bool simple_wallet::set_interface_language(const std::vector<std::string> &args)
+{
+  // Mostra la lista delle lingue disponibili
+  std::vector<std::string> language_list_self, language_list_english;
+  const std::vector<std::string> &language_list = m_use_english_language_names ? language_list_english : language_list_self;
+  int language_number = -1;
+  std::string language_choice;
+  crypto::ElectrumWords::get_language_list(language_list_self, false);
+  crypto::ElectrumWords::get_language_list(language_list_english, true);
+  std::cout << tr("List of available languages for the interface:") << std::endl;
+  int ii;
+  std::vector<std::string>::const_iterator it;
+  for (it = language_list.begin(), ii = 0; it != language_list.end(); it++, ii++)
+  {
+    std::cout << ii << " : " << *it << std::endl;
+  }
+  while (language_number < 0)
+  {
+    language_choice = input_line(tr("Enter the number corresponding to the language of your choice"));
+    if (std::cin.eof())
+      return true;
+    try
+    {
+      language_number = std::stoi(language_choice);
+      if (!((language_number >= 0) && (static_cast<unsigned int>(language_number) < language_list.size())))
+      {
+        language_number = -1;
+        fail_msg_writer() << tr("invalid language choice entered. Please try again.\n");
+      }
+    }
+    catch (const std::exception &e)
+    {
+      fail_msg_writer() << tr("invalid language choice entered. Please try again.\n");
+    }
+  }
+  std::string chosen_lang = language_list_self[language_number];
+  meva_set_interface_language(chosen_lang);
+  success_msg_writer() << tr("Interface language set to: ") << chosen_lang;
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
 bool simple_wallet::change_password(const std::vector<std::string> &args)
 { 
   const auto orig_pwd_container = get_and_verify_password();
@@ -3058,25 +3124,31 @@ bool simple_wallet::help(const std::vector<std::string> &args/* = std::vector<st
     message_writer() << "";
     message_writer() << tr("Important commands:");
     message_writer() << "";
-    message_writer() << tr("\"welcome\" - Show welcome message.");
-    message_writer() << tr("\"help all\" - Show the list of all available commands.");
-    message_writer() << tr("\"help <command>\" - Show a command's documentation.");
-    message_writer() << tr("\"apropos <keyword>\" - Show commands related to a keyword.");
+    message_writer() << "\"welcome\" - " << tr("Show welcome message.");
+    message_writer() << "\"help all\" - " << tr("Show the list of all available commands.");
+    message_writer() << "\"help <command>\" - " << tr("Show a command's documentation.");
+    message_writer() << "\"apropos <keyword>\" - " << tr("Show commands related to a keyword.");
     message_writer() << "";
-    message_writer() << tr("\"wallet_info\" - Show wallet main address and other info.");
-    message_writer() << tr("\"balance\" - Show balance.");
-    message_writer() << tr("\"address all\" - Show all addresses.");
-    message_writer() << tr("\"address new\" - Create new subaddress.");
-    message_writer() << tr("\"transfer <address> <amount>\" - Send MEVA to an address.");
-    message_writer() << tr("\"show_transfers [in|out|pending|failed|pool]\" - Show transactions.");
-    message_writer() << tr("\"sweep_all <address>\" - Send whole balance to another wallet.");
-    message_writer() << tr("\"seed\" - Show secret 25 words that can be used to recover this wallet.");
-    message_writer() << tr("\"refresh\" - Synchronize wallet with the MevaCoin network.");
-    message_writer() << tr("\"status\" - Check current status of wallet.");
-    message_writer() << tr("\"version\" - Check software version.");
-    message_writer() << tr("\"exit\" - Exit wallet.");
+    message_writer() << "\"wallet_info\" - " << tr("Show wallet main address and other info.");
+    message_writer() << "\"balance\" - " << tr("Show balance.");
+    message_writer() << "\"address all\" - " << tr("Show all addresses.");
+    message_writer() << "\"address new\" - " << tr("Create new subaddress.");
+    message_writer() << "\"transfer <address> <amount>\" - " << tr("Send MEVA to an address.");
+    message_writer() << "\"show_transfers [in|out|pending|failed|pool]\" - " << tr("Show transactions.");
+    message_writer() << "\"sweep_all <address>\" - " << tr("Send whole balance to another wallet.");
+    message_writer() << "\"seed\" - " << tr("Show secret 25 words that can be used to recover this wallet.");
+    message_writer() << "\"refresh\" - " << tr("Synchronize wallet with the MevaCoin network.");
+    message_writer() << "\"status\" - " << tr("Check current status of wallet.");
+    message_writer() << "\"version\" - " << tr("Check software version.");
+    message_writer() << "\"exit\" - " << tr("Exit wallet.");
     message_writer() << "";
-    message_writer() << tr("\"donate <amount>\" - Donate MEVA to the development team.");
+    message_writer() << "\"donate <amount>\" - " << tr("Donate MEVA to the development team.");
+    message_writer() << "";
+    message_writer() << tr("On-Chain Notarization (MEVA):");
+    message_writer() << "";
+    message_writer() << "\"meva_notarize_message <text>\" - " << tr("Write an immutable message on the blockchain.");
+    message_writer() << "\"meva_notarize_document <file>\" - " << tr("Register a file hash on the blockchain.");
+    message_writer() << "\"meva_read_tx <txid>\" - " << tr("Read MEVA notarization data from a transaction.");
     message_writer() << "";
   }
   else if ((args.size() == 1) && (args.front() == "all"))
@@ -3289,6 +3361,8 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::set_variable, _1),
                            tr(USAGE_SET_VARIABLE),
                            tr("Available options:\n "
+                                  "language\n "
+                                  "  Set the interface language (without changing seed).\n "
                                   "seed language\n "
                                   "  Set the wallet's seed language.\n "
                                   "always-confirm-transfers <1|0>\n "
@@ -3689,6 +3763,21 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::scan_tx, _1),
                            tr(USAGE_SCAN_TX),
                            tr("Scan the transactions given by <txid>(s), processing them and looking for outputs"));
+
+  // MEVA Notarizzazione On-Chain
+  m_cmd_binder.set_handler("meva_notarize_message",
+      boost::bind(&simple_wallet::on_command, this, &simple_wallet::meva_notarize_message, _1),
+      tr("meva_notarize_message <text>"),
+      tr("Write an immutable message on the MevaCoin blockchain"));
+  m_cmd_binder.set_handler("meva_notarize_document",
+      boost::bind(&simple_wallet::on_command, this, &simple_wallet::meva_notarize_document, _1),
+      tr("meva_notarize_document <filepath>"),
+      tr("Register a file hash on the MevaCoin blockchain"));
+  m_cmd_binder.set_handler("meva_read_tx",
+      boost::bind(&simple_wallet::on_command, this, &simple_wallet::meva_read_tx, _1),
+      tr("meva_read_tx <txid>"),
+      tr("Read MEVA notarization data from a transaction"));
+
   m_cmd_binder.set_unknown_command_handler(boost::bind(&simple_wallet::on_command, this, &simple_wallet::on_unknown_command, _1));
   m_cmd_binder.set_empty_command_handler(boost::bind(&simple_wallet::on_empty_command, this));
   m_cmd_binder.set_cancel_handler(boost::bind(&simple_wallet::on_cancelled_command, this));
@@ -3778,6 +3867,12 @@ bool simple_wallet::set_variable(const std::vector<std::string> &args)
     } \
   } while(0)
 
+    // MEVA: Comando "set language" per cambiare solo la lingua dell'interfaccia
+    if (args[0] == "language")
+    {
+      set_interface_language(args);
+      return true;
+    }
     if (args[0] == "seed")
     {
       if (args.size() == 1)
@@ -4850,8 +4945,7 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
 
   success_msg_writer() <<
     "**********************************************************************\n" <<
-    tr("Your wallet has been generated!\n"
-    "To start synchronizing with the daemon, use the \"refresh\" command.\n"
+    tr("To start synchronizing with the daemon, use the \"refresh\" command.\n"
     "Use the \"help\" command to see a simplified list of available commands.\n"
     "Use \"help all\" command to see the list of all available commands.\n"
     "Use \"help <command>\" to see a command's documentation.\n"
@@ -4864,6 +4958,11 @@ boost::optional<epee::wipeable_string> simple_wallet::new_wallet(const boost::pr
   if (!two_random)
   {
     print_seed(electrum_words);
+    // MEVA: Imposta lingua interfaccia per nuovo wallet
+    {
+        std::string wlang = m_wallet->get_seed_language();
+        if (!wlang.empty()) meva_set_interface_language(wlang);
+    }
   }
   success_msg_writer() << "**********************************************************************";
 
@@ -5103,6 +5202,11 @@ boost::optional<epee::wipeable_string> simple_wallet::open_wallet(const boost::p
           "a deprecated version of the wallet. Your wallet file format is being upgraded now.\n");
         m_wallet->rewrite(m_wallet_file, password);
       }
+    }
+    // MEVA: Imposta lingua interfaccia da seed language del wallet aperto
+    {
+        std::string wlang = m_wallet->get_seed_language();
+        if (!wlang.empty()) meva_set_interface_language(wlang);
     }
   }
   catch (const std::exception& e)
@@ -11555,3 +11659,124 @@ bool simple_wallet::mms(const std::vector<std::string> &args)
   return true;
 }
 // End MMS ------------------------------------------------------------------------------------------------
+
+
+// MEVA Notarizzazione On-Chain
+
+bool simple_wallet::meva_notarize_message(const std::vector<std::string>& args)
+{
+  if (args.empty()) { fail_msg_writer() << "Uso: meva_notarize_message <messaggio>"; return true; }
+  std::string message;
+  for (size_t i = 0; i < args.size(); ++i) { if (i > 0) message += " "; message += args[i]; }
+  if (message.size() > 255) { fail_msg_writer() << "Troppo lungo (max 255 byte)"; return true; }
+
+  std::vector<uint8_t> extra;
+  if (!cryptonote::add_meva_message_to_tx_extra(extra, message))
+  { fail_msg_writer() << "Errore tx_extra"; return true; }
+
+  std::vector<cryptonote::tx_destination_entry> dsts;
+  dsts.push_back(cryptonote::tx_destination_entry(1, m_wallet->get_address(), false));
+
+  try {
+    auto ptx_vector = m_wallet->create_transactions_2(dsts,
+        m_wallet->get_min_ring_size() - 1, static_cast<tools::fee_priority>(0), extra,
+        m_current_subaddress_account, {});
+    if (ptx_vector.empty()) { fail_msg_writer() << "Nessuna TX creata"; return true; }
+
+    uint64_t total_fee = 0;
+    for (const auto& ptx : ptx_vector) total_fee += ptx.fee;
+
+    message_writer() << "";
+    message_writer() << "  [MEVA] Notarizzazione Messaggio";
+    message_writer() << "  Messaggio: " << message;
+    message_writer() << "  Fee: " << cryptonote::print_money(total_fee) << " MEVA";
+    message_writer() << "";
+
+    std::string accepted = input_line("Confermare? (S/N): ");
+    if (accepted != "S" && accepted != "s" && accepted != "Y" && accepted != "y")
+    { fail_msg_writer() << "Annullato"; return true; }
+
+    for (auto& ptx : ptx_vector) {
+      m_wallet->commit_tx(ptx);
+      success_msg_writer(true) << "TX: " << epee::string_tools::pod_to_hex(cryptonote::get_transaction_hash(ptx.tx));
+    }
+    success_msg_writer(true) << "Messaggio notarizzato!";
+  } catch (const std::exception& e) { fail_msg_writer() << "Errore: " << e.what(); }
+  return true;
+}
+
+bool simple_wallet::meva_notarize_document(const std::vector<std::string>& args)
+{
+  if (args.empty()) { fail_msg_writer() << "Uso: meva_notarize_document <file>"; return true; }
+  std::string filepath = args[0];
+  std::ifstream file(filepath, std::ios::binary);
+  if (!file.is_open()) { fail_msg_writer() << "File non trovato: " << filepath; return true; }
+  std::ostringstream oss;
+  oss << file.rdbuf();
+  std::string content = oss.str();
+  file.close();
+  if (content.empty()) { fail_msg_writer() << "File vuoto"; return true; }
+
+  crypto::hash file_hash;
+  crypto::cn_fast_hash(content.data(), content.size(), file_hash);
+  std::string hash_hex = epee::string_tools::pod_to_hex(file_hash);
+
+  std::vector<uint8_t> extra;
+  if (!cryptonote::add_meva_dochash_to_tx_extra(extra, file_hash))
+  { fail_msg_writer() << "Errore tx_extra"; return true; }
+
+  std::vector<cryptonote::tx_destination_entry> dsts;
+  dsts.push_back(cryptonote::tx_destination_entry(1, m_wallet->get_address(), false));
+
+  try {
+    auto ptx_vector = m_wallet->create_transactions_2(dsts,
+        m_wallet->get_min_ring_size() - 1, static_cast<tools::fee_priority>(0), extra,
+        m_current_subaddress_account, {});
+    if (ptx_vector.empty()) { fail_msg_writer() << "Nessuna TX creata"; return true; }
+
+    uint64_t total_fee = 0;
+    for (const auto& ptx : ptx_vector) total_fee += ptx.fee;
+
+    message_writer() << "";
+    message_writer() << "  [MEVA] Notarizzazione Documento";
+    message_writer() << "  File: " << filepath;
+    message_writer() << "  Dimensione: " << content.size() << " byte";
+    message_writer() << "  Hash: " << hash_hex;
+    message_writer() << "  Fee: " << cryptonote::print_money(total_fee) << " MEVA";
+    message_writer() << "";
+
+    std::string accepted = input_line("Confermare? (S/N): ");
+    if (accepted != "S" && accepted != "s" && accepted != "Y" && accepted != "y")
+    { fail_msg_writer() << "Annullato"; return true; }
+
+    for (auto& ptx : ptx_vector) {
+      m_wallet->commit_tx(ptx);
+      success_msg_writer(true) << "TX: " << epee::string_tools::pod_to_hex(cryptonote::get_transaction_hash(ptx.tx));
+    }
+    success_msg_writer(true) << "Documento notarizzato! Hash: " << hash_hex;
+  } catch (const std::exception& e) { fail_msg_writer() << "Errore: " << e.what(); }
+  return true;
+}
+
+bool simple_wallet::meva_read_tx(const std::vector<std::string>& args)
+{
+  if (args.empty()) { fail_msg_writer() << "Uso: meva_read_tx <txid>"; return true; }
+  crypto::hash txid;
+  if (!epee::string_tools::hex_to_pod(args[0], txid))
+  { fail_msg_writer() << "TXID non valido"; return true; }
+
+  std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>> payments;
+  m_wallet->get_payments_out(payments, 0, (uint64_t)-1, m_current_subaddress_account, {});
+  for (const auto& p : payments) {
+    if (p.first == txid) {
+      message_writer() << "";
+      message_writer() << "  [MEVA] Lettura Notarizzazione";
+      message_writer() << "  TX: " << args[0];
+      message_writer() << "  Blocco: " << p.second.m_block_height;
+      message_writer() << "";
+      return true;
+    }
+  }
+  fail_msg_writer() << "TX non trovata nella storia del wallet.";
+  return true;
+}

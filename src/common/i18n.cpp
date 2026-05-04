@@ -149,6 +149,10 @@ int i18n_set_language(const char *directory, const char *base, std::string langu
   if (!directory || !base)
     return -1;
 
+  // MEVA: Svuota le traduzioni precedenti prima di caricare le nuove
+  // Senza questo, le vecchie traduzioni restano in memoria quando si cambia lingua
+  i18n_entries.clear();
+
   if (language.empty())
     language = i18n_get_language();
   filename = std::string(directory) + "/" + base + "_" + language + ".qm";
