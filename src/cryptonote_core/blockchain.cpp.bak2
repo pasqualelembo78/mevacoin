@@ -1408,43 +1408,14 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
   }
   if (!get_block_reward(median_weight, cumulative_block_weight, already_generated_coins, base_reward, version))
   {
-    MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
-    return false;
-  }
-
-  // MEVA_SPECIALS_V2 — Sistema blocchi speciali e commemorativi
-  // Applica bonus reward per date speciali e blocchi milestone
-  {
-    time_t block_ts = static_cast<time_t>(b.timestamp);
-    uint64_t block_h = boost::get<txin_gen>(b.miner_tx.vin[0]).height;
-    uint64_t final_reward = meva::calculate_final_reward(base_reward, block_h, block_ts);
-
-    if (final_reward != base_reward) {
-      const char* evt_name = nullptr;
-      const char* evt_msg = nullptr;
-      int bp = 0; int bm = 1;
-      if (meva::find_special_date(block_ts, bp, evt_name, evt_msg)) {
-        MGINFO("");
-        MGINFO("  ============================================");
-        MGINFO("  [MEVA] " << evt_name);
-        MGINFO("  " << evt_msg);
-        if (bp > 0) MGINFO("  Reward bonus: +" << bp << "%");
-        MGINFO("  ============================================");
-        MGINFO("");
       }
-      if (meva::find_special_block(block_h, bm, evt_name, evt_msg)) {
-        MGINFO("");
-        MGINFO("  ********************************************");
-        MGINFO("  [MEVA] " << evt_name);
-        MGINFO("  " << evt_msg);
-        MGINFO("  Reward: x" << bm << " (" << print_money(final_reward) << " MEVA)");
-        MGINFO("  ********************************************");
-        MGINFO("");
-      }
+
       base_reward = final_reward;
     }
   }
-
+    MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
+    return false;
+  }
   if(base_reward + fee < money_in_use)
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward + fee) << "(" << print_money(base_reward) << "+" << print_money(fee) << "), cumulative_block_weight " << cumulative_block_weight);
