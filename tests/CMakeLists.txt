@@ -28,7 +28,7 @@
 # 
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-set(MEVACOIN_WALLET_CRYPTO_BENCH "auto" CACHE STRING "Select wallet crypto libraries for benchmarking")
+set(MEVACOIN_WALLET_CRYPTO_BENCH "cn" CACHE STRING "Select wallet crypto libraries for benchmarking")
 
 # The docs say this only affects grouping in IDEs
 set(folder "tests")
@@ -94,35 +94,12 @@ add_test(
   COMMAND hash-target-tests)
 
 #
-# Configure wallet crypto benchmark
+# Configure wallet crypto benchmark — cn backend only
 #
-if (${MEVACOIN_WALLET_CRYPTO_BENCH} STREQUAL "auto")
-  set(MEVACOIN_WALLET_CRYPTO_BENCH "cn")
-  mevacoin_crypto_autodetect(AVAILABLE BEST)
-  if (DEFINED AVAILABLE)
-    list(APPEND MEVACOIN_WALLET_CRYPTO_BENCH ${AVAILABLE})
-  endif ()
-  message("Wallet crypto bench is using ${MEVACOIN_WALLET_CRYPTO_BENCH}")
-endif ()
-
-list(REMOVE_DUPLICATES MEVACOIN_WALLET_CRYPTO_BENCH)
-list(REMOVE_ITEM MEVACOIN_WALLET_CRYPTO_BENCH "cn") # always used for comparison
 set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "(cn)")
-foreach(BENCH IN LISTS MEVACOIN_WALLET_CRYPTO_BENCH)
-  mevacoin_crypto_valid(${BENCH} VALID)
-  if (NOT VALID)
-    message(FATAL_ERROR "Invalid MEVACOIN_WALLET_CRYPTO_BENCH option ${BENCH}")
-  endif ()
-
-  mevacoin_crypto_get_target(${BENCH} BENCH_LIBRARY)
-  list(APPEND BENCH_OBJECTS $<TARGET_OBJECTS:${BENCH_LIBRARY}>)
-
-  mevacoin_crypto_get_namespace(${BENCH} BENCH_NAMESPACE)
-  set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "${MEVACOIN_WALLET_CRYPTO_BENCH_NAMES}(${BENCH_NAMESPACE})")
-endforeach ()
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/benchmark.h.in" "${MEVACOIN_GENERATED_HEADERS_DIR}/tests/benchmark.h")
-mevacoin_add_minimal_executable(mevacoin-wallet-crypto-bench benchmark.cpp ${BENCH_OBJECTS})
+mevacoin_add_minimal_executable(mevacoin-wallet-crypto-bench benchmark.cpp)
 target_link_libraries(mevacoin-wallet-crypto-bench cncrypto)
 
 add_test(NAME wallet-crypto-bench COMMAND mevacoin-wallet-crypto-bench)

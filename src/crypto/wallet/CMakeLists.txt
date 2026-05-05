@@ -28,36 +28,13 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #
-# Possibly user defined values.
+# Wallet crypto library — use internal cn backend
 #
-set(MEVACOIN_WALLET_CRYPTO_LIBRARY "auto" CACHE STRING "Select a wallet crypto library")
-
-#
-# If the user specified "auto", detect best library defaulting to internal.
-#
-if (${MEVACOIN_WALLET_CRYPTO_LIBRARY} STREQUAL "auto")
-   mevacoin_crypto_autodetect(AVAILABLE BEST)
-  if (DEFINED BEST)
-    message("Wallet crypto is using ${BEST} backend")
-    set(MEVACOIN_WALLET_CRYPTO_LIBRARY ${BEST})
-  else ()
-    message("Defaulting to internal crypto library for wallet")
-    set(MEVACOIN_WALLET_CRYPTO_LIBRARY "cn")
-  endif ()
-endif ()
+set(MEVACOIN_WALLET_CRYPTO_LIBRARY "cn" CACHE STRING "Select a wallet crypto library")
 
 #
 # Configure library target "wallet-crypto" - clients will use this as a
 # library dependency which in turn will depend on the crypto library selected.
 #
-if (${MEVACOIN_WALLET_CRYPTO_LIBRARY} STREQUAL "cn")
-  configure_file(${CMAKE_CURRENT_SOURCE_DIR}/empty.h.in ${MEVACOIN_GENERATED_HEADERS_DIR}/crypto/wallet/ops.h)
-  add_library(wallet-crypto ALIAS cncrypto)
-else ()
-  mevacoin_crypto_generate_header(${MEVACOIN_WALLET_CRYPTO_LIBRARY} "${MEVACOIN_GENERATED_HEADERS_DIR}/crypto/wallet/ops.h")
-  mevacoin_crypto_get_target(${MEVACOIN_WALLET_CRYPTO_LIBRARY} CRYPTO_TARGET)
-  add_library(wallet-crypto $<TARGET_OBJECTS:${CRYPTO_TARGET}>)
-  target_link_libraries(wallet-crypto cncrypto)
-endif ()
-
-
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/empty.h.in ${MEVACOIN_GENERATED_HEADERS_DIR}/crypto/wallet/ops.h)
+add_library(wallet-crypto ALIAS cncrypto)
