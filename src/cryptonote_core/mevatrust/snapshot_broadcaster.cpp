@@ -1,6 +1,6 @@
 // Copyright (c) 2024, The Mevacoin Project
 // snapshot_broadcaster.cpp -- C4-FIX: Quorum multi-proposer ballot (3/5)
-// DEST (nome esatto): src/cryptonote_core/participation/snapshot_broadcaster.cpp
+// DEST (nome esatto): src/cryptonote_core/mevatrust/snapshot_broadcaster.cpp
 //
 // FLUSSO:
 //   1. Nodo A: propose_snapshot() -> firma -> on_receive_vote(self) -> ballot_box_

@@ -1,7 +1,7 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_coinbase_validator.cpp
+// mevatrust_coinbase_validator.cpp
 //
-// Security: validates participation outputs in every received block.
+// Security: validates MevaTrust outputs in every received block.
 // A miner that omits or falsifies these outputs has the block rejected.
 //
 // AGGIORNAMENTO [2026-06-07]:
@@ -51,7 +51,7 @@ bool check_mevatrust_coinbase(
   if (hf_version < HF_VERSION_MEVATRUST_VALIDATION)
     return true;
 
-  // 2. Retrieve expected participation outputs
+  // 2. Retrieve expected MevaTrust outputs
   uint64_t expected_miner_reward = 0;
   std::vector<NodeCoinbaseReward> expected =
     build_expected_mevatrust_outputs(height, total_reward, expected_miner_reward);
@@ -106,7 +106,7 @@ bool check_mevatrust_coinbase(
       error_msg = std::string("Participation coinbase missing output of amount ")
                 + std::to_string(exp_amt)
                 + " at height " + std::to_string(height)
-                + ". Expected " + std::to_string(expected.size()) + " participation output(s).";
+                + ". Expected " + std::to_string(expected.size()) + " MevaTrust output(s).";
       MERROR(error_msg);
       return false;
     }

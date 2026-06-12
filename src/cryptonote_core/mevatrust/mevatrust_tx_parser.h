@@ -1,6 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_tx_parser.h — FASE 2: On-chain registration scanner
-// Dest: src/cryptonote_core/participation/participation_tx_parser.h
+// mevatrust_tx_parser.h — FASE 2: On-chain registration scanner
 #pragma once
 #include <vector>
 #include <cstdint>

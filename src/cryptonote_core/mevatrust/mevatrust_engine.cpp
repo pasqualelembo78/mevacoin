@@ -1,11 +1,13 @@
 // Copyright (c) 2024, The Mevacoin Project
-// Participation System - MevaTrustEngine Implementation
+// MevaTrustEngine Implementation
 
 #include "mevatrust_engine.h"
 #include "node_registry.h"
 #include "string_tools.h"
+#include "misc_log_ex.h"
 #include <ctime>
 #include <algorithm>
+#include <fstream>
 #include <sys/stat.h>
 
 namespace cryptonote {
@@ -302,21 +304,162 @@ MevaTrustEngine::MevaTrustParameters MevaTrustEngine::get_parameters() const {
 // PERSISTENCE & PRUNING
 // ============================================================================
 
-bool MevaTrustEngine::save_to_disk() const { return true; }
-bool MevaTrustEngine::load_from_disk()      { return true; }
-bool MevaTrustEngine::sync_database()       { return true; }
+static void write_u64(std::ofstream& f, uint64_t v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+static void write_u32(std::ofstream& f, uint32_t v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+static void write_u8(std::ofstream& f, uint8_t v)   { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+static void write_float(std::ofstream& f, float v)   { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); }
+static void write_bool(std::ofstream& f, bool v)     { uint8_t b = v ? 1 : 0; f.write(reinterpret_cast<const char*>(&b), sizeof(b)); }
+static void write_str(std::ofstream& f, const std::string& s) {
+    uint32_t len = static_cast<uint32_t>(s.size());
+    write_u32(f, len);
+    f.write(s.data(), len);
+}
+
+static uint64_t read_u64(std::ifstream& f) { uint64_t v{}; f.read(reinterpret_cast<char*>(&v), sizeof(v)); return v; }
+static uint32_t read_u32(std::ifstream& f) { uint32_t v{}; f.read(reinterpret_cast<char*>(&v), sizeof(v)); return v; }
+static uint8_t  read_u8(std::ifstream& f)  { uint8_t v{};  f.read(reinterpret_cast<char*>(&v), sizeof(v));  return v; }
+static float    read_float(std::ifstream& f) { float v{}; f.read(reinterpret_cast<char*>(&v), sizeof(v)); return v; }
+static bool     read_bool(std::ifstream& f)  { uint8_t b{}; f.read(reinterpret_cast<char*>(&b), sizeof(b)); return b != 0; }
+static std::string read_str(std::ifstream& f) {
+    uint32_t len = read_u32(f);
+    std::string s(len, '\0');
+    f.read(s.data(), len);
+    return s;
+}
+
+bool MevaTrustEngine::save_to_disk() const {
+    std::lock_guard<std::mutex> lock(cache_lock_);
+    try {
+        // Save uptime_history_
+        {
+            std::string path = db_path_ + "/uptime.dat";
+            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            if (!f) { MERROR("save_to_disk: cannot open " << path); return false; }
+            write_u32(f, static_cast<uint32_t>(uptime_history_.size()));
+            for (const auto& [key, events] : uptime_history_) {
+                write_u8(f, static_cast<uint8_t>(key.size()));
+                f.write(key.data(), key.size());
+                write_u32(f, static_cast<uint32_t>(events.size()));
+                for (const auto& ev : events) {
+                    write_u64(f, ev.timestamp);
+                    write_bool(f, ev.online);
+                    write_u64(f, ev.block_height);
+                    write_u32(f, ev.peer_count);
+                    write_u32(f, ev.response_time_ms);
+                    write_str(f, ev.ip_address);
+                }
+            }
+        }
+        // Save score_cache_
+        {
+            std::string path = db_path_ + "/scores.dat";
+            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            if (!f) { MERROR("save_to_disk: cannot open " << path); return false; }
+            write_u32(f, static_cast<uint32_t>(score_cache_.size()));
+            for (const auto& [key, score] : score_cache_) {
+                write_u8(f, static_cast<uint8_t>(key.size()));
+                f.write(key.data(), key.size());
+                write_u64(f, score.period_height);
+                write_u64(f, score.period_start_height);
+                write_float(f, score.uptime_score);
+                write_float(f, score.sync_score);
+                write_float(f, score.responsiveness_score);
+                write_float(f, score.activity_score);
+                write_float(f, score.total_score);
+                write_u32(f, score.challenges_passed);
+                write_u32(f, score.challenges_total);
+                write_u64(f, score.recorded_at);
+            }
+        }
+        return true;
+    } catch (const std::exception& e) {
+        MERROR("save_to_disk failed: " << e.what());
+        return false;
+    }
+}
+
+bool MevaTrustEngine::load_from_disk() {
+    std::lock_guard<std::mutex> lock(cache_lock_);
+    try {
+        // Load uptime_history_
+        {
+            std::string path = db_path_ + "/uptime.dat";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) { MDEBUG("load_from_disk: no uptime.dat, clean start"); }
+            else {
+                uptime_history_.clear();
+                uint32_t count = read_u32(f);
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint8_t klen = read_u8(f);
+                    std::string key(klen, '\0');
+                    f.read(key.data(), klen);
+                    uint32_t evcount = read_u32(f);
+                    std::vector<UptimeEvent> events(evcount);
+                    for (uint32_t j = 0; j < evcount; ++j) {
+                        UptimeEvent ev;
+                        ev.timestamp        = read_u64(f);
+                        ev.online           = read_bool(f);
+                        ev.block_height     = read_u64(f);
+                        ev.peer_count       = read_u32(f);
+                        ev.response_time_ms = read_u32(f);
+                        ev.ip_address       = read_str(f);
+                        events[j] = ev;
+                    }
+                    uptime_history_[key] = std::move(events);
+                }
+            }
+        }
+        // Load score_cache_
+        {
+            std::string path = db_path_ + "/scores.dat";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) { MDEBUG("load_from_disk: no scores.dat, clean start"); }
+            else {
+                score_cache_.clear();
+                uint32_t count = read_u32(f);
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint8_t klen = read_u8(f);
+                    std::string key(klen, '\0');
+                    f.read(key.data(), klen);
+                    MevaTrustScoreSnapshot score;
+                    score.period_height        = read_u64(f);
+                    score.period_start_height  = read_u64(f);
+                    score.uptime_score         = read_float(f);
+                    score.sync_score           = read_float(f);
+                    score.responsiveness_score = read_float(f);
+                    score.activity_score       = read_float(f);
+                    score.total_score          = read_float(f);
+                    score.challenges_passed    = read_u32(f);
+                    score.challenges_total     = read_u32(f);
+                    score.recorded_at          = read_u64(f);
+                    score_cache_[key] = score;
+                }
+            }
+        }
+        return true;
+    } catch (const std::exception& e) {
+        MERROR("load_from_disk failed: " << e.what());
+        return false;
+    }
+}
+
+bool MevaTrustEngine::sync_database()       { return save_to_disk(); }
 bool MevaTrustEngine::open_database()       { return true; }
-bool MevaTrustEngine::close_database()      { return true; }
+bool MevaTrustEngine::close_database()      { return save_to_disk(); }
 bool MevaTrustEngine::load_uptime_history(const crypto::hash&) { return true; }
 bool MevaTrustEngine::save_uptime_history(const crypto::hash&) { return true; }
 
 bool MevaTrustEngine::prune_old_data(uint64_t keep_before_height) {
     std::lock_guard<std::mutex> lock(cache_lock_);
+    const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    const uint64_t max_age_secs = 90 * 86400; // 90 days
     for (auto& kv : uptime_history_) {
         auto& ev = kv.second;
         ev.erase(std::remove_if(ev.begin(), ev.end(),
-            [keep_before_height](const UptimeEvent& e){
-                return e.block_height > 0 && e.block_height < keep_before_height;
+            [keep_before_height, now, max_age_secs](const UptimeEvent& e) {
+                if (e.block_height > 0)
+                    return e.block_height < keep_before_height;
+                return (now > e.timestamp) && (now - e.timestamp) > max_age_secs;
             }), ev.end());
     }
     return true;

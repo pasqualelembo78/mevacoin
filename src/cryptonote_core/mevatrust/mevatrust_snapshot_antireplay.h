@@ -1,8 +1,8 @@
 // Copyright (c) 2024, The Mevacoin Project
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// participation_snapshot_antireplay.h — Anti-replay LMDB-backed
-// DROP-IN: src/cryptonote_core/participation/participation_snapshot_antireplay.h
+// mevatrust_snapshot_antireplay.h — Anti-replay LMDB-backed
+// DROP-IN: src/cryptonote_core/mevatrust/mevatrust_snapshot_antireplay.h
 //
 // LMDB table: PART_ANTIREPLAY
 //   key  = period[4] || height[8]  (12 bytes, ordine little-endian del processo)
@@ -112,23 +112,29 @@ inline void AntiReplayDB::record_snapshot(uint64_t height, uint32_t period) {
     // Pruning: mantieni almeno gli ultimi 2000 periodi (~480k blocchi)
     // NON rimuove mai entry con altezza < 10000 blocchi dalla current.
     if (m_seen.size() >= 100000) {
-        auto it = m_seen.begin();
         uint64_t removed = 0;
         uint64_t const safety_margin = (height > 10000) ? height - 10000 : 0;
-        while (it != m_seen.end() && removed < 200 && m_seen.size() - removed > 50000) {
+        std::vector<std::pair<uint64_t, std::string>> candidates;
+        candidates.reserve(m_seen.size());
+        for (const auto& entry : m_seen) {
             uint64_t entry_height = 0;
-            memcpy(&entry_height, it->first.data() + 4, 8);
-            if (entry_height >= safety_margin)
+            memcpy(&entry_height, entry.first.data() + 4, 8);
+            if (entry_height < safety_margin)
+                candidates.emplace_back(entry_height, entry.first);
+        }
+        std::sort(candidates.begin(), candidates.end());
+        for (const auto& [h, key] : candidates) {
+            if (removed >= 200 || m_seen.size() - removed <= 50000)
                 break;
             if (m_db_open && m_env) {
                 try {
                     MDB_txn* txn = MevaTrustLMDB::begin_write(m_env);
-                    MDB_val dk{ it->first.size(), const_cast<char*>(it->first.data()) };
+                    MDB_val dk{ key.size(), const_cast<char*>(key.data()) };
                     mdb_del(txn, m_dbi, &dk, nullptr);
                     mdb_txn_commit(txn);
                 } catch (...) {}
             }
-            it = m_seen.erase(it);
+            m_seen.erase(key);
             ++removed;
         }
     }

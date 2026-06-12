@@ -1,5 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_types.h — Shared types for the participation system
+// mevatrust_types.h — Shared types for the MevaTrust system
 #pragma once
 #include <string>
 #include <cstdint>

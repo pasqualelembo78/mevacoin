@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // reward_distributor.cpp — LMDB-backed (replaces flat binary persistence)
-// DROP-IN: src/cryptonote_core/participation/reward_distributor.cpp
+// DROP-IN: src/cryptonote_core/mevatrust/reward_distributor.cpp
 //
 // LMDB tables:
 //   PART_POOL    key="pool"[4]           value=PoolState (8+8+8+8+4 = 36 bytes)
 //   PART_REWARDS key=node_id[32]         value=packed RewardRecord (DUPSORT, ordered by height)
 //                dup key=block_height[8] (big-endian for correct ordering)
 //
-// Migration: se participation_pool.dat e/o participation_rewards.bin esistono,
+// Migration: se pool.dat e/o rewards.bin esistono,
 //            vengono importati e rinominati *.migrated.
 
 #include "reward_distributor.h"
@@ -289,7 +289,7 @@ bool RewardDistributor::distribute_rewards(std::shared_ptr<MevaTrustEngine> engi
 
         PendingCoinbaseOutput pco;
         pco.node_id_str   = nid;
-        pco.wallet_address= ""; // filled by participation_manager using node_registry
+        pco.wallet_address= ""; // filled by mevatrust_manager using node_registry
         pco.amount        = share;
         pco.score         = snap.total_score;
         m_pending_outputs.push_back(std::move(pco));

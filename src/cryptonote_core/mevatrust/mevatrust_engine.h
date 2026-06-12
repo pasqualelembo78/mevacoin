@@ -14,7 +14,7 @@
 namespace cryptonote {
 
 // ============================================================================
-// PARTICIPATION SCORE STRUCTURES
+// MEVATRUST SCORE STRUCTURES
 // ============================================================================
 
 struct MevaTrustScoreSnapshot {
@@ -36,7 +36,7 @@ struct MevaTrustScoreSnapshot {
   // Timestamps
   uint64_t recorded_at;
   
-  // Serialization for storage
+  // Serialization for storage (KV format for RPC, raw binary for persistence)
   BEGIN_KV_SERIALIZE_MAP()
     KV_SERIALIZE(period_height)
     KV_SERIALIZE(period_start_height)
@@ -61,10 +61,20 @@ struct UptimeEvent {
   uint32_t peer_count;
   uint32_t response_time_ms;
   std::string ip_address;
+
+  // Serialization for storage (raw binary for persistence)
+  BEGIN_KV_SERIALIZE_MAP()
+    KV_SERIALIZE(timestamp)
+    KV_SERIALIZE(online)
+    KV_SERIALIZE(block_height)
+    KV_SERIALIZE(peer_count)
+    KV_SERIALIZE(response_time_ms)
+    KV_SERIALIZE(ip_address)
+  END_KV_SERIALIZE_MAP()
 };
 
 // ============================================================================
-// PARTICIPATION ENGINE
+// MEVATRUST ENGINE
 // ============================================================================
 
 class MevaTrustEngine {

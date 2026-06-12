@@ -1,6 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_tx_parser.cpp — FASE 2
-// Dest: src/cryptonote_core/participation/participation_tx_parser.cpp
+// mevatrust_tx_parser.cpp — FASE 2
 #include "mevatrust_tx_parser.h"
 #include "serialization/binary_utils.h"
 #include "crypto/crypto.h"
@@ -51,14 +50,25 @@ static bool pack_blob(uint8_t tag, const std::string& blob, std::vector<uint8_t>
     out.insert(out.end(), blob.begin(), blob.end()); return true;
 }
 
+static bool parse_tagged(const transaction& tx, uint8_t tag, const std::string& name, auto& out) {
+    try {
+        std::vector<uint8_t> b;
+        if (!find_mevatrust_tag(tx.extra, tag, b)) return false;
+        return ::serialization::parse_binary(std::string(b.begin(),b.end()), out);
+    } catch (const std::exception& e) {
+        MWARNING("mevatrust parser: " << name << " failed: " << e.what());
+        return false;
+    }
+}
+
 bool parse_mevatrust_registration_from_tx(const transaction& tx, tx_extra_mevatrust_registration& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_REGISTRATION, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_REGISTRATION, "registration", out);
 }
 bool parse_mevatrust_deregister_from_tx(const transaction& tx, tx_extra_mevatrust_deregister& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_DEREGISTER, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_DEREGISTER, "deregister", out);
 }
 bool parse_mevatrust_snapshot_from_tx(const transaction& tx, tx_extra_mevatrust_snapshot& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_SNAPSHOT, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_SNAPSHOT, "snapshot", out);
 }
 
 bool build_mevatrust_registration_extra(const tx_extra_mevatrust_registration& reg, std::vector<uint8_t>& o) { std::string b; tx_extra_mevatrust_registration c=reg; if (!::serialization::dump_binary(c,b)) return false; return pack_blob(TX_EXTRA_TAG_MEVATRUST_REGISTRATION,b,o); }
@@ -66,14 +76,14 @@ bool build_mevatrust_deregister_extra(const tx_extra_mevatrust_deregister& dereg
 bool build_mevatrust_snapshot_extra(const tx_extra_mevatrust_snapshot& snap, std::vector<uint8_t>& o) { std::string b; tx_extra_mevatrust_snapshot c=snap; if (!::serialization::dump_binary(c,b)) return false; return pack_blob(TX_EXTRA_TAG_MEVATRUST_SNAPSHOT,b,o); }
 
 bool verify_registration_signature(const tx_extra_mevatrust_registration& reg) {
-    try { return crypto::check_signature(registration_message_hash(reg.node_id, reg.node_pubkey), reg.wallet_pubkey, reg.signature); } catch (...) { return false; }
+    try { return crypto::check_signature(registration_message_hash(reg.node_id, reg.node_pubkey), reg.wallet_pubkey, reg.signature); } catch (const std::exception& e) { MWARNING("mevatrust: verify_registration_signature failed: " << e.what()); return false; }
 }
 bool verify_deregister_signature(const tx_extra_mevatrust_deregister& dereg) {
-    try { return crypto::check_signature(deregister_message_hash(dereg.node_id), dereg.wallet_pubkey, dereg.signature); } catch (...) { return false; }
+    try { return crypto::check_signature(deregister_message_hash(dereg.node_id), dereg.wallet_pubkey, dereg.signature); } catch (const std::exception& e) { MWARNING("mevatrust: verify_deregister_signature failed: " << e.what()); return false; }
 }
 
 bool parse_mevatrust_circle_from_tx(const transaction& tx, tx_extra_mevatrust_circle& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_CIRCLE, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CIRCLE, "circle", out);
 }
 
 bool build_mevatrust_circle_extra(const tx_extra_mevatrust_circle& op, std::vector<uint8_t>& o) {
@@ -86,36 +96,36 @@ bool verify_circle_signature(const tx_extra_mevatrust_circle& op) {
         crypto::hash h = circle_message_hash(op.circle_id, static_cast<uint8_t>(op.op_type),
                                               op.target_pubkey, op.circle_name);
         return crypto::check_signature(h, op.signer_pubkey, op.signature);
-    } catch (...) { return false; }
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_circle_signature failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA4: Penalty ──────────────────────────────────────────────────────
 bool parse_mevatrust_penalty_from_tx(const transaction& tx, tx_extra_mevatrust_penalty& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_PENALTY, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_PENALTY, "penalty", out);
 }
 bool build_mevatrust_penalty_extra(const tx_extra_mevatrust_penalty& p, std::vector<uint8_t>& o) {
     std::string b; tx_extra_mevatrust_penalty c = p; if (!::serialization::dump_binary(c,b)) return false;
     return pack_blob(TX_EXTRA_TAG_MEVATRUST_PENALTY, b, o);
 }
 bool verify_penalty_signature(const tx_extra_mevatrust_penalty& p) {
-    try { return crypto::check_signature(penalty_message_hash(p), p.signer_pubkey, p.signature); } catch (...) { return false; }
+    try { return crypto::check_signature(penalty_message_hash(p), p.signer_pubkey, p.signature); } catch (const std::exception& e) { MWARNING("mevatrust: verify_penalty_signature failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA5: Uptime Commitment ───────────────────────────────────────────
 bool parse_mevatrust_uptime_from_tx(const transaction& tx, tx_extra_mevatrust_uptime& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_UPTIME, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_UPTIME, "uptime", out);
 }
 bool build_mevatrust_uptime_extra(const tx_extra_mevatrust_uptime& u, std::vector<uint8_t>& o) {
     std::string b; tx_extra_mevatrust_uptime c = u; if (!::serialization::dump_binary(c,b)) return false;
     return pack_blob(TX_EXTRA_TAG_MEVATRUST_UPTIME, b, o);
 }
 bool verify_uptime_signature(const tx_extra_mevatrust_uptime& u) {
-    try { return crypto::check_signature(uptime_message_hash(u), u.node_pubkey, u.signature); } catch (...) { return false; }
+    try { return crypto::check_signature(uptime_message_hash(u), u.node_pubkey, u.signature); } catch (const std::exception& e) { MWARNING("mevatrust: verify_uptime_signature failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA6: Challenge Result ────────────────────────────────────────────
 bool parse_mevatrust_challenge_from_tx(const transaction& tx, tx_extra_mevatrust_challenge& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_CHALLENGE, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CHALLENGE, "challenge", out);
 }
 bool build_mevatrust_challenge_extra(const tx_extra_mevatrust_challenge& c, std::vector<uint8_t>& o) {
     std::string b; tx_extra_mevatrust_challenge ch = c; if (!::serialization::dump_binary(ch,b)) return false;
@@ -127,12 +137,12 @@ bool verify_challenge_signatures(const tx_extra_mevatrust_challenge& c) {
         if (!crypto::check_signature(h, c.challenger_pubkey, c.challenger_sig)) return false;
         if (!crypto::check_signature(h, c.challenged_pubkey, c.challenged_sig)) return false;
         return true;
-    } catch (...) { return false; }
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_challenge_signatures failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA7: State Root ───────────────────────────────────────────────────
 bool parse_mevatrust_state_root_from_tx(const transaction& tx, tx_extra_mevatrust_state_root& out) {
-    try { std::vector<uint8_t> b; if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_STATE_ROOT, b)) return false; return ::serialization::parse_binary(std::string(b.begin(),b.end()), out); } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_STATE_ROOT, "state_root", out);
 }
 bool build_mevatrust_state_root_extra(const tx_extra_mevatrust_state_root& sr, std::vector<uint8_t>& o) {
     std::string b; tx_extra_mevatrust_state_root c = sr; if (!::serialization::dump_binary(c,b)) return false;
@@ -141,11 +151,7 @@ bool build_mevatrust_state_root_extra(const tx_extra_mevatrust_state_root& sr, s
 
 // ── Tag 0xA8: Store ─────────────────────────────────────────────────────────
 bool parse_mevatrust_store_from_tx(const transaction& tx, tx_extra_mevatrust_store& out) {
-    try {
-        std::vector<uint8_t> b;
-        if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_STORE, b)) return false;
-        return ::serialization::parse_binary(std::string(b.begin(),b.end()), out);
-    } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_STORE, "store", out);
 }
 
 bool build_mevatrust_store_extra(const tx_extra_mevatrust_store& op, std::vector<uint8_t>& o) {
@@ -158,16 +164,12 @@ bool verify_store_signature(const tx_extra_mevatrust_store& op) {
     try {
         crypto::hash h = store_message_hash(op);
         return crypto::check_signature(h, op.owner_pubkey, op.owner_sig);
-    } catch (...) { return false; }
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_store_signature failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA9: Circle Vote ───────────────────────────────────────────────────
 bool parse_mevatrust_circle_vote_from_tx(const transaction& tx, tx_extra_mevatrust_circle_vote& out) {
-    try {
-        std::vector<uint8_t> b;
-        if (!find_mevatrust_tag(tx.extra, TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE, b)) return false;
-        return ::serialization::parse_binary(std::string(b.begin(),b.end()), out);
-    } catch (...) { return false; }
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE, "circle_vote", out);
 }
 
 bool build_mevatrust_circle_vote_extra(const tx_extra_mevatrust_circle_vote& op, std::vector<uint8_t>& o) {
@@ -180,7 +182,7 @@ bool verify_circle_vote_signature(const tx_extra_mevatrust_circle_vote& op) {
     try {
         crypto::hash h = circle_vote_message_hash(op);
         return crypto::check_signature(h, op.signer_pubkey, op.signature);
-    } catch (...) { return false; }
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_circle_vote_signature failed: " << e.what()); return false; }
 }
 
 }} // namespace cryptonote::mevatrust
