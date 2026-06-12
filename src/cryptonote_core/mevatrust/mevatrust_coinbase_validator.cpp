@@ -19,8 +19,8 @@
 #include "string_tools.h"
 #include <algorithm>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.validator"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.validator"
 
 namespace cryptonote {
 

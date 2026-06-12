@@ -37,8 +37,8 @@
 #include "common/pruning.h"
 #include "block_queue.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "cn.block_queue"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "cn.block_queue"
 
 namespace cryptonote
 {

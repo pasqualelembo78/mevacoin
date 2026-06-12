@@ -29,8 +29,8 @@
 #include <cstring>
 #include <sys/stat.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.badges"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.badges"
 
 static constexpr uint64_t LEGACY_BADGE_MAGIC   = 0x4D455641424144FFULL;
 static constexpr uint32_t LEGACY_BADGE_VERSION = 1;

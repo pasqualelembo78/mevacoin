@@ -12,8 +12,8 @@
 #include <cstring>
 #include <sys/stat.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.circle"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.circle"
 
 namespace cryptonote {
 using namespace mevatrust;

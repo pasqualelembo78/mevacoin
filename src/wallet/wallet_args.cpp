@@ -40,8 +40,8 @@
 #include <crtdbg.h>
 #endif
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "wallet.wallet2"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "wallet.wallet2"
 
 // workaround for a suspected bug in pthread/kernel on MacOS X
 #ifdef __APPLE__
@@ -112,7 +112,7 @@ namespace wallet_args
 
 
     std::string lang = i18n_get_language();
-i18n_set_language("translations", "monero", lang);  // ← SPOSTATO QUI!
+i18n_set_language("translations", "mevacoin", lang);  // ← SPOSTATO QUI!
 
     tools::on_startup();
 #ifdef NDEBUG
@@ -146,7 +146,7 @@ i18n_set_language("translations", "monero", lang);  // ← SPOSTATO QUI!
 
       if (command_line::get_arg(vm, command_line::arg_help))
       {
-        Print(print) << "MevaCoin '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")" << ENDL;
+        Print(print) << "MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")" << ENDL;
         Print(print) << wallet_args::tr("This is the command line MevaCoin wallet. It needs to connect to a MevaCoin\n"
 												  "daemon to work correctly.") << ENDL;
         Print(print) << wallet_args::tr("Usage:") << ENDL << "  " << usage;
@@ -156,7 +156,7 @@ i18n_set_language("translations", "monero", lang);  // ← SPOSTATO QUI!
       }
       else if (command_line::get_arg(vm, command_line::arg_version))
       {
-        Print(print) << "Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")";
+        Print(print) << "MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")";
         should_terminate = true;
         return true;
       }
@@ -207,13 +207,13 @@ i18n_set_language("translations", "monero", lang);  // ← SPOSTATO QUI!
     if (!command_line::is_arg_defaulted(vm, arg_max_concurrency))
       tools::set_max_concurrency(command_line::get_arg(vm, arg_max_concurrency));
 
-    Print(print) << "Monero '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")";
+    Print(print) << "MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")";
 
     if (!command_line::is_arg_defaulted(vm, arg_log_level))
       MINFO("Setting log level = " << command_line::get_arg(vm, arg_log_level));
     else
     {
-      const char *logs = getenv("MONERO_LOGS");
+      const char *logs = getenv("MEVACOIN_LOGS");
       MINFO("Setting log levels = " << (logs ? logs : "<default>"));
     }
     MINFO(wallet_args::tr("Logging to: ") << log_path);

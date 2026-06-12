@@ -35,8 +35,8 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "p2p.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "daemon"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "daemon"
 
 namespace daemonize
 {

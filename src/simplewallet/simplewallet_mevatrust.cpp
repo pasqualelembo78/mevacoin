@@ -17,7 +17,7 @@
 //
 // FIX [2026-06-08]: crypto_sign_ed25519_seed_keypair -> secret_key_to_public_key
 //   Motivo: il demone genera la node_signing_key con crypto::generate_keys()
-//   (chiave Monero). crypto_sign_ed25519_seed_keypair deriva una chiave
+//   (chiave MevaCoin). crypto_sign_ed25519_seed_keypair deriva una chiave
 //   Ed25519 DIVERSA dallo stesso seed. Usando secret_key_to_public_key
 //   si ottiene la stessa public key del demone, necessaria per PoA.
 #include "simplewallet.h"
@@ -86,7 +86,7 @@ bool read_node_pubkey(std::string& node_pk_hex) {
     kf.read(reinterpret_cast<char*>(seed), 32);
     if (kf.gcount() != 32) continue;
     kf.close();
-    // Deriva la public key Monero (stessa derivazione usata dal demone)
+    // Deriva la public key MevaCoin (stessa derivazione usata dal demone)
     crypto::secret_key node_sk;
     memcpy(node_sk.data, seed, 32);
     crypto::public_key node_pk;

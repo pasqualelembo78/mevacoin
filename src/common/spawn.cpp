@@ -43,8 +43,8 @@
 #include "util.h"
 #include "spawn.h"
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "spawn"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "spawn"
 
 namespace tools
 {

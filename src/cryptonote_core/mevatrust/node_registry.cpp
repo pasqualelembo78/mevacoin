@@ -20,8 +20,8 @@
 #include <cstring>
 #include <sys/stat.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.registry"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.registry"
 
 static constexpr uint64_t LEGACY_MAGIC_V1  = 0x4D455641524547FFULL;
 static constexpr uint32_t LEGACY_VER1      = 1;

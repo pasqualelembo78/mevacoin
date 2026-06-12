@@ -99,14 +99,14 @@ release-static:
 # ============================================
 cmake-release-lite:
 	mkdir -p $(builddir)/lite/release
-	cd $(builddir)/lite/release && cmake -D MEVA_BUILD_VARIANT=lite -D CMAKE_BUILD_TYPE=Release $(topdir)
+	cd $(builddir)/lite/release && cmake -DMEVA_BUILD_VARIANT=lite -DCMAKE_BUILD_TYPE=Release ../../../../..
 
 release-lite: cmake-release-lite
 	cd $(builddir)/lite/release && cmake --build .
 
 cmake-release-ultra-lite:
 	mkdir -p $(builddir)/ultra-lite/release
-	cd $(builddir)/ultra-lite/release && cmake -D MEVA_BUILD_VARIANT=ultra-lite -D CMAKE_BUILD_TYPE=Release $(topdir)
+	cd $(builddir)/ultra-lite/release && cmake -DMEVA_BUILD_VARIANT=ultra-lite -DCMAKE_BUILD_TYPE=Release ../../../../..
 
 release-ultra-lite: cmake-release-ultra-lite
 	cd $(builddir)/ultra-lite/release && cmake --build .

@@ -31,11 +31,11 @@ set(mnemonics_sources
 
 set(mnemonics_headers)
 
-monero_find_all_headers(mnemonics_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
+mevacoin_find_all_headers(mnemonics_private_headers "${CMAKE_CURRENT_SOURCE_DIR}")
 
-monero_private_headers(mnemonics
+mevacoin_private_headers(mnemonics
   ${mnemonics_private_headers})
-monero_add_library(mnemonics
+mevacoin_add_library(mnemonics
   ${mnemonics_sources}
   ${mnemonics_headers}
   ${mnemonics_private_headers})

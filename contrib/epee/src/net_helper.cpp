@@ -23,7 +23,7 @@ namespace net_utils
 	{
 		// Get a list of endpoints corresponding to the server name.
 		//////////////////////////////////////////////////////////////////////////
-		boost::asio::ip::tcp::resolver resolver(MONERO_GET_EXECUTOR(timeout));
+		boost::asio::ip::tcp::resolver resolver(MEVACOIN_GET_EXECUTOR(timeout));
 
 		bool try_ipv6 = false;
 		boost::asio::ip::tcp::resolver::results_type results{};
@@ -66,7 +66,7 @@ namespace net_utils
 		//////////////////////////////////////////////////////////////////////////
 
 
-		const auto shared = std::make_shared<new_connection>(MONERO_GET_EXECUTOR(timeout));
+		const auto shared = std::make_shared<new_connection>(MEVACOIN_GET_EXECUTOR(timeout));
 		timeout.async_wait([shared] (boost::system::error_code error)
 		{
 			if (error != boost::system::errc::operation_canceled && shared && shared->socket_.is_open())
