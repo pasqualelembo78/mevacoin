@@ -1,0 +1,17 @@
+--- a/src/simplewallet/simplewallet.cpp
++++ b/src/simplewallet/simplewallet.cpp
+@@ -3698,6 +3698,14 @@
+                            tr("Registra questo nodo nella rete MevaCoin per ricevere "
+                               "incentivi uptime. Richiede proof UTXO >= 10 MVC. "
+                               "Uso: register_node"));
++  m_cmd_binder.set_handler("unregister_node",
++                           boost::bind(&simple_wallet::on_command, this,
++                                       &simple_wallet::cmd_unregister_node, _1),
++                           tr("unregister_node <node_id>"),
++                           tr("Rimuove il nodo dalla rete di partecipazione MevaCoin. "
++                              "Il nodo cessa di ricevere incentivi e badge. "
++                              "Richiede conferma interattiva. "
++                              "Uso: unregister_node <node_id_hex>"));
+   m_cmd_binder.set_handler("node_badges",
+                            boost::bind(&simple_wallet::on_command, this,
+                                        &simple_wallet::cmd_get_badges, _1),

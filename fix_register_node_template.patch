@@ -1,0 +1,33 @@
+diff --git a/src/simplewallet/simplewallet_participation.cpp b/src/simplewallet/simplewallet_participation.cpp
+index f01c43671..8cb85d4b6 100644
+--- a/src/simplewallet/simplewallet_participation.cpp
++++ b/src/simplewallet/simplewallet_participation.cpp
+@@ -22,6 +22,13 @@
+ 
+ namespace cryptonote {
+ 
++// RegisterNodeRpcResponse deve essere a livello di namespace (non locale alla funzione)
++// perché BEGIN_KV_SERIALIZE_MAP genera template member functions, vietati in classi locali (C++ standard).
++struct RegisterNodeRpcResponse {
++  rpc::COMMAND_RPC_REGISTER_NODE::response result;
++  BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(result) END_KV_SERIALIZE_MAP()
++};
++
+ static const char* RESET_COLOR = "\033[0m";
+ static const char* badge_color(const std::string& n) {
+   if (n.find("LONG_UPTIME") != std::string::npos) return "\033[35m";
+@@ -180,12 +187,8 @@ bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
+   req.signature = epee::string_tools::pod_to_hex(sig);
+ 
+   // Wrapper per spacchettare la risposta JSON-RPC {"result":{...}}
+-  // invoke_http_json riceve {"id":...,"jsonrpc":...,"result":{success,status,node_id}}
+-  // e cerca i campi al top-level — il wrapper risolve questo con il campo "result"
+-  struct RegisterNodeRpcResponse {
+-    rpc::COMMAND_RPC_REGISTER_NODE::response result;
+-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(result) END_KV_SERIALIZE_MAP()
+-  } wrapped{};
++  // (struct definita a livello di namespace per compatibilità template C++)
++  RegisterNodeRpcResponse wrapped{};
+ 
+   if (!m_wallet->invoke_http_json("/json_rpc", req, wrapped)) {
+     tools::fail_msg_writer() << tr("Errore connessione daemon (controlla che mevacoind sia in esecuzione)");

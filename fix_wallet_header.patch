@@ -1,0 +1,9 @@
+--- a/src/simplewallet/simplewallet.h
++++ b/src/simplewallet/simplewallet.h
+@@ -494,5 +494,6 @@
+     bool cmd_get_uptime(const std::vector<std::string>& args);
+     bool cmd_get_incentive_history(const std::vector<std::string>& args);
+     bool cmd_register_node(const std::vector<std::string>& args);
++    bool cmd_unregister_node(const std::vector<std::string>& args);
+   };
+ }

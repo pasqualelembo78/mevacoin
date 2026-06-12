@@ -1,0 +1,123 @@
+[Unit]
+Description=Mevacoin Daemon with Participation Incentive System
+Documentation=https://github.com/pasqualelembo78/mevacoin
+After=network.target
+
+[Service]
+# ============================================================================
+# ENVIRONMENT & PATHS
+# ============================================================================
+
+# Enable Participation System
+Environment="MEVACOIN_ENABLE_PARTICIPATION=1"
+
+# Node identity configuration
+Environment="MEVACOIN_NODE_WALLET_ADDRESS="
+Environment="MEVACOIN_NODE_PUBKEY="
+Environment="MEVACOIN_PARTICIPATION_SIGNATURE="
+
+# Database paths
+Environment="MEVACOIN_NODE_REGISTRY_DB=/var/lib/mevacoin/node_registry"
+Environment="MEVACOIN_PARTICIPATION_DB=/var/lib/mevacoin/participation"
+Environment="MEVACOIN_UPTIME_DB=/var/lib/mevacoin/uptime"
+Environment="MEVACOIN_BADGE_DB=/var/lib/mevacoin/badges"
+Environment="MEVACOIN_REWARD_DB=/var/lib/mevacoin/rewards"
+
+# Participation parameters
+Environment="MEVACOIN_PARTICIPATION_PORT=18088"
+Environment="MEVACOIN_POOL_PERCENTAGE=0.03"
+Environment="MEVACOIN_DISTRIBUTION_PERIOD=240"
+Environment="MEVACOIN_PARTICIPATION_BIND_IP=0.0.0.0"
+
+# PoA (Proof of Availability) parameters
+Environment="MEVACOIN_POA_CHALLENGE_INTERVAL=36000"
+Environment="MEVACOIN_POA_TIMEOUT_MS=2000"
+Environment="MEVACOIN_POA_CHALLENGES_PER_PERIOD=3"
+
+# Logging
+Environment="MEVACOIN_PARTICIPATION_LOG_LEVEL=INFO"
+
+# ============================================================================
+# EXECUTION & PROCESS MANAGEMENT
+# ============================================================================
+
+Type=simple
+User=mevacoin
+Group=mevacoin
+
+WorkingDirectory=/var/lib/mevacoin
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mevacoind
+
+# Main daemon executable
+ExecStart=/usr/bin/mevacoind \
+    --non-interactive \
+    --rpc-bind-ip=0.0.0.0 \
+    --rpc-bind-port=18081 \
+    --rpc-threads=4 \
+    --confirm-external-bind \
+    --enable-participation \
+    --participation-port=${MEVACOIN_PARTICIPATION_PORT} \
+    --participation-bind-ip=${MEVACOIN_PARTICIPATION_BIND_IP} \
+    --node-registry-db=${MEVACOIN_NODE_REGISTRY_DB} \
+    --participation-db=${MEVACOIN_PARTICIPATION_DB} \
+    --uptime-db=${MEVACOIN_UPTIME_DB} \
+    --badge-db=${MEVACOIN_BADGE_DB} \
+    --reward-db=${MEVACOIN_REWARD_DB} \
+    --pool-percentage=${MEVACOIN_POOL_PERCENTAGE} \
+    --distribution-period=${MEVACOIN_DISTRIBUTION_PERIOD}
+
+# Restart policy
+Restart=always
+RestartSec=10s
+
+# Keep the process alive even if parent dies
+KillMode=mixed
+
+# ============================================================================
+# RESOURCE LIMITS
+# ============================================================================
+
+# File descriptors
+LimitNOFILE=65536
+
+# Max processes per user
+LimitNPROC=4096
+
+# Memory
+MemoryMax=4G
+MemoryHigh=3G
+
+# CPU quota (80% of single core)
+CPUQuota=80%
+
+# ============================================================================
+# SECURITY & ISOLATION
+# ============================================================================
+
+# Filesystem restrictions
+ProtectSystem=strict
+ProtectHome=yes
+
+# Don't allow new privilege escalation
+NoNewPrivileges=true
+
+# Temporary directory
+PrivateTmp=yes
+
+# Device access
+PrivateDevices=yes
+
+# Restrict system calls (optional, uncomment if using seccomp profile)
+# SystemCallFilter=@system-service
+# SystemCallErrorNumber=EPERM
+
+# ============================================================================
+# INSTALL
+# ============================================================================
+
+[Install]
+WantedBy=multi-user.target
+Alias=mevacoind-with-incentives.service
+
