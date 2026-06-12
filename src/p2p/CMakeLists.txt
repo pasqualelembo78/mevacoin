@@ -31,8 +31,8 @@ source_group(p2p FILES ${P2P})
 
 #add_library(p2p ${P2P})
 
-#monero_private_headers(p2p ${P2P})
-monero_add_library(p2p ${P2P})
+#mevacoin_private_headers(p2p ${P2P})
+mevacoin_add_library(p2p ${P2P})
 target_link_libraries(p2p
   PUBLIC
     version

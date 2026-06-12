@@ -11,8 +11,8 @@
 #include <algorithm>
 #include <ctime>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.manager"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.manager"
 
 #include "mevatrust_tx_parser.h"
 #include "penalty.h"

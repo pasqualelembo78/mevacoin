@@ -34,7 +34,7 @@ if (WIN32 OR STATIC)
   add_definitions(-DMINIUPNP_STATICLIB)
 endif ()
 
-function (monero_private_headers group)
+function (mevacoin_private_headers group)
   source_group("${group}\\Private"
     FILES
       ${ARGN})
@@ -76,12 +76,12 @@ function (monero_add_executable name)
       RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
   enable_stack_trace("${name}")
   
-  monero_set_target_no_relink("${name}")
-  monero_set_target_strip    ("${name}")
+  mevacoin_set_target_no_relink("${name}")
+  mevacoin_set_target_strip    ("${name}")
 endfunction ()
 
 include(Version)
-monero_add_library(version SOURCES ${CMAKE_BINARY_DIR}/version.cpp DEPENDS genversion)
+mevacoin_add_library(version SOURCES ${CMAKE_BINARY_DIR}/version.cpp DEPENDS genversion)
 
 add_subdirectory(common)
 add_subdirectory(crypto)

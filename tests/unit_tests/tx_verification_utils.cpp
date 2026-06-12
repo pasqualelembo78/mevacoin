@@ -103,12 +103,12 @@ TEST(tx_verification_utils, ver_input_proofs_rings)
     aether.generate();
 
     // populate inputs
-    rct::xmr_amount total_input_amounts = 0;
+    rct::mvc_amount total_input_amounts = 0;
     std::vector<cryptonote::tx_source_entry> sources;
     sources.reserve(N_INPUTS);
     for (size_t i = 0; i < N_INPUTS; ++i)
     {
-        const rct::xmr_amount in_amount = crypto::rand_range<rct::xmr_amount>(0, COIN) + COIN; // [1, 2] XMR
+        const rct::mvc_amount in_amount = crypto::rand_range<rct::mvc_amount>(0, COIN) + COIN; // [1, 2] XMR
         const size_t real_in_ring_idx = crypto::rand_idx(N_RING_MEMBERS);
 
         // generate one-time address from derivation
@@ -167,8 +167,8 @@ TEST(tx_verification_utils, ver_input_proofs_rings)
     }
 
     // populate destinations
-    const rct::xmr_amount approx_fee = 500000000000; // 0.5 XMR
-    const rct::xmr_amount dest_amount = (total_input_amounts - approx_fee) / N_OUTPUTS;
+    const rct::mvc_amount approx_fee = 500000000000; // 0.5 XMR
+    const rct::mvc_amount dest_amount = (total_input_amounts - approx_fee) / N_OUTPUTS;
     std::vector<cryptonote::tx_destination_entry> destinations;
     destinations.reserve(N_OUTPUTS);
     for (size_t i = 0; i < N_OUTPUTS - 1; ++i)

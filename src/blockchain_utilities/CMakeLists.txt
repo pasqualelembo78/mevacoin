@@ -38,7 +38,7 @@ set(blockchain_import_private_headers
   bootstrap_serialization.h
   )
 
-monero_private_headers(blockchain_import
+mevacoin_private_headers(blockchain_import
 	  ${blockchain_import_private_headers})
 
 set(blockchain_export_sources
@@ -53,7 +53,7 @@ set(blockchain_export_private_headers
   bootstrap_serialization.h
   )
 
-monero_private_headers(blockchain_export
+mevacoin_private_headers(blockchain_export
 	  ${blockchain_export_private_headers})
 
 
@@ -70,7 +70,7 @@ set(blockchain_prune_sources
 
 set(blockchain_prune_private_headers)
 
-monero_private_headers(blockchain_prune
+mevacoin_private_headers(blockchain_prune
 	  ${blockchain_prune_private_headers})
 
 

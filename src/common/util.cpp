@@ -86,8 +86,8 @@ using namespace epee;
 #include <boost/format.hpp>
 #include <openssl/evp.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "util"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "util"
 
 namespace
 {

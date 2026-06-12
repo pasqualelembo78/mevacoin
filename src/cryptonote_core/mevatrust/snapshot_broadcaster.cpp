@@ -17,8 +17,8 @@
 #include <algorithm>
 #include <ctime>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.snapshot"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.snapshot"
 
 namespace cryptonote {
 

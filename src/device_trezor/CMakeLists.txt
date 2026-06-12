@@ -77,10 +77,10 @@ if(DEVICE_TREZOR_READY)
         set(TREZOR_EXTRA_LIBRARIES "log")
     endif()
 
-    monero_private_headers(device_trezor
+    mevacoin_private_headers(device_trezor
             ${device_private_headers})
 
-    monero_add_library(device_trezor
+    mevacoin_add_library(device_trezor
             ${trezor_sources}
             ${trezor_headers}
             ${trezor_private_headers})
@@ -102,7 +102,7 @@ if(DEVICE_TREZOR_READY)
 
 else()
     message(STATUS "Trezor: support disabled")
-    monero_private_headers(device_trezor)
-    monero_add_library(device_trezor device_trezor.cpp)
+    mevacoin_private_headers(device_trezor)
+    mevacoin_add_library(device_trezor device_trezor.cpp)
     target_link_libraries(device_trezor PUBLIC cncrypto)
 endif()

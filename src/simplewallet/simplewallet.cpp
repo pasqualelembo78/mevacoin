@@ -96,8 +96,8 @@ namespace po = boost::program_options;
 typedef cryptonote::simple_wallet sw;
 using tools::fee_priority;
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "wallet.simplewallet"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "wallet.simplewallet"
 
 #define EXTENDED_LOGS_FILE "wallet_details.log"
 
@@ -2284,7 +2284,7 @@ bool simple_wallet::welcome(const std::vector<std::string> &args)
 
 bool simple_wallet::version(const std::vector<std::string> &args)
 {
-  message_writer() << "MevaCoin '" << MONERO_RELEASE_NAME << "' (v" << MONERO_VERSION_FULL << ")";
+  message_writer() << "MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")";
   return true;
 }
 
@@ -7781,16 +7781,16 @@ bool simple_wallet::donate(const std::vector<std::string> &args_)
   {
     // if not mainnet, convert donation address string to the relevant network type
     address_parse_info info;
-    if (!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, MONERO_DONATION_ADDR))
+    if (!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, MEVACOIN_DONATION_ADDR))
     {
-      fail_msg_writer() << tr("Failed to parse donation address: ") << MONERO_DONATION_ADDR;
+      fail_msg_writer() << tr("Failed to parse donation address: ") << MEVACOIN_DONATION_ADDR;
       return true;
     }
     address_str = cryptonote::get_account_address_as_str(m_wallet->nettype(), info.is_subaddress, info.address);
   }
   else
   {
-    address_str = MONERO_DONATION_ADDR;
+    address_str = MEVACOIN_DONATION_ADDR;
   }
   local_args.push_back(address_str);
   local_args.push_back(amount_str);
@@ -10889,18 +10889,18 @@ void simple_wallet::list_signers(const std::vector<mms::authorized_signer> &sign
   {
     const mms::authorized_signer &signer = signers[i];
     std::string label = signer.label.empty() ? tr("<not set>") : signer.label;
-    std::string monero_address;
-    if (signer.monero_address_known)
+    std::string mevacoin_address;
+    if (signer.mevacoin_address_known)
     {
-      monero_address = get_account_address_as_str(m_wallet->nettype(), false, signer.monero_address);
+      mevacoin_address = get_account_address_as_str(m_wallet->nettype(), false, signer.mevacoin_address);
     }
     else
     {
-      monero_address = tr("<not set>");
+      mevacoin_address = tr("<not set>");
     }
     std::string transport_address = signer.transport_address.empty() ? tr("<not set>") : signer.transport_address;
     message_writer() << boost::format("%2s %-20s %-s") % (i + 1) % label % transport_address;
-    message_writer() << boost::format("%2s %-20s %-s") % "" % signer.auto_config_token % monero_address;
+    message_writer() << boost::format("%2s %-20s %-s") % "" % signer.auto_config_token % mevacoin_address;
     message_writer() << "";
   }
 }
@@ -11100,7 +11100,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
   {
     transport_address = args[2];
   }
-  boost::optional<cryptonote::account_public_address> monero_address;
+  boost::optional<cryptonote::account_public_address> mevacoin_address;
   LOCK_IDLE_SCOPE();
   mms::multisig_wallet_state state = get_multisig_wallet_state();
   if (args.size() == 4)
@@ -11112,7 +11112,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
       fail_msg_writer() << tr("Invalid MevaCoin address");
       return;
     }
-    monero_address = info.address;
+    mevacoin_address = info.address;
     const std::vector<mms::message> &messages = ms.get_all_messages();
     if ((messages.size() > 0) || state.multisig)
     {
@@ -11120,7 +11120,7 @@ void simple_wallet::mms_signer(const std::vector<std::string> &args)
       return;
     }
   }
-  ms.set_signer(state, index, label, transport_address, monero_address);
+  ms.set_signer(state, index, label, transport_address, mevacoin_address);
 }
 
 void simple_wallet::mms_list(const std::vector<std::string> &args)

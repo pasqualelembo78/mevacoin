@@ -22,8 +22,8 @@
 #include <algorithm>
 #include <sys/stat.h>
 
-#undef MONERO_DEFAULT_LOG_CATEGORY
-#define MONERO_DEFAULT_LOG_CATEGORY "mevatrust.rewards"
+#undef MEVACOIN_DEFAULT_LOG_CATEGORY
+#define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.rewards"
 
 // Legacy file constants
 static constexpr uint64_t LEGACY_POOL_MAGIC = 0x4D455641524577FFULL;
