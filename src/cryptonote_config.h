@@ -132,14 +132,26 @@
 #define COMMAND_RPC_GET_BLOCKS_FAST_MAX_TX_COUNT        20000
 #define DEFAULT_RPC_MAX_CONNECTIONS_PER_PUBLIC_IP       3
 #define DEFAULT_RPC_MAX_CONNECTIONS_PER_PRIVATE_IP      25
-#define DEFAULT_RPC_MAX_CONNECTIONS                     100
+#if defined(MEVA_ULTRA_LITE_BUILD)
+  #define DEFAULT_RPC_MAX_CONNECTIONS                   10
+#elif defined(MEVA_LITE_BUILD)
+  #define DEFAULT_RPC_MAX_CONNECTIONS                   20
+#else
+  #define DEFAULT_RPC_MAX_CONNECTIONS                   100
+#endif
 #define DEFAULT_RPC_SOFT_LIMIT_SIZE                     25 * 1024 * 1024 // 25 MiB
 #define MAX_RPC_CONTENT_LENGTH                          1048576 // 1 MB
 
 #define P2P_LOCAL_WHITE_PEERLIST_LIMIT                  1000
 #define P2P_LOCAL_GRAY_PEERLIST_LIMIT                   5000
 
-#define P2P_DEFAULT_CONNECTIONS_COUNT                   12
+#if defined(MEVA_ULTRA_LITE_BUILD)
+  #define P2P_DEFAULT_CONNECTIONS_COUNT                 2
+#elif defined(MEVA_LITE_BUILD)
+  #define P2P_DEFAULT_CONNECTIONS_COUNT                 4
+#else
+  #define P2P_DEFAULT_CONNECTIONS_COUNT                 12
+#endif
 #define P2P_DEFAULT_HANDSHAKE_INTERVAL                  60           //secondes
 #define P2P_DEFAULT_PACKET_MAX_SIZE                     50000000     //50000000 bytes maximum packet size
 #define P2P_DEFAULT_PEERS_IN_HANDSHAKE                  250
@@ -172,7 +184,13 @@
 #define RPC_PAYMENTS_DATA_FILENAME              "rpcpayments.bin"
 #define MINER_CONFIG_FILE_NAME                  "miner_conf.json"
 
-#define THREAD_STACK_SIZE                       5 * 1024 * 1024
+#if defined(MEVA_ULTRA_LITE_BUILD)
+  #define THREAD_STACK_SIZE                             2 * 1024 * 1024  // 2MB
+#elif defined(MEVA_LITE_BUILD)
+  #define THREAD_STACK_SIZE                             3 * 1024 * 1024  // 3MB
+#else
+  #define THREAD_STACK_SIZE                             5 * 1024 * 1024  // 5MB
+#endif
 
 #define HF_VERSION_DYNAMIC_FEE                  4
 #define HF_VERSION_MIN_MIXIN_4                  6
@@ -203,7 +221,13 @@
 
 #define HASH_OF_HASHES_STEP                     512
 
-#define DEFAULT_TXPOOL_MAX_WEIGHT               648000000ull // 3 days at 300000, in bytes
+#if defined(MEVA_ULTRA_LITE_BUILD)
+  #define DEFAULT_TXPOOL_MAX_WEIGHT                     50000000ull   // ~50MB
+#elif defined(MEVA_LITE_BUILD)
+  #define DEFAULT_TXPOOL_MAX_WEIGHT                     100000000ull  // ~100MB
+#else
+  #define DEFAULT_TXPOOL_MAX_WEIGHT                     648000000ull  // ~618MB (3 days at 300000)
+#endif
 
 #define BULLETPROOF_MAX_OUTPUTS                 16
 #define BULLETPROOF_PLUS_MAX_OUTPUTS            16

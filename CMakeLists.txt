@@ -393,6 +393,23 @@ if(PER_BLOCK_CHECKPOINT)
   add_definitions("-DPER_BLOCK_CHECKPOINT")
 endif()
 
+# ============================================
+# MEVACOIN BUILD VARIANTS (ultra-lite, lite, full)
+# ============================================
+set(MEVA_BUILD_VARIANT "full" CACHE STRING "MevaCoin build variant: full, lite, ultra-lite")
+set_property(CACHE MEVA_BUILD_VARIANT PROPERTY STRINGS full lite ultra-lite)
+message(STATUS "MevaCoin build variant: ${MEVA_BUILD_VARIANT}")
+
+if(MEVA_BUILD_VARIANT STREQUAL "ultra-lite")
+  message(STATUS "Building MevaCoin ULTRA-LITE variant (minimal resources)")
+  add_definitions("-DMEVA_ULTRA_LITE_BUILD")
+elseif(MEVA_BUILD_VARIANT STREQUAL "lite")
+  message(STATUS "Building MevaCoin LITE variant (reduced resources)")
+  add_definitions("-DMEVA_LITE_BUILD")
+else()
+  message(STATUS "Building MevaCoin FULL variant (all features)")
+endif()
+
 list(INSERT CMAKE_MODULE_PATH 0
   "${CMAKE_SOURCE_DIR}/cmake")
 
