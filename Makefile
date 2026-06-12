@@ -94,6 +94,26 @@ release-static:
 	mkdir -p $(builddir)/release
 	cd $(builddir)/release && cmake -D STATIC=ON -D ARCH="default" -D CMAKE_BUILD_TYPE=Release $(topdir) && cmake --build .
 
+# ============================================
+# MevaCoin Build Variants (ultra-lite, lite, full)
+# ============================================
+cmake-release-lite:
+	mkdir -p $(builddir)/lite/release
+	cd $(builddir)/lite/release && cmake -D MEVA_BUILD_VARIANT=lite -D CMAKE_BUILD_TYPE=Release $(topdir)
+
+release-lite: cmake-release-lite
+	cd $(builddir)/lite/release && cmake --build .
+
+cmake-release-ultra-lite:
+	mkdir -p $(builddir)/ultra-lite/release
+	cd $(builddir)/ultra-lite/release && cmake -D MEVA_BUILD_VARIANT=ultra-lite -D CMAKE_BUILD_TYPE=Release $(topdir)
+
+release-ultra-lite: cmake-release-ultra-lite
+	cd $(builddir)/ultra-lite/release && cmake --build .
+
+release-full: cmake-release
+	cd $(builddir)/release && cmake --build .
+
 coverage:
 	mkdir -p $(builddir)/debug
 	cd $(builddir)/debug && cmake -D BUILD_TESTS=ON -D CMAKE_BUILD_TYPE=Debug -D COVERAGE=ON $(topdir) && $(MAKE) && $(MAKE) test
@@ -117,4 +137,4 @@ clean-all:
 tags:
 	ctags -R --sort=1 --c++-kinds=+p --fields=+iaS --extra=+q --language-force=C++ src contrib tests/gtest
 
-.PHONY: all cmake-debug debug debug-test debug-all cmake-release release release-test release-all clean tags
+.PHONY: all cmake-debug debug debug-test debug-all cmake-release release release-test release-all release-lite release-ultra-lite release-full clean tags
