@@ -1,5 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_manager.cpp
+// mevatrust_manager.cpp
 
 #include "mevatrust_manager.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -826,7 +826,9 @@ std::vector<uint8_t> MevaTrustManager::consume_pending_snapshot_extra()
   m_has_pending_snapshot = false;
   MINFO("[C2] consume_pending_snapshot_extra: "
         << m_pending_snapshot_extra.size() << " bytes consegnati al miner");
-  return std::move(m_pending_snapshot_extra);
+  auto result = std::move(m_pending_snapshot_extra);
+  m_pending_snapshot_extra.clear();
+  return result;
 }
 
 
@@ -989,7 +991,12 @@ crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
         for (const auto& c : circles) {
             state_data.append(reinterpret_cast<const char*>(c.circle_id.data), 32);
             state_data.append(reinterpret_cast<const char*>(c.admin_pubkey.data), 32);
-            for (const auto& m : c.members)
+            auto members = c.members;
+            std::sort(members.begin(), members.end(),
+                [](const crypto::public_key& a, const crypto::public_key& b) {
+                    return memcmp(a.data, b.data, 32) < 0;
+                });
+            for (const auto& m : members)
                 state_data.append(reinterpret_cast<const char*>(m.data), 32);
         }
     }

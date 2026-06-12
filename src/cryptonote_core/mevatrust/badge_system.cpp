@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // badge_system.cpp — LMDB-backed (replaces flat binary persistence)
-// DROP-IN: src/cryptonote_core/participation/badge_system.cpp
+// DROP-IN: src/cryptonote_core/mevatrust/badge_system.cpp
 //
 // LMDB table:
 //   PART_BADGES  key=node_id[32]  value=packed badges array

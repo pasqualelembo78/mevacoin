@@ -3,7 +3,7 @@
 //
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  MEVACOIN — PARTICIPATION SECURITY HARDENING                           ║
-// ║  File: src/cryptonote_core/participation/participation_security.h      ║
+// ║  File: src/cryptonote_core/mevatrust/mevatrust_security.h              ║
 // ║                                                                          ║
 // ║  Protezioni implementate:                                                ║
 // ║    1. Anti-Sybil: deposit minimo MVC per registrazione nodo             ║

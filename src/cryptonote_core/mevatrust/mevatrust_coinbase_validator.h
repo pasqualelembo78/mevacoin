@@ -1,6 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_coinbase_validator.h
-// DROP IN: src/cryptonote_core/participation/
+// mevatrust_coinbase_validator.h
 //
 // AGGIORNAMENTO [2026-06-07]:
 //   Aggiunta dichiarazione construct_miner_tx_with_mevatrust()
@@ -18,7 +17,7 @@ namespace cryptonote {
 
 constexpr uint8_t HF_VERSION_MEVATRUST_VALIDATION = 13;
 
-/// Validates participation outputs in a received block's miner_tx.
+/// Validates MevaTrust outputs in a received block's miner_tx.
 /// Called from Blockchain::check_miner_transaction() for HF13+.
 bool check_mevatrust_coinbase(
   const transaction& miner_tx,
@@ -28,7 +27,7 @@ bool check_mevatrust_coinbase(
   std::string&       error_msg
 );
 
-/// Returns expected participation outputs for unit testing.
+/// Returns expected MevaTrust outputs for unit testing.
 std::vector<NodeCoinbaseReward> build_expected_mevatrust_outputs(
   uint64_t  height,
   uint64_t  total_reward,

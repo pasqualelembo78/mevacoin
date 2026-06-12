@@ -1,6 +1,6 @@
 // Copyright (c) 2024, The Mevacoin Project
 // snapshot_broadcaster.h -- C4-FIX: Quorum multi-proposer ballot (3/5)
-// DEST (nome esatto): src/cryptonote_core/participation/snapshot_broadcaster.h
+// DEST (nome esatto): src/cryptonote_core/mevatrust/snapshot_broadcaster.h
 //
 // DESIGN QUORUM:
 //   1. propose_snapshot() firma il payload e lo aggiunge al ballot_box_ locale

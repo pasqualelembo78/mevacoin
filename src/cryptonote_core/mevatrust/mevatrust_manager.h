@@ -1,5 +1,5 @@
 // Copyright (c) 2024, The Mevacoin Project
-// participation_manager.h -- Orchestrates all participation subsystems
+// mevatrust_manager.h -- Orchestrates all MevaTrust subsystems
 //
 // [C2 FIX] Badge On-Chain:
 //   - m_node_sk / m_node_pk / m_node_key_set : chiave nodo per firmare badge awards
@@ -160,7 +160,7 @@ private:
   bool                  m_has_pending_snapshot{false};
 
   // ── State commitment (fork resistance) ──────────────────────────────────
-  bool                  m_state_root_verification_enabled{false};
+  bool                  m_state_root_verification_enabled{true};
   // Reorg rollback: tiene traccia delle operazioni per ogni blocco
   struct PoppedOp {
     enum Op { REGISTER, DEREGISTER, BADGE_AWARD, BADGE_REVOKE,

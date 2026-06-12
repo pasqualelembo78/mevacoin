@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // node_registry.cpp — LMDB-backed (replaces flat binary persistence)
-// DROP-IN: src/cryptonote_core/participation/node_registry.cpp
+// DROP-IN: src/cryptonote_core/mevatrust/node_registry.cpp
 //
 // Cambiamenti rispetto alla versione flat-file:
 //  - LMDB ACID transazionale: nessuna corruzione su crash/power-loss
@@ -26,7 +26,7 @@
 static constexpr uint64_t LEGACY_MAGIC_V1  = 0x4D455641524547FFULL;
 static constexpr uint32_t LEGACY_VER1      = 1;
 static constexpr uint32_t LEGACY_VER2      = 2;
-static constexpr uint32_t MAX_NODES_PER_WALLET = 3;
+// MAX_NODES_PER_WALLET: defined in NodeRegistry (node_registry.h) and SybilConfig (mevatrust_security.h)
 
 namespace cryptonote {
 using namespace mevatrust;

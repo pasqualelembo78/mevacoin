@@ -1,9 +1,8 @@
 // Copyright (c) 2024, The Mevacoin Project
 // node_registry.h  — NodeRegistry: registro persistente dei nodi in rete.
-// Dest: src/cryptonote_core/participation/node_registry.h
 //
 // FIXES applicati (rispetto alla versione precedente):
-//   - extern "C" per lmdb.h gestito in participation_lmdb.h (NON qui)
+//   - extern "C" per lmdb.h gestito in mevatrust_lmdb.h (NON qui)
 //   - Aggiunto MDB_env*/MDB_dbi come forward declarations per i membri privati
 //   - get_all_nodes() rimossa definizione inline (ridefinita nel .cpp)
 //   - clear_all() cambiato da void a bool (corrisponde a .cpp L392)

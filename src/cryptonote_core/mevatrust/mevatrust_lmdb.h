@@ -1,11 +1,11 @@
 // Copyright (c) 2024, The Mevacoin Project
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// participation_lmdb.h — Shared LMDB environment for the Participation subsystem.
-// DROP-IN: src/cryptonote_core/participation/participation_lmdb.h
+// mevatrust_lmdb.h — Shared LMDB environment for the MevaTrust subsystem.
+// DROP-IN: src/cryptonote_core/mevatrust/mevatrust_lmdb.h
 //
 // Design: ogni componente (NodeRegistry, RewardDistributor, BadgeSystem) condivide
-// lo STESSO environment LMDB aperto in {data_dir}/participation/lmdb/.
+// lo STESSO environment LMDB aperto in {data_dir}/mevatrust/lmdb/.
 // L'env e' reference-counted: l'ultimo a chiuderlo chiama mdb_env_close().
 //
 // Tabelle (named DBs) usate:
