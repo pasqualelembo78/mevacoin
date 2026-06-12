@@ -1,0 +1,19 @@
+[Unit]
+Description=Mevacoin Daemon
+After=network.target
+
+[Service]
+# Esegui il demone Mevacoin
+ExecStart=/root/mevacoin/build/Linux/master/release/bin/mevacoind \
+    --non-interactive \
+    --rpc-bind-ip=0.0.0.0 \
+    --rpc-bind-port=18081 \
+    --confirm-external-bind
+WorkingDirectory=/root/mevacoin/build/Linux/master/release/bin/
+Restart=always
+RestartSec=5
+User=root
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

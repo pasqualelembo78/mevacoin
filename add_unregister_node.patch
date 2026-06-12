@@ -1,0 +1,119 @@
+--- a/src/simplewallet/simplewallet_participation.cpp
++++ b/src/simplewallet/simplewallet_participation.cpp
+@@ -22,13 +22,19 @@
+ 
+ namespace cryptonote {
+ 
+-// RegisterNodeRpcResponse deve essere a livello di namespace (non locale alla funzione)
+-// perché BEGIN_KV_SERIALIZE_MAP genera template member functions, vietati in classi locali (C++ standard).
++// RegisterNodeRpcResponse e UnregisterNodeRpcResponse devono essere a livello
++// di namespace (non locali alla funzione) perche' BEGIN_KV_SERIALIZE_MAP genera
++// template member functions, vietati in classi locali (C++ standard).
+ struct RegisterNodeRpcResponse {
+   rpc::COMMAND_RPC_REGISTER_NODE::response result;
+   BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(result) END_KV_SERIALIZE_MAP()
+ };
+ 
++struct UnregisterNodeRpcResponse {
++  rpc::COMMAND_RPC_UNREGISTER_NODE::response result;
++  BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(result) END_KV_SERIALIZE_MAP()
++};
++
+ static const char* RESET_COLOR = "\033[0m";
+ static const char* badge_color(const std::string& n) {
+   if (n.find("LONG_UPTIME") != std::string::npos) return "\033[35m";
+@@ -187,7 +193,7 @@
+   req.signature = epee::string_tools::pod_to_hex(sig);
+ 
+   // Wrapper per spacchettare la risposta JSON-RPC {"result":{...}}
+-  // (struct definita a livello di namespace per compatibilità template C++)
++  // (struct definita a livello di namespace per compatibilita' template C++)
+   RegisterNodeRpcResponse wrapped{};
+ 
+   if (!m_wallet->invoke_http_json("/json_rpc", req, wrapped)) {
+@@ -222,4 +228,85 @@
+     << "\n  Usa: node_badges " << res.node_id.substr(0,16) << "...  per vedere i badge";
+   return true;
+ }
++
++bool simple_wallet::cmd_unregister_node(const std::vector<std::string>& args) {
++  // Uso: unregister_node <node_id>
++  // node_id = node_public_key hex (64 char) usato al momento della registrazione
++  if (args.empty()) {
++    tools::fail_msg_writer() << tr("Uso: unregister_node <node_id>");
++    tools::fail_msg_writer() << tr("  node_id: la chiave pubblica del nodo (hex 64 char)");
++    tools::fail_msg_writer() << tr("  Esempio: unregister_node a1b2c3d4...");
++    return true;
++  }
++
++  const std::string& node_id = args[0];
++  if (node_id.size() != 64) {
++    tools::fail_msg_writer() << tr("node_id non valido: deve essere hex 64 caratteri.");
++    return true;
++  }
++
++  // Conferma interattiva - operazione irreversibile
++  tools::msg_writer() << "\033[1;33m!  ATTENZIONE: stai per de-registrare il nodo dalla rete MevaCoin.\033[0m";
++  tools::msg_writer() << "  Node ID : " << node_id.substr(0,16) << "...";
++  tools::msg_writer() << "  Il nodo non ricevera' piu' incentivi uptime ne' badge.";
++  tools::msg_writer() << "  Potrai ri-registrare dopo il cooldown anti-Sybil (60 min).";
++  std::string confirm;
++  rdln::suspend_readline pause_readline;
++  std::cout << "Conferma (digita 'si' per procedere): ";
++  std::getline(std::cin, confirm);
++  if (confirm != "si") {
++    tools::msg_writer() << tr("Operazione annullata.");
++    return true;
++  }
++
++  // Firma crittografica: sign(hash("unregister:" || node_id || ":" || address))
++  const std::string address_str =
++      m_wallet->get_account().get_public_address_str(m_wallet->nettype());
++  const std::string msg = std::string("unregister:") + node_id + ":" + address_str;
++  crypto::hash msg_hash = crypto::cn_fast_hash(msg.data(), msg.size());
++
++  crypto::secret_key skey = m_wallet->get_account().get_keys().m_spend_secret_key;
++  crypto::public_key pkey;
++  crypto::secret_key_to_public_key(skey, pkey);
++  crypto::signature sig;
++  crypto::generate_signature(msg_hash, pkey, skey, sig);
++
++  // Invia la richiesta al daemon
++  rpc::COMMAND_RPC_UNREGISTER_NODE::request req;
++  req.node_id   = node_id;
++  req.address   = address_str;
++  req.signature = epee::string_tools::pod_to_hex(sig);
++
++  tools::msg_writer() << "Invio richiesta de-registrazione...";
++
++  UnregisterNodeRpcResponse wrapped{};
++  if (!m_wallet->invoke_http_json("/json_rpc", req, wrapped)) {
++    tools::fail_msg_writer() << tr("Errore connessione daemon (controlla che mevacoind sia in esecuzione)");
++    return true;
++  }
++
++  const auto& res = wrapped.result;
++  if (!res.success) {
++    const std::string& why = res.status;
++    if (why.find("not found") != std::string::npos || why.find("non trovato") != std::string::npos) {
++      tools::fail_msg_writer() << tr("Nodo non trovato nel registro. Controlla il node_id.");
++    } else if (why.find("not owner") != std::string::npos || why.find("firma") != std::string::npos) {
++      tools::fail_msg_writer() << tr("Firma non valida: questo wallet non e' il proprietario del nodo.");
++    } else if (why.empty()) {
++      tools::fail_msg_writer() << tr("De-registrazione fallita (motivo sconosciuto).");
++    } else {
++      tools::fail_msg_writer() << tr("De-registrazione fallita: ") << why;
++    }
++    return true;
++  }
++
++  tools::success_msg_writer()
++    << "\n\033[1;32m*** NODO DE-REGISTRATO CON SUCCESSO ***\033[0m"
++    << "\n  Node ID  : " << node_id
++    << "\n  Il nodo e' stato rimosso dal registro di partecipazione."
++    << "\n  Gli incentivi non saranno piu' erogati a partire dal prossimo ciclo (~720 blocchi)."
++    << "\n  Per ri-registrare: attendi 60 min, poi usa register_node";
++  return true;
++}
++
+ } // namespace cryptonote
