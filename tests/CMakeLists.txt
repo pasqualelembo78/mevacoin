@@ -98,7 +98,7 @@ add_test(
 #
 if (${MEVACOIN_WALLET_CRYPTO_BENCH} STREQUAL "auto")
   set(MEVACOIN_WALLET_CRYPTO_BENCH "cn")
-  mevacoin_crypto_autodetect(AVAILABLE BEST)
+  monero_crypto_autodetect(AVAILABLE BEST)
   if (DEFINED AVAILABLE)
     list(APPEND MEVACOIN_WALLET_CRYPTO_BENCH ${AVAILABLE})
   endif ()
@@ -109,15 +109,15 @@ list(REMOVE_DUPLICATES MEVACOIN_WALLET_CRYPTO_BENCH)
 list(REMOVE_ITEM MEVACOIN_WALLET_CRYPTO_BENCH "cn") # always used for comparison
 set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "(cn)")
 foreach(BENCH IN LISTS MEVACOIN_WALLET_CRYPTO_BENCH)
-  mevacoin_crypto_valid(${BENCH} VALID)
+  monero_crypto_valid(${BENCH} VALID)
   if (NOT VALID)
     message(FATAL_ERROR "Invalid MEVACOIN_WALLET_CRYPTO_BENCH option ${BENCH}")
   endif ()
 
-  mevacoin_crypto_get_target(${BENCH} BENCH_LIBRARY)
+  monero_crypto_get_target(${BENCH} BENCH_LIBRARY)
   list(APPEND BENCH_OBJECTS $<TARGET_OBJECTS:${BENCH_LIBRARY}>)
 
-  mevacoin_crypto_get_namespace(${BENCH} BENCH_NAMESPACE)
+  monero_crypto_get_namespace(${BENCH} BENCH_NAMESPACE)
   set(MEVACOIN_WALLET_CRYPTO_BENCH_NAMES "${MEVACOIN_WALLET_CRYPTO_BENCH_NAMES}(${BENCH_NAMESPACE})")
 endforeach ()
 
