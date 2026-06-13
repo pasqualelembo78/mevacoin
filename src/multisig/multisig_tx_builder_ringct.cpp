@@ -238,7 +238,7 @@ static bool set_tx_extra(
       LOG_PRINT_L2(tx_aux_public_keys[i]);
     cryptonote::add_additional_tx_pub_keys_to_extra(tx.extra, tx_aux_public_keys);
   }
-  if (not cryptonote::sort_tx_extra(tx.extra, tx.extra))
+  if (not cryptonote::sort_tx_extra(tx.extra, tx.extra, true))
     return false;
   return true;
 }

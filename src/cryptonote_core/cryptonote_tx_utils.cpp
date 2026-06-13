@@ -435,7 +435,7 @@ namespace cryptonote
       add_additional_tx_pub_keys_to_extra(tx.extra, additional_tx_public_keys);
     }
 
-    if (!sort_tx_extra(tx.extra, tx.extra))
+    if (!sort_tx_extra(tx.extra, tx.extra, true))
       return false;
 
     CHECK_AND_ASSERT_MES(tx.extra.size() <= MAX_TX_EXTRA_SIZE, false, "TX extra size (" << tx.extra.size() << ") is greater than max allowed (" << MAX_TX_EXTRA_SIZE << ")");
