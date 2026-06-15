@@ -42,6 +42,8 @@
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
+#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW_ELITE      40
+#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW_NEW_WALLET 10
 #define CURRENT_TRANSACTION_VERSION                     2
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     0
@@ -215,6 +217,7 @@
 #define HF_VERSION_VIEW_TAGS                    15
 #define HF_VERSION_2021_SCALING                 15
 #define HF_VERSION_MEVATRUST              13  // Participation Incentive System (badge+rewards+PoA, v13 dal blocco 13)
+#define HF_VERSION_EARLY_COINBASE_UNLOCK  16  // Early coinbase unlock for elite miners and new wallets
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2

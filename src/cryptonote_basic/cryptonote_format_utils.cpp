@@ -672,13 +672,17 @@ namespace cryptonote
     return add_tx_pub_key_to_extra(tx.extra, tx_pub_key);
   }
   //---------------------------------------------------------------
-  bool add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
-  {
-    tx_extra.resize(tx_extra.size() + 1 + sizeof(crypto::public_key));
-    tx_extra[tx_extra.size() - 1 - sizeof(crypto::public_key)] = TX_EXTRA_TAG_PUBKEY;
-    *reinterpret_cast<crypto::public_key*>(&tx_extra[tx_extra.size() - sizeof(crypto::public_key)]) = tx_pub_key;
+bool add_tx_pub_key_to_extra(std::vector<uint8_t>& tx_extra, const crypto::public_key& tx_pub_key)
+{
+    std::vector<uint8_t> new_extra;
+    new_extra.reserve(tx_extra.size() + 1 + sizeof(crypto::public_key));
+    new_extra.push_back(TX_EXTRA_TAG_PUBKEY);
+    new_extra.insert(new_extra.end(), reinterpret_cast<const uint8_t*>(&tx_pub_key),
+                     reinterpret_cast<const uint8_t*>(&tx_pub_key) + sizeof(crypto::public_key));
+    new_extra.insert(new_extra.end(), tx_extra.begin(), tx_extra.end());
+    tx_extra = std::move(new_extra);
     return true;
-  }
+}
   //---------------------------------------------------------------
   std::vector<crypto::public_key> get_additional_tx_pub_keys_from_extra(const std::vector<uint8_t>& tx_extra)
   {

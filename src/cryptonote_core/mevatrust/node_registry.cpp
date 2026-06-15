@@ -53,6 +53,11 @@ static std::string pack_entry(const NodeRegistryEntry& e) {
     lmdb_write_pod(b, e.total_uptime_seconds); lmdb_write_pod(b, e.disconnections);
     lmdb_write_pod(b, e.last_challenge_time); lmdb_write_pod(b, e.next_challenge_time);
     lmdb_write_str(b, e.wallet_address); lmdb_write_str(b, e.ip_address); lmdb_write_str(b, e.metadata);
+    // v3: validator fields
+    uint8_t is_val = e.is_validator ? 1 : 0;
+    lmdb_write_pod(b, is_val);
+    lmdb_write_pod(b, e.validator_since_height);
+    lmdb_write_pod(b, e.validator_tx_amount);
     return b;
 }
 
@@ -84,6 +89,15 @@ static bool unpack_entry(const void* data, size_t sz, NodeRegistryEntry& e) {
     if (!lmdb_read_str(p,end,e.wallet_address)) return false;
     if (!lmdb_read_str(p,end,e.ip_address))     return false;
     if (!lmdb_read_str(p,end,e.metadata))       return false;
+    // v3+: validator fields (retrocompatibili — defaults se assenti)
+    if (p < end) {
+        uint8_t is_val = 0;
+        if (lmdb_read_pod(p, end, is_val)) {
+            e.is_validator = (is_val != 0);
+            lmdb_read_pod(p, end, e.validator_since_height);
+            lmdb_read_pod(p, end, e.validator_tx_amount);
+        }
+    }
     return true;
 }
 
@@ -277,6 +291,15 @@ bool NodeRegistry::update_node_challenge_time(const crypto::hash& n, uint64_t nx
     it->second.next_challenge_time=nxt_ms;
     return db_put(m_env,m_dbi,it->second);
 }
+bool NodeRegistry::update_node_validator(const crypto::hash& n, bool is_val, uint64_t since_h, uint64_t tx_amt) {
+    std::lock_guard<std::mutex> lk(nodes_lock_);
+    auto it = nodes_.find(hk(n)); if (it == nodes_.end()) return false;
+    it->second.is_validator = is_val;
+    it->second.validator_since_height = since_h;
+    it->second.validator_tx_amount = tx_amt;
+    it->second.updated_at = (uint64_t)std::time(nullptr);
+    return db_put(m_env, m_dbi, it->second);
+}
 bool NodeRegistry::update_reputation(const crypto::hash& n, float d) {
     std::lock_guard<std::mutex> lk(nodes_lock_);
     auto it=nodes_.find(hk(n)); if(it==nodes_.end()) return false;
@@ -452,7 +475,7 @@ bool NodeRegistry::register_node_onchain(const tx_extra_mevatrust_registration& 
     e.wallet_address = reg.wallet_address; e.registered_height = height; e.registered_timestamp = now;
     e.registration_signature = reg.signature; e.ip_address = ""; e.port = (uint16_t)reg.port;
     e.last_seen_timestamp = now; e.status = NodeStatus::ACTIVE;
-    e.last_sync_height = height; e.reputation_score = 1.0f;
+    e.is_synchronized = true; e.last_sync_height = height; e.reputation_score = 1.0f;
     e.created_at = now; e.updated_at = now;
     if (!db_put(m_env, m_dbi, e)) return false;
     nodes_[key] = e;

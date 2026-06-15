@@ -62,6 +62,28 @@ struct COMMAND_RPC_GET_BADGES {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+struct COMMAND_RPC_GET_BADGE_REQUIREMENTS {
+  struct request_t { std::string node_id;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(node_id) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct requirement_detail_t {
+    std::string metric;
+    double current{0};
+    double required{0};
+    bool met{false};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(metric) KV_SERIALIZE(current) KV_SERIALIZE(required) KV_SERIALIZE(met) END_KV_SERIALIZE_MAP() };
+  struct badge_info_t {
+    std::string name;
+    std::string description;
+    bool earned{false};
+    std::string reason;
+    std::vector<requirement_detail_t> details;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(name) KV_SERIALIZE(description) KV_SERIALIZE(earned) KV_SERIALIZE(reason) KV_SERIALIZE(details) END_KV_SERIALIZE_MAP() };
+  struct response_t { std::string node_id; std::vector<badge_info_t> badges; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(node_id) KV_SERIALIZE(badges) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 // =============================================================================
 // [C3 FIX] COMMAND_RPC_REGISTER_NODE
 //

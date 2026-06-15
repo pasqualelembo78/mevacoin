@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include "mevatrust/mevatrust_manager.h"
+#include "mevatrust/pool_address.h"
 #include <unordered_set>
 #include <random>
 #include "include_base_utils.h"
@@ -76,7 +77,7 @@ namespace cryptonote
     LOG_PRINT_L2("destinations include " << num_stdaddresses << " standard addresses and " << num_subaddresses << " subaddresses");
   }
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version) {
+bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, uint64_t custom_unlock_window) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -172,7 +173,8 @@ namespace cryptonote
       tx.version = 1;
 
     //lock
-    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    uint64_t unlock_window = custom_unlock_window > 0 ? custom_unlock_window : CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+    tx.unlock_time = height + unlock_window;
     tx.vin.push_back(in);
 
     tx.invalidate_hashes();
@@ -703,14 +705,20 @@ namespace cryptonote
   }
 }
 namespace cryptonote {
+
+// Pool fraction: 3% hardcoded in consensus (immutabile)
+static constexpr uint32_t MEVATRUST_POOL_FRACTION_PERCENT = 3;
+
 bool construct_miner_tx_with_mevatrust(
   size_t height, size_t median_weight, uint64_t already_generated_coins,
-  size_t current_block_weight, uint64_t miner_reward,
+  size_t current_block_weight, uint64_t total_block_reward,
   const account_public_address& miner_address,
   const std::vector<NodeCoinbaseReward>& node_rewards,
   transaction& tx, const blobdata& extra_nonce,
   size_t max_outs, uint8_t hard_fork_version,
-  const std::vector<uint8_t>& snapshot_extra_bytes)
+  const std::vector<uint8_t>& snapshot_extra_bytes,
+  uint64_t custom_unlock_window,
+  network_type nettype)
 {
   tx.vin.clear(); tx.vout.clear(); tx.extra.clear();
   keypair txkey = keypair::generate(hw::get_device("default"));
@@ -718,8 +726,14 @@ bool construct_miner_tx_with_mevatrust(
   if (!extra_nonce.empty() && !add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) return false;
   if (!sort_tx_extra(tx.extra, tx.extra)) return false;
   txin_gen in; in.height = height;
+
+  // Pool gets 3% of total block reward (deterministic, every block)
+  uint64_t pool_amount = total_block_reward * MEVATRUST_POOL_FRACTION_PERCENT / 100;
+  uint64_t miner_reward = total_block_reward - pool_amount;
+
   if (hard_fork_version >= 2 && hard_fork_version < 4)
     miner_reward = miner_reward - miner_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
+  
   std::vector<uint64_t> miner_amounts;
   decompose_amount_into_digits(miner_reward,
     hard_fork_version >= 2 ? 0 : ::config::DEFAULT_DUST_THRESHOLD,
@@ -730,8 +744,11 @@ bool construct_miner_tx_with_mevatrust(
     for (size_t n = 1; n < miner_amounts.size(); ++n) miner_amounts[n-1] = miner_amounts[n];
     miner_amounts.pop_back();
   }
+
   bool use_view_tags = hard_fork_version >= HF_VERSION_VIEW_TAGS;
   size_t out_index = 0; uint64_t summary = 0;
+
+  // Output 0..N: Miner (97% - node_rewards)
   for (size_t no = 0; no < miner_amounts.size(); no++) {
     crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
     CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(miner_address.m_view_public_key, txkey.sec, deriv), false, "miner deriv");
@@ -741,6 +758,8 @@ bool construct_miner_tx_with_mevatrust(
     tx_out out; cryptonote::set_tx_out(amt, eph_pub, use_view_tags, vt, out);
     tx.vout.push_back(out); out_index++;
   }
+
+  // Output N+1..M: Node rewards (from pool, distributed periodically)
   for (const auto& ncr : node_rewards) {
     if (!ncr.amount) continue;
     crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
@@ -751,11 +770,27 @@ bool construct_miner_tx_with_mevatrust(
     tx_out out; cryptonote::set_tx_out(ncr.amount, eph_pub, use_view_tags, vt, out);
     tx.vout.push_back(out); out_index++;
   }
-  uint64_t expected = miner_reward;
+
+  // Output M+1: Pool address (3% every block) — DETERMINISTIC ADDRESS, no private key
+  if (pool_amount > 0) {
+    account_public_address pool_addr = mevatrust::get_pool_address(nettype);
+    crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
+    CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(pool_addr.m_view_public_key, txkey.sec, deriv), false, "pool deriv");
+    CHECK_AND_ASSERT_MES(crypto::derive_public_key(deriv, out_index, pool_addr.m_spend_public_key, eph_pub), false, "pool epk");
+    summary += pool_amount;
+    crypto::view_tag vt; if (use_view_tags) crypto::derive_view_tag(deriv, out_index, vt);
+    tx_out out; cryptonote::set_tx_out(pool_amount, eph_pub, use_view_tags, vt, out);
+    tx.vout.push_back(out); out_index++;
+  }
+
+  uint64_t expected = miner_reward + pool_amount;
   for (const auto& n : node_rewards) expected += n.amount;
   CHECK_AND_ASSERT_MES(summary == expected, false, "miner_tx sum mismatch " << summary << " != " << expected);
+  
   tx.version = (hard_fork_version >= 4) ? 2 : 1;
-  tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+  uint64_t unlock_window = custom_unlock_window > 0 ? custom_unlock_window : CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+  tx.unlock_time = height + unlock_window;
+
   // [C2] Badge On-Chain: appendi blob 0xA2 (snapshot) al TX extra se presente
   if (!snapshot_extra_bytes.empty()) {
     if (tx.extra.size() + snapshot_extra_bytes.size() > MAX_TX_EXTRA_SIZE) {
@@ -765,8 +800,8 @@ bool construct_miner_tx_with_mevatrust(
              << " over limit)");
     } else {
       tx.extra.insert(tx.extra.end(),
-                      snapshot_extra_bytes.begin(),
-                      snapshot_extra_bytes.end());
+                    snapshot_extra_bytes.begin(),
+                    snapshot_extra_bytes.end());
       MINFO("[C2] construct_miner_tx_with_mevatrust: "
             "snapshot 0xA2 embeddato ("
             << snapshot_extra_bytes.size() << " bytes)");

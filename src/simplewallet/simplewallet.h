@@ -492,6 +492,7 @@ namespace cryptonote
     bool mevatrust(const std::vector<std::string>& args);
     bool cmd_get_node_status(const std::vector<std::string>& args);
     bool cmd_get_badges(const std::vector<std::string>& args);
+    bool cmd_get_badge_requirements(const std::vector<std::string>& args);
     bool cmd_get_uptime(const std::vector<std::string>& args);
     bool cmd_get_incentive_history(const std::vector<std::string>& args);
     bool cmd_register_node(const std::vector<std::string>& args);
@@ -526,7 +527,10 @@ namespace cryptonote
     bool cmd_ban_node(const std::vector<std::string>& args);
     bool cmd_unban_node(const std::vector<std::string>& args);
     bool cmd_my_status(const std::vector<std::string>& args);
+    bool cmd_become_validator(const std::vector<std::string>& args);
+    bool cmd_validator_info(const std::vector<std::string>& args);
     void show_mevatrust_info(const std::string& node_id);
+    void show_welcome_badge_trophy();
   };
 } // namespace cryptonote
 namespace cryptonote { bool read_node_pubkey(std::string& node_pk_hex); }

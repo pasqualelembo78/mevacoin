@@ -72,6 +72,13 @@ MevaTrustScoreSnapshot MevaTrustEngine::calculate_node_score(
         scoring_weights_.responsiveness_weight * score.responsiveness_score +
         scoring_weights_.activity_weight       * score.activity_score;
 
+    // Validator bonus: +0.1 al punteggio finale
+    {
+        NodeRegistryEntry entry;
+        if (node_registry_ && node_registry_->get_node_by_id(node_id, entry) && entry.is_validator)
+            score.total_score = std::min(1.0f, score.total_score + 0.10f);
+    }
+
     score.challenges_passed = 0;
     score.challenges_total  = 0;
     auto it = uptime_history_.find(key);

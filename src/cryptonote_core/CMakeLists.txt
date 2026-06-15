@@ -45,6 +45,8 @@ set(cryptonote_core_sources
   mevatrust/mevatrust_coinbase_validator.cpp
   mevatrust/snapshot_broadcaster.cpp
   mevatrust/mevatrust_store_registry.cpp
+  mevatrust/frost_threshold.cpp
+  mevatrust/pool_distribution.cpp
 )
 
 set(cryptonote_core_headers)

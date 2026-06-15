@@ -4,12 +4,15 @@
 // Security: validates MevaTrust outputs in every received block.
 // A miner that omits or falsifies these outputs has the block rejected.
 //
-// AGGIORNAMENTO [2026-06-07]:
-//   Aggiunta implementazione construct_miner_tx_with_mevatrust()
-//   Risolve: undefined reference at link-time in mevacoind build.
+// AGGIORNAMENTO [2026-06-13]:
+//   - Pool on-chain: valida vout pool (3% hardcoded, indirizzo deterministico)
+//   - State root 0xA7 include pool_balance per fork detection
 
 #include "mevatrust_coinbase_validator.h"
 #include "mevatrust_manager.h"
+#include "mevatrust_tx_parser.h"
+#include "pool_distribution.h"
+#include "pool_address.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
@@ -51,11 +54,10 @@ bool check_mevatrust_coinbase(
   if (hf_version < HF_VERSION_MEVATRUST_VALIDATION)
     return true;
 
-  // 2. Retrieve expected MevaTrust outputs
+  // 2. Retrieve expected MevaTrust outputs (node rewards from pool distribution)
   uint64_t expected_miner_reward = 0;
   std::vector<NodeCoinbaseReward> expected =
     build_expected_mevatrust_outputs(height, total_reward, expected_miner_reward);
-  if (expected.empty()) return true;
 
   // 3. Total coinbase must equal total_reward exactly
   uint64_t sum_actual = 0;
@@ -68,57 +70,71 @@ bool check_mevatrust_coinbase(
     return false;
   }
 
-  // 4. Greedy-check: the largest outputs (by amount) are the miner's decomposed chunks.
-  // Sort all output amounts descending, subtract miner's total from the top,
-  // and verify the remaining tail matches expected node reward amounts (multi-set).
-  // This is inherently ambiguous (amounts can coincide), so we also validate via sum:
-  // expected_miner_reward + sum(expected_node_rewards) must == total_reward (already checked above).
-  // Stronger check: verify the count of outputs is at least expected.size()
-  std::vector<uint64_t> sorted; sorted.reserve(miner_tx.vout.size());
-  for (const auto& out : miner_tx.vout) sorted.push_back(out.amount);
-  std::sort(sorted.begin(), sorted.end(), std::greater<uint64_t>());
+  // 4. Parse pool distribution tag 0xAA from tx_extra
+  tx_extra_mevatrust_pool_distribution dist;
+  bool has_dist = mevatrust::parse_mevatrust_pool_distribution_from_tx(miner_tx, dist);
 
-  uint64_t minter_sum = 0;
-  size_t i = 0;
-  for (; i < sorted.size(); ++i) {
-    if (minter_sum + sorted[i] <= expected_miner_reward) {
-      minter_sum += sorted[i];
-    } else {
-      break;
+  // If no node rewards expected (distribution period not active)
+  if (expected.empty()) {
+    // Tag 0xAA must NOT be present when no distribution is expected
+    if (has_dist) {
+      error_msg = "Unexpected pool distribution tag 0xAA at height " + std::to_string(height);
+      MERROR(error_msg);
+      return false;
     }
+    MDEBUG("Coinbase OK: no pool distribution expected at h=" << height);
+    return true;
   }
-  // The miner's decomposed chunks should sum exactly to expected_miner_reward
-  if (minter_sum != expected_miner_reward) {
-    error_msg = std::string("Miner reward sum ") + std::to_string(minter_sum)
-              + " != expected " + std::to_string(expected_miner_reward)
-              + " at height " + std::to_string(height);
+
+  // Node rewards expected => tag 0xAA MUST be present
+  if (!has_dist) {
+    error_msg = "Missing pool distribution tag 0xAA at height " + std::to_string(height);
     MERROR(error_msg);
     return false;
   }
 
-  // Remaining outputs should be the node rewards (multi-set match)
-  std::vector<uint64_t> remaining(sorted.begin() + static_cast<long>(i), sorted.end());
-  std::vector<uint64_t> expected_amounts;
-  for (const auto& r : expected) expected_amounts.push_back(r.amount);
-  for (uint64_t exp_amt : expected_amounts) {
-    auto it = std::find(remaining.begin(), remaining.end(), exp_amt);
-    if (it == remaining.end()) {
-      error_msg = std::string("Participation coinbase missing output of amount ")
-                + std::to_string(exp_amt)
-                + " at height " + std::to_string(height)
-                + ". Expected " + std::to_string(expected.size()) + " MevaTrust output(s).";
+  // 5. Verify pool output exists (3% pool contribution) — created by construct_miner_tx_with_mevatrust
+  constexpr uint32_t POOL_FRACTION = 3;
+  uint64_t expected_pool_amount = total_reward * POOL_FRACTION / 100;
+  if (expected_pool_amount > 0) {
+    bool pool_found = false;
+    for (const auto& out : miner_tx.vout) {
+      if (out.amount == expected_pool_amount) {
+        pool_found = true;
+        break;
+      }
+    }
+    if (!pool_found) {
+      error_msg = std::string("Pool output missing: expected ") + std::to_string(expected_pool_amount)
+                + " at height " + std::to_string(height);
       MERROR(error_msg);
       return false;
     }
-    remaining.erase(it);
   }
 
-  MDEBUG("Participation coinbase OK: " << expected.size()
-         << " output(s) verified at h=" << height);
+  // 6. Validate pool distribution via existing validator
+  auto* pm = mevatrust::get_manager();
+  if (!pm) {
+    error_msg = "MevaTrust manager not initialized";
+    MERROR(error_msg);
+    return false;
+  }
+
+  uint64_t pool_balance = pm->compute_pool_balance_from_chain();
+  uint32_t period = static_cast<uint32_t>(height / pm->period_length());
+
+  mevatrust::ProposerState proposers;
+  for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
+    proposers.pubkeys[i] = mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i];
+  }
+
+  if (!mevatrust::validate_pool_distribution(dist, height, period, pool_balance, proposers, error_msg)) {
+    MERROR("Pool distribution validation failed: " << error_msg);
+    return false;
+  }
+
+  MDEBUG("MevaTrust coinbase OK: pool distribution validated at h=" << height);
   return true;
 }
 
 } // namespace cryptonote
-
-
-

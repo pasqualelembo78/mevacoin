@@ -26,10 +26,12 @@
 #include "rpc/mevatrust_rpc_commands.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
+#include "cryptonote_core/mevatrust/pool_address.h"
 
 // ── Helper: build self-send tx with custom tx_extra and submit ──────────────
 static std::string submit_mevatrust_tx(tools::wallet2* w, const std::vector<uint8_t>& extra)
 {
+    try {
     cryptonote::tx_destination_entry de;
     de.addr   = w->get_account().get_keys().m_account_address;
     de.amount = 1000000000ULL;  // 0.001 MVC — minimo per coprire fee
@@ -50,7 +52,8 @@ static std::string submit_mevatrust_tx(tools::wallet2* w, const std::vector<uint
         return {};
     }
 
-    auto ptx_vector = w->create_transactions_2(dsts, 0, tools::fee_priority::Normal,
+    const size_t fake_outs_count = w->get_min_ring_size() - 1;
+    auto ptx_vector = w->create_transactions_2(dsts, fake_outs_count, tools::fee_priority::Normal,
                                                 extra, 0, subaddr_indices);
     if (ptx_vector.empty()) {
         tools::fail_msg_writer() << tr("Errore creazione tx (saldo insufficiente per la fee?)");
@@ -59,6 +62,10 @@ static std::string submit_mevatrust_tx(tools::wallet2* w, const std::vector<uint
     const crypto::hash tx_hash = cryptonote::get_transaction_hash(ptx_vector[0].tx);
     w->commit_tx(ptx_vector);
     return epee::string_tools::pod_to_hex(tx_hash);
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer() << tr("ERRORE TX: ") << e.what();
+        return {};
+    }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -153,6 +160,39 @@ bool simple_wallet::cmd_get_badges(const std::vector<std::string>& args) {
   tools::fail_msg_writer() << "Totale: " << res.badges.size() << " badge attivi";
   return true;
 }
+bool simple_wallet::cmd_get_badge_requirements(const std::vector<std::string>& args) {
+  std::string node_id;
+  if (!resolve_node_id(node_id, args)) return true;
+  rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::request req;
+  rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::response res;
+  req.node_id = node_id;
+  if (!m_wallet->invoke_http_json_rpc("/json_rpc", "get_badge_requirements", req, res)) {
+    tools::fail_msg_writer() << tr("Errore RPC get_badge_requirements"); return true; }
+  if (res.badges.empty()) { tools::fail_msg_writer() << tr("Nessun badge disponibile per: ") << node_id; return true; }
+  tools::fail_msg_writer() << "\n=== Requisiti Badge per " << node_id << " ===";
+  uint32_t earned_cnt = 0;
+  for (const auto& b : res.badges) {
+    tools::msg_writer() << badge_color(b.name) << "--- " << b.name << RESET_COLOR;
+    if (!b.description.empty())
+      tools::msg_writer() << "    Descrizione: " << b.description;
+    if (b.earned) {
+      tools::msg_writer() << "    " << "\033[32m[GUADAGNATO]\033[0m";
+      ++earned_cnt;
+    } else {
+      tools::msg_writer() << "    " << "\033[31m[NON GUADAGNATO]\033[0m"
+                          << (b.reason.empty() ? "" : " - " + b.reason);
+      for (const auto& d : b.details) {
+        tools::msg_writer() << "    " << (d.met ? "\033[32m\u2713\033[0m" : "\033[31m\u2717\033[0m")
+                            << " " << d.metric << ": " << (d.met ? "" : "")
+                            << d.current << " / richiesto " << d.required;
+      }
+      if (b.details.empty() && b.reason.empty())
+        tools::msg_writer() << "    Registra il nodo con: mevatrust register";
+    }
+  }
+  tools::fail_msg_writer() << "Attivi: " << earned_cnt << "/" << res.badges.size();
+  return true;
+}
 bool simple_wallet::cmd_get_uptime(const std::vector<std::string>& args) {
   std::string node_id;
   if (!resolve_node_id(node_id, args)) return true;
@@ -194,6 +234,7 @@ bool simple_wallet::cmd_get_incentive_history(const std::vector<std::string>& ar
   return true;
 }
 bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
+  try {
   // UX ZERO-ARGOMENTI: basta digitare register_node
   // Tutto automatico: wallet keys, node key da file, firma e tx_extra on-chain
   // 1. Wallet keys
@@ -254,9 +295,16 @@ bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
     << "\n  TXID    : " << txid
     << "\n  Predicted Node ID: " << epee::string_tools::pod_to_hex(node_id).substr(0, 24) << "..."
     << "\n  Attendere 1-2 blocchi (~2 min) per conferma."
-    << "\n  Usa dopo: node_status <node_id>  per verificare lo stato.";
+    << "\n  Dopo la conferma, il badge \033[1;33mWELCOME\033[0m verra' assegnato automaticamente."
+    << "\n  Usa: \033[1mnode_status\033[0m  per verificare lo stato."
+    << "\n  Usa: \033[1mbadges\033[0m       per vedere i badge ottenuti."
+    << "\n  \033[2mNota: altri badge richiedono uptime, sync, peer e sfide.\033[0m";
   save_node_id(epee::string_tools::pod_to_hex(node_id));
   return true;
+  } catch (const std::exception& e) {
+    tools::fail_msg_writer() << tr("ERRORE cmd_register_node: ") << e.what();
+    return true;
+  }
 }
 bool simple_wallet::cmd_unregister_node(const std::vector<std::string>& args) {
   // UX ZERO-ARGOMENTI: basta digitare unregister_node
@@ -367,6 +415,38 @@ void simple_wallet::show_mevatrust_info(const std::string& node_id) {
     for (const auto& e : h_res.entries) { if (e.amount>0) tr += e.amount; }
     tools::msg_writer() << "Record incentivi: " << h_res.total
                         << " | Totale reward: " << (tr/1000000000000ULL) << " MVC"; }
+}
+
+void simple_wallet::show_welcome_badge_trophy()
+{
+  std::string node_id;
+  if (!resolve_node_id(node_id, {})) return;
+
+  rpc::COMMAND_RPC_GET_BADGES::request req;
+  rpc::COMMAND_RPC_GET_BADGES::response res;
+  req.node_id = node_id;
+  if (!m_wallet->invoke_http_json_rpc("/json_rpc", "get_badges", req, res)) return;
+
+  bool has_welcome = false;
+  for (const auto& b : res.badges) {
+    if (b == "WELCOME") { has_welcome = true; break; }
+  }
+  if (!has_welcome) return;
+
+  tools::msg_writer() << "\033[1;33m";  // bold yellow
+  tools::msg_writer() << "  ╔══════════════════════════════════════════════╗";
+  tools::msg_writer() << "  ║          ★  TRAGUARDO SBLOCCO!  ★           ║";
+  tools::msg_writer() << "  ║                                              ║";
+  tools::msg_writer() << "  ║              BADGE: WELCOME                 ║";
+  tools::msg_writer() << "  ║                                              ║";
+  tools::msg_writer() << "  ║   Benvenuto nella rete MevaCoin! Questo e'  ║";
+  tools::msg_writer() << "  ║   il primo traguardo del tuo nodo. Altri   ║";
+  tools::msg_writer() << "  ║   badge ti aspettano man mano che il nodo   ║";
+  tools::msg_writer() << "  ║   guadagna uptime, peer e partecipazione!   ║";
+  tools::msg_writer() << "  ║                                              ║";
+  tools::msg_writer() << "  ║   Usa:  badges  per vedere tutti i badge    ║";
+  tools::msg_writer() << "  ╚══════════════════════════════════════════════╝";
+  tools::msg_writer() << "\033[0m";  // reset
 }
 
 // =============================================================================
@@ -1128,6 +1208,149 @@ bool simple_wallet::cmd_my_status(const std::vector<std::string>&) {
   }
 
   tools::msg_writer() << "\n\033[1;36m╚══════════════════════════════════════════════╝\033[0m\n";
+  return true;
+}
+
+// ── Validator commands ──────────────────────────────────────────────────
+bool simple_wallet::cmd_become_validator(const std::vector<std::string>&) {
+  std::string node_id;
+  if (!resolve_node_id(node_id, {})) return true;
+
+  // Verifica stato attuale
+  rpc::COMMAND_RPC_GET_BADGES::request b_req;
+  rpc::COMMAND_RPC_GET_BADGES::response b_res;
+  b_req.node_id = node_id;
+  bool has_val_badge = false;
+  if (m_wallet->invoke_http_json_rpc("/json_rpc", "get_badges", b_req, b_res)) {
+    for (const auto& b : b_res.badges)
+      if (b == "NETWORK_VALIDATOR") { has_val_badge = true; break; }
+  }
+  if (has_val_badge) {
+    tools::fail_msg_writer() << tr("Sei gia' un validator! Usa: validator_info");
+    return true;
+  }
+
+  const uint64_t STAKE = 1000'000'000'000'000ULL; // 1000 MVC
+  tools::msg_writer() << "\n\033[1;33m╔══════════════════════════════════════════════╗\033[0m";
+  tools::msg_writer() << "\033[1;33m║          DIVENTA VALIDATOR                   ║\033[0m";
+  tools::msg_writer() << "\033[1;33m╚══════════════════════════════════════════════╝\033[0m";
+  tools::msg_writer() << tr("Per diventare validator devi inviare ") << STAKE / 1'000'000'000'000ULL << " MVC al pool.";
+  tools::msg_writer() << tr("Questi MVC andranno al fondo partecipazione per tutti.");
+  tools::msg_writer() << tr("In cambio otterrai:");
+  tools::msg_writer() << tr("  - Diritto di inviare challenge (solo i validator)");
+  tools::msg_writer() << tr("  - +0.10 bonus score sui reward");
+  tools::msg_writer() << tr("  - Badge NETWORK_VALIDATOR");
+  tools::msg_writer() << "";
+
+  // Conferma utente
+  tools::msg_writer() << "\033[1;33m!  ATTENZIONE: questa operazione richiede " << (STAKE / 1'000'000'000'000ULL) << " MVC.\033[0m";
+  std::string confirm;
+  rdln::suspend_readline pause_readline;
+  std::cout << "Conferma (digita 'si' per procedere): ";
+  std::getline(std::cin, confirm);
+  if (confirm != "si") {
+    tools::msg_writer() << tr("Operazione annullata.");
+    return true;
+  }
+
+  const crypto::public_key& w_spk = m_wallet->get_account().get_keys().m_account_address.m_spend_public_key;
+  const crypto::secret_key& w_ssk = m_wallet->get_account().get_keys().m_spend_secret_key;
+
+  // Leggi chiave nodo per computare node_id uguale a register_node
+  std::string node_pk_hex;
+  if (!read_node_pubkey(node_pk_hex)) {
+    tools::fail_msg_writer() << tr("Chiave nodo non trovata. Avvia il daemon prima.");
+    return true;
+  }
+  crypto::public_key node_pk{};
+  epee::string_tools::hex_to_pod(node_pk_hex, node_pk);
+
+  crypto::hash nid{};
+  epee::string_tools::hex_to_pod(node_id, nid);
+
+  // Firma: sign(H(node_id || wallet_pubkey || "validator"))
+  const crypto::hash msg_hash = mevatrust::validator_message_hash(nid, w_spk);
+  crypto::public_key w_pk{}; crypto::secret_key_to_public_key(w_ssk, w_pk);
+  crypto::signature sig{};
+  crypto::generate_signature(msg_hash, w_pk, w_ssk, sig);
+
+  // Costruisci tx_extra 0xAB
+  tx_extra_mevatrust_validator val{};
+  val.node_id = nid;
+  val.wallet_pubkey = w_spk;
+  val.node_pubkey = node_pk;
+  val.signature = sig;
+
+  std::vector<uint8_t> extra;
+  if (!mevatrust::build_mevatrust_validator_extra(val, extra)) {
+    tools::fail_msg_writer() << tr("Errore serializzazione validator_extra");
+    return true;
+  }
+
+  // Crea TX self-send con stake al pool address
+  try {
+    cryptonote::tx_destination_entry self;
+    self.addr   = m_wallet->get_account().get_keys().m_account_address;
+    self.amount = 1000000000ULL;  // 0.001 MVC per la tassa
+    self.is_subaddress = false;
+
+    cryptonote::tx_destination_entry pool_de;
+    pool_de.addr   = cryptonote::mevatrust::get_pool_address(m_wallet->nettype());
+    pool_de.amount = STAKE;
+    pool_de.is_subaddress = false;
+
+    std::vector<cryptonote::tx_destination_entry> dsts = {self, pool_de};
+    uint64_t unlocked = m_wallet->unlocked_balance(0, false, nullptr, nullptr);
+    if (unlocked < STAKE + 1000000000ULL) {
+      tools::fail_msg_writer() << tr("Saldo insufficiente. Servono ~")
+                               << (STAKE + 1000000000ULL) / 1'000'000'000'000ULL << " MVC sbloccati.";
+      return true;
+    }
+
+    const size_t fake_outs_count = m_wallet->get_min_ring_size() - 1;
+    auto ptx_vector = m_wallet->create_transactions_2(dsts, fake_outs_count, tools::fee_priority::Normal,
+                                                       extra, 0, std::set<uint32_t>());
+    if (ptx_vector.empty()) {
+      tools::fail_msg_writer() << tr("Errore creazione tx.");
+      return true;
+    }
+    const crypto::hash tx_hash = cryptonote::get_transaction_hash(ptx_vector[0].tx);
+    m_wallet->commit_tx(ptx_vector);
+    tools::success_msg_writer()
+      << "\n\033[1;32m*** TX VALIDATOR INVIATA! ***\033[0m"
+      << "\n  TXID    : " << epee::string_tools::pod_to_hex(tx_hash)
+      << "\n  Attendere la conferma on-chain."
+      << "\n  Usa: \033[1mvalidator_info\033[0m  per verificare lo stato.";
+  } catch (const std::exception& e) {
+    tools::fail_msg_writer() << tr("ERRORE: ") << e.what();
+  }
+  return true;
+}
+
+bool simple_wallet::cmd_validator_info(const std::vector<std::string>&) {
+  std::string node_id;
+  if (!resolve_node_id(node_id, {})) return true;
+
+  rpc::COMMAND_RPC_GET_BADGES::request b_req;
+  rpc::COMMAND_RPC_GET_BADGES::response b_res;
+  b_req.node_id = node_id;
+  bool has_val = false;
+  if (m_wallet->invoke_http_json_rpc("/json_rpc", "get_badges", b_req, b_res)) {
+    for (const auto& b : b_res.badges) {
+      if (b == "NETWORK_VALIDATOR") { has_val = true; break; }
+    }
+  }
+
+  tools::msg_writer() << "\n\033[1m▸ Validator Status\033[0m";
+  if (has_val) {
+    tools::msg_writer() << "  Sei un \033[1;33mVALIDATOR\033[0m!";
+    tools::msg_writer() << "  Vantaggi: +0.10 score bonus, invio challenge, badge esclusivo";
+  } else {
+    tools::msg_writer() << "  Non sei ancora un validator.";
+    tools::msg_writer() << "  Diventalo con: \033[1mbecome_validator\033[0m (1000 MVC)";
+    tools::msg_writer() << "  Oppure automaticamente dopo 30gg di uptime 95%.";
+  }
+
   return true;
 }
 

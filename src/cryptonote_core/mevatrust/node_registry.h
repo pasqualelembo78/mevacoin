@@ -49,6 +49,9 @@ struct NodeRegistryEntry {
   uint32_t total_challenges, successful_challenges;
   uint64_t total_uptime_seconds;
   uint32_t disconnections;
+  bool     is_validator{false};
+  uint64_t validator_since_height{0};
+  uint64_t validator_tx_amount{0};
   std::string metadata;
   // Alias per retrocompatibilità test (wallet_key/node_key -> wallet_pubkey/node_pubkey)
   const crypto::public_key& wallet_key() const { return wallet_pubkey; }
@@ -104,6 +107,7 @@ public:
   // FIX: update_node_challenge_result corrisponde a .cpp L266 (era record_challenge_attempt)
   bool update_node_challenge_result(const crypto::hash&, bool success);
   bool update_node_challenge_time(const crypto::hash&, uint64_t next_ms);
+  bool update_node_validator(const crypto::hash& n, bool is_val, uint64_t since_h, uint64_t tx_amt);
   bool update_reputation(const crypto::hash&, float delta);
   bool reset_reputation_suspect(const crypto::hash&);
   bool ban_node(const crypto::hash&, const std::string& reason);

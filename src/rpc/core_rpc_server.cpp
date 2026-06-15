@@ -4092,6 +4092,74 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_badge_requirements(const cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::request& req, cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_badge_requirements);
+    if (req.node_id.empty()) {
+      error_resp.code = -32602; error_resp.message = "node_id required"; return false;
+    }
+    auto* pm = cryptonote::mevatrust::get_manager();
+    if (!pm || !pm->is_initialized()) { res.status = "MevaTrust system not initialized"; return true; }
+    crypto::hash nid{};
+    if (!epee::string_tools::hex_to_pod(req.node_id, nid)) {
+      error_resp.code = -32602; error_resp.message = "Invalid node_id hex"; return false;
+    }
+    auto bs   = pm->badge_system();
+    auto reg  = pm->node_registry();
+    auto eng  = pm->mevatrust_engine();
+    res.node_id = req.node_id;
+    uint64_t h = m_core.get_current_blockchain_height();
+
+    // Check if node is registered on-chain
+    cryptonote::NodeRegistryEntry entry{};
+    bool node_found = reg && reg->get_node_by_id(nid, entry);
+
+    if (bs) {
+      auto all_reqs = bs->get_all_requirements();
+      for (const auto& r : all_reqs) {
+        cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::badge_info_t bi;
+        bi.name        = r.name;
+        bi.description = r.description;
+        bi.earned      = bs->has_badge(nid, r.type);
+
+        auto add_detail = [&](const std::string& metric, double cur, double req, bool met) {
+          cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::requirement_detail_t d;
+          d.metric = metric; d.current = cur; d.required = req; d.met = met;
+          bi.details.push_back(std::move(d));
+        };
+
+        if (node_found && eng) {
+          uint64_t up_sec = eng->get_total_uptime_seconds(nid);
+          add_detail("Uptime (ore)",           up_sec / 3600.0,
+                     (double)r.minimum_uptime_hours, (up_sec / 3600) >= r.minimum_uptime_hours);
+          float up_pct = eng->get_uptime_percentage(nid, h);
+          add_detail("Uptime %",               up_pct * 100.0,
+                     r.minimum_uptime_percentage * 100.0, up_pct >= r.minimum_uptime_percentage);
+          uint64_t days = (std::time(nullptr) - entry.registered_timestamp) / 86400;
+          add_detail("Giorni registrato",      (double)days,
+                     (double)r.minimum_days_registered, days >= r.minimum_days_registered);
+          float sp = eng->get_sync_percentage(nid, h);
+          add_detail("Sync %",                 sp * 100.0,
+                     r.minimum_sync_percentage * 100.0, sp >= r.minimum_sync_percentage);
+          add_detail("Peer connessi",          (double)entry.peer_count,
+                     (double)r.minimum_peer_connections, entry.peer_count >= r.minimum_peer_connections);
+          add_detail("Challenge superate",     (double)entry.successful_challenges,
+                     (double)r.minimum_challenges_validated, entry.successful_challenges >= r.minimum_challenges_validated);
+        }
+
+        if (!bi.earned) {
+          if (!node_found)
+            bi.reason = "Nodo non ancora registrato sulla blockchain";
+          else
+            bi.reason = bs->get_disqualification_reason(nid, r.type, h);
+        }
+        res.badges.push_back(std::move(bi));
+      }
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   //------------------------------------------------------------------------------------------------------------------------------
   // [C3 FIX] on_register_node -- Anti-Sybil UTXO
   //

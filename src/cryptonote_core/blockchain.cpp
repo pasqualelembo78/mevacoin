@@ -1372,7 +1372,19 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW, false, "coinbase transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  uint64_t expected_unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+  if (hf_version >= HF_VERSION_EARLY_COINBASE_UNLOCK)
+  {
+    // After HF_VERSION_EARLY_COINBASE_UNLOCK, allow reduced unlock times for elite miners and new wallets
+    // Elite: 40 blocks, New wallet (first coinbase): 10 blocks
+    uint64_t unlock_time = b.miner_tx.unlock_time >= height ? b.miner_tx.unlock_time - height : 0;
+    if (unlock_time == CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW_ELITE ||
+        unlock_time == CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW_NEW_WALLET)
+    {
+      expected_unlock_time = height + unlock_time;
+    }
+  }
+  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == expected_unlock_time, false, "coinbase transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << expected_unlock_time);
 
   //check outs overflow
   if(!check_outs_overflow(b.miner_tx))
@@ -1777,11 +1789,44 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     node_rewards = pm->get_coinbase_rewards(height, effective_miner_reward, effective_miner_reward);
 
   // [C2] Badge On-Chain: recupera e consuma il blob 0xA2 dal participation manager.
-  // Se il nodo ha una node_key configurata e ci sono badge da embeddare, questo
-  // e' non-vuoto e viene incluso nel miner_tx extra. Ogni blocco lo consuma una volta.
   std::vector<uint8_t> snapshot_extra;
   if (pm && pm->is_initialized() && hf_version >= HF_VERSION_MEVATRUST)
     snapshot_extra = pm->consume_pending_snapshot_extra();
+
+  // Pool Distribution: recupera e consuma il blob 0xAA (FROST-authorized).
+  std::vector<uint8_t> pool_dist_extra;
+  if (pm && pm->is_initialized() && hf_version >= HF_VERSION_MEVATRUST)
+    pool_dist_extra = pm->consume_pending_pool_distribution_extra();
+
+  // Combina snapshot + pool distribution in unico extra blob
+  std::vector<uint8_t> combined_extra;
+  combined_extra.reserve(snapshot_extra.size() + pool_dist_extra.size());
+  combined_extra.insert(combined_extra.end(), snapshot_extra.begin(), snapshot_extra.end());
+  combined_extra.insert(combined_extra.end(), pool_dist_extra.begin(), pool_dist_extra.end());
+
+  // Determine custom unlock window for elite miners (HF_VERSION_EARLY_COINBASE_UNLOCK)
+  uint64_t custom_unlock_window = 0;
+  if (hf_version >= HF_VERSION_EARLY_COINBASE_UNLOCK && pm && pm->is_initialized())
+  {
+    crypto::hash my_node_id;
+    if (cryptonote::mevatrust::get_my_node_id(my_node_id))
+    {
+      auto badge_system = pm->badge_system();
+      if (badge_system)
+      {
+        // Check for elite badges: STABLE_NODE(2), CORE_NETWORK_NODE(3), LONG_UPTIME_NODE(4), NETWORK_VALIDATOR(6)
+        bool is_elite = badge_system->has_badge(my_node_id, cryptonote::BadgeType::STABLE_NODE) ||
+                        badge_system->has_badge(my_node_id, cryptonote::BadgeType::CORE_NETWORK_NODE) ||
+                        badge_system->has_badge(my_node_id, cryptonote::BadgeType::LONG_UPTIME_NODE) ||
+                        badge_system->has_badge(my_node_id, cryptonote::BadgeType::NETWORK_VALIDATOR);
+        if (is_elite)
+        {
+          custom_unlock_window = CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW_ELITE;
+          MINFO("[EarlyUnlock] Elite miner detected, using reduced unlock window: " << custom_unlock_window << " blocks");
+        }
+      }
+    }
+  }
 
   // ── State root 0xA7 per fork detection ──────────────────────────────────
   std::vector<uint8_t> state_root_extra;
@@ -1802,18 +1847,22 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   };
 
   bool r;
-  // [C2 FIX] Se snapshot_extra non e' vuoto (blob 0xA2 con badge awards),
+  // Total block reward = base_reward + fees
+  uint64_t total_block_reward = effective_miner_reward;
+  for (const auto& nr : node_rewards) total_block_reward += nr.amount;
+  
+  // [MevaTrust] Se combined_extra non e' vuoto (blob 0xA2 badge +/o 0xAA pool dist),
   // usare sempre construct_miner_tx_with_mevatrust anche senza node_rewards,
-  // altrimenti il blob viene consumato da consume_pending_snapshot_extra()
-  // ma mai scritto nel miner_tx.extra — badge on-chain persi.
-  if (node_rewards.empty() && snapshot_extra.empty())
+  // altrimenti il blob viene consumato da consume_pending_*_extra()
+  // ma mai scritto nel miner_tx.extra — dati on-chain persi.
+  if (node_rewards.empty() && combined_extra.empty())
     r = construct_miner_tx(height, median_weight, already_generated_coins,
-        txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+        txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window);
   else
     r = construct_miner_tx_with_mevatrust(height, median_weight,
-        already_generated_coins, txs_weight, effective_miner_reward,
+        already_generated_coins, txs_weight, total_block_reward,
         miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version,
-        snapshot_extra);
+        combined_extra, custom_unlock_window, m_nettype);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   inject_state_root(b.miner_tx);
   cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
@@ -1824,10 +1873,10 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
     // [C2 FIX] stessa logica del primo tentativo: embeddare 0xA2 anche senza node_rewards
-    if (node_rewards.empty() && snapshot_extra.empty())
-      r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+    if (node_rewards.empty() && combined_extra.empty())
+      r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window);
     else
-      r = construct_miner_tx_with_mevatrust(height, median_weight, already_generated_coins, cumulative_weight, effective_miner_reward, miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version, snapshot_extra);
+      r = construct_miner_tx_with_mevatrust(height, median_weight, already_generated_coins, cumulative_weight, total_block_reward, miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version, combined_extra, custom_unlock_window, m_nettype);
 
     inject_state_root(b.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");

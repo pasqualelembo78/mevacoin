@@ -1205,6 +1205,8 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended, std
   m_first_refresh_done(false),
   m_refresh_from_block_height(0),
   m_explicit_refresh_from_block_height(true),
+  m_first_coinbase_height(0),
+  m_first_coinbase_processed(false),
   m_skip_to_height(0),
   m_ask_password(AskPasswordOnAction),
   m_max_reorg_depth(ORPHANED_BLOCKS_MAX_COUNT),
@@ -2571,6 +2573,13 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
 	    LOG_PRINT_L0("Received money: " << print_money(td.amount()) << ", with tx: " << txid);
 	    if (!ignore_callbacks && 0 != m_callback)
 	      m_callback->on_money_received(height, txid, tx, td.m_amount, 0, td.m_subaddr_index, spends_one_of_ours(tx), td.m_tx.unlock_time);
+
+            // Track first coinbase received for early unlock feature
+            if (miner_tx && m_first_coinbase_height == 0)
+            {
+              m_first_coinbase_height = height;
+              MINFO("[EarlyUnlock] First coinbase received at height " << height);
+            }
           }
           total_received_1 += amount;
           notify = true;
@@ -7116,8 +7125,13 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
       else
       {
         uint64_t unlock_height = td.m_block_height + std::max<uint64_t>(CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE, CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS);
+        
+        // Use the actual unlock_time from the transaction
         if (td.m_tx.unlock_time < CRYPTONOTE_MAX_BLOCK_NUMBER && td.m_tx.unlock_time > unlock_height)
+        {
           unlock_height = td.m_tx.unlock_time;
+        }
+        
         uint64_t unlock_time = td.m_tx.unlock_time >= CRYPTONOTE_MAX_BLOCK_NUMBER ? td.m_tx.unlock_time : 0;
         blocks_to_unlock = unlock_height > blockchain_height ? unlock_height - blockchain_height : 0;
         time_to_unlock = unlock_time > now ? unlock_time - now : 0;
@@ -7134,6 +7148,13 @@ std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> wallet2::
       }
     }
   }
+  
+  // Mark first coinbase as processed after calculating balances
+  if (m_first_coinbase_height > 0 && !m_first_coinbase_processed)
+  {
+    m_first_coinbase_processed = true;
+  }
+  
   return amount_per_subaddr;
 }
 //----------------------------------------------------------------------------------------------------

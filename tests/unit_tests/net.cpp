@@ -1608,7 +1608,7 @@ TEST(zmq, error_codes)
     EXPECT_TRUE(
         []() -> expect<void>
         {
-            MONERO_ZMQ_CHECK(zmq_msg_send(nullptr, nullptr, 0));
+            MEVACOIN_ZMQ_CHECK(zmq_msg_send(nullptr, nullptr, 0));
             return success();
         }().matches(std::errc::not_a_socket)
     );
@@ -1616,7 +1616,7 @@ TEST(zmq, error_codes)
     bool thrown = false;
     try
     {
-        MONERO_ZMQ_THROW("stuff");
+        MEVACOIN_ZMQ_THROW("stuff");
     }
     catch (const std::system_error& e)
     {

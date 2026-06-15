@@ -686,7 +686,7 @@ private:
       std::tuple<uint64_t, uint64_t, std::vector<wallet2::exported_transfer_details>> new_transfers;
 
       BEGIN_SERIALIZE_OBJECT()
-        VERSION_FIELD(2)
+      VERSION_FIELD(3)
         FIELD(txes)
         if (version == 0)
         {
@@ -1364,6 +1364,14 @@ private:
         return;
       }
       a & m_background_sync_data;
+      if(ver < 32)
+      {
+        m_first_coinbase_height = 0;
+        m_first_coinbase_processed = false;
+        return;
+      }
+      a & m_first_coinbase_height;
+      a & m_first_coinbase_processed;
     }
 
     BEGIN_SERIALIZE_OBJECT()
@@ -1407,6 +1415,14 @@ private:
         return true;
       }
       FIELD(m_background_sync_data)
+      if (version < 3)
+      {
+        m_first_coinbase_height = 0;
+        m_first_coinbase_processed = false;
+        return true;
+      }
+      FIELD(m_first_coinbase_height)
+      FIELD(m_first_coinbase_processed)
     END_SERIALIZE()
 
     /*!
@@ -1973,6 +1989,8 @@ private:
     bool m_auto_refresh;
     bool m_first_refresh_done;
     uint64_t m_refresh_from_block_height;
+    uint64_t m_first_coinbase_height; // Height of first coinbase received (0 if none)
+    bool m_first_coinbase_processed; // Whether we've processed the first coinbase
     // If m_refresh_from_block_height is explicitly set to zero we need this to differentiate it from the case that
     // m_refresh_from_block_height was defaulted to zero.*/
     bool m_explicit_refresh_from_block_height;

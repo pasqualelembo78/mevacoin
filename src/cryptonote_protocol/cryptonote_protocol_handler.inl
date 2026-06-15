@@ -1700,6 +1700,13 @@ skip:
     m_idle_peer_kicker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::kick_idle_peers, this));
     m_standby_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::check_standby_peers, this));
     m_sync_search_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::update_sync_search, this));
+    m_challenge_rate_cleanup.do_call([this]()->bool{
+      const uint64_t now_ms = static_cast<uint64_t>(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::system_clock::now().time_since_epoch()).count());
+      m_challenge_rate_limiter.cleanup(now_ms);
+      return true;
+    });
     return m_core.on_idle();
   }
   //------------------------------------------------------------------------------------------------------------------------
@@ -2915,7 +2922,8 @@ skip:
       cryptonote_connection_context& context)
   {
     MLOG_P2P_MESSAGE("Received NOTIFY_MEVATRUST_CHALLENGE "
-      << epee::string_tools::pod_to_hex(arg.challenge_id));
+      << epee::string_tools::pod_to_hex(arg.challenge_id) << " from "
+      << context.m_remote_address.str());
 
     // Ignore if we have no participation identity
     crypto::hash my_node_id;
@@ -2925,6 +2933,34 @@ skip:
     // Ignore challenges not addressed to us
     if (arg.target_node_id != my_node_id)
       return 1;
+
+    const uint64_t now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+
+    // ── Livello 1: Dedup challenge_id (stessa challenge già vista) ─────
+    if (m_challenge_rate_limiter.is_challenge_id_seen(arg.challenge_id, now_ms))
+    {
+      MDEBUG("Challenge dedup drop " << epee::string_tools::pod_to_hex(arg.challenge_id));
+      return 1;
+    }
+
+    // ── Livello 2: Rate limit globale (max N challenge/min totali) ─────
+    if (!m_challenge_rate_limiter.is_global_allowed(now_ms))
+    {
+      MWARNING("Global challenge rate-limit exceeded from "
+        << context.m_remote_address.str() << " — dropping");
+      return 1;
+    }
+
+    // ── Livello 3: Rate limit per-peer (max 1 challenge/min per IP) ────
+    if (!m_challenge_rate_limiter.is_allowed(
+            context.m_remote_address.host_str(), crypto::null_hash, now_ms))
+    {
+      MWARNING("Per-peer challenge rate-limit exceeded from "
+        << context.m_remote_address.str() << " — dropping");
+      return 1;
+    }
 
     NOTIFY_MEVATRUST_RESPONSE::request rsp;
     rsp.challenge_id       = arg.challenge_id;

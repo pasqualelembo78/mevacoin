@@ -38,6 +38,7 @@
 #include "serialization/serialization.h"
 #include "serialization/binary_archive.h"
 #include "serialization/variant.h"
+#include "serialization/pair.h"
 #include "serialization/string.h"
 #include "crypto/crypto.h"
 
@@ -61,7 +62,9 @@
 #define TX_EXTRA_TAG_MEVATRUST_CHALLENGE     0xA6
 #define TX_EXTRA_TAG_MEVATRUST_STATE_ROOT    0xA7
 #define TX_EXTRA_TAG_MEVATRUST_STORE         0xA8
-#define TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE  0xA9
+#define TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE          0xA9
+#define TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION    0xAA
+#define TX_EXTRA_TAG_MEVATRUST_VALIDATOR            0xAB
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -394,17 +397,20 @@ struct tx_extra_mevatrust_challenge
   END_SERIALIZE()
 };
 
-// ── MevaTrust State Root — tag 0xA7 (Fork Detection) ────────────────────────
+// ── MevaTrust State Root — tag 0xA7 (Fork Detection + Pool Balance) ───────────
 // Commesso nel miner_tx di OGNI blocco. Contiene l'hash Merkle dello stato
-// MevaTrust (nodi, cerchie, badge) a questa altezza. Ogni nodo deriva il
-// proprio stato e verifica che il root matchi: se non matcha => FORK.
+// MevaTrust (nodi, cerchie, badge) + saldo pool a questa altezza.
+// Ogni nodo deriva il proprio stato e verifica che il root matchi: se non matcha => FORK.
+// pool_balance = saldo accumulato nel pool (3% ogni blocco) - distribuzioni eseguite.
 struct tx_extra_mevatrust_state_root
 {
-  crypto::hash state_root;      // Merkle root dello stato MevaTrust
+  crypto::hash state_root;      // Merkle root dello stato MevaTrust (nodi + cerchie + badge)
+  uint64_t     pool_balance{0}; // Saldo pool on-chain (3% coinbase - distribuzioni)
   uint64_t     height{0};
 
   BEGIN_SERIALIZE()
     FIELD(state_root)
+    VARINT_FIELD(pool_balance)
     VARINT_FIELD(height)
   END_SERIALIZE()
 };
@@ -451,6 +457,50 @@ struct tx_extra_mevatrust_store
   END_SERIALIZE()
 };
 
+// ── MevaTrust Pool Distribution — tag 0xAA ───────────────────────────────────
+// Transazione speciale che distribuisce i fondi del pool ai nodi qualificati.
+// Richiede FROST threshold signature (3/5 proposer) per essere valida.
+// Consensus: sum(outputs) ≤ pool_balance, periodo corretto.
+struct tx_extra_mevatrust_pool_distribution
+{
+  uint64_t     height{0};           // Altezza di distribuzione
+  uint32_t     period{0};           // Periodo di riferimento
+  uint64_t     total_pool_balance{0}; // Saldo pool prima della distribuzione
+  uint64_t     total_distributed{0};  // Somma distribuita
+  std::vector<std::pair<crypto::public_key, uint64_t>> outputs; // (node_spend_key, amount)
+  // FROST threshold signature (3/5 proposer)
+  crypto::ec_scalar frost_R{};      // Nonce aggregato
+  crypto::ec_scalar frost_z{};      // Firma aggregata
+
+  BEGIN_SERIALIZE()
+    VARINT_FIELD(height)
+    VARINT_FIELD(period)
+    VARINT_FIELD(total_pool_balance)
+    VARINT_FIELD(total_distributed)
+    FIELD(outputs)
+    FIELD(frost_R)
+    FIELD(frost_z)
+  END_SERIALIZE()
+};
+
+// ── Validator Promotion — tag 0xAB (Buy or Earn Validator Status) ────────────
+// Un nodo diventa validator se: ha >=30gg uptime >95%, oppure acquista
+// il diritto inviando >=VALIDATOR_MIN_STAKE MVC al pool address.
+struct tx_extra_mevatrust_validator
+{
+  crypto::hash       node_id;
+  crypto::public_key wallet_pubkey;
+  crypto::public_key node_pubkey;
+  crypto::signature  signature;        // sign(node_id || wallet_pubkey || "validator")
+
+  BEGIN_SERIALIZE()
+    FIELD(node_id)
+    FIELD(wallet_pubkey)
+    FIELD(node_pubkey)
+    FIELD(signature)
+  END_SERIALIZE()
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
@@ -465,4 +515,7 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_nonce, TX_EXTRA_NONCE);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_merge_mining_tag, TX_EXTRA_MERGE_MINING_TAG);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_TAG_ADDITIONAL_PUBKEYS);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_mevatrust_pool_distribution, TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_mevatrust_validator, TX_EXTRA_TAG_MEVATRUST_VALIDATOR);
+
 

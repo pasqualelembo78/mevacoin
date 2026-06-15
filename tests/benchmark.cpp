@@ -81,7 +81,7 @@
     }
 
 #define CRYPTO_FUNCTION(library, func)                        \
-    BOOST_PP_CAT(BOOST_PP_CAT(mevacoin_crypto_, library), func)
+    BOOST_PP_CAT(BOOST_PP_CAT(monero_crypto_, library), func)
 
 #define CRYPTO_BENCHMARK(r, _, library)                                                                                                                                  \
     struct library                                                                                                                                                       \

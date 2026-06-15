@@ -133,7 +133,8 @@ bool BadgeSystem::initialize_default_badges() {
      {BadgeType::NETWORK_VALIDATOR, "Network Validator",  "100+ challenges",           0,.60f,14,.85f,0,3,100,0,.30f,.60f,30,false,true,60},
      {BadgeType::BRIDGE_NODE,       "Bridge Node",        "20+ peers",               720,.80f,30,.90f,0,20,50,0,.50f,.75f,14,false,true,30},
      {BadgeType::PRIVACY_GUARDIAN,  "Privacy Guardian",   "rep>=0.85, 98%+ sync",    336,.85f,14,.98f,0,3,30,0,.60f,.90f,10,false,true,30},
-     {BadgeType::RELAY_MASTER,      "Relay Master",       "activity>=50%",           168,.75f,7,.85f,0,5,20,100,.40f,.70f,21,false,true,30},
+      {BadgeType::RELAY_MASTER,      "Relay Master",       "activity>=50%",           168,.75f,7,.85f,0,5,20,100,.40f,.70f,21,false,true,30},
+      {BadgeType::WELCOME,           "Welcome",            "Registered node",            0,.00f,0,.00f,0,0,0,0,.00f,.00f,365,true,false,0},
     };
     for (const auto& r : T) {
         BadgeRequirements req{};
@@ -381,6 +382,8 @@ bool BadgeSystem::qualifies_for_badge(const crypto::hash& nid, BadgeType bt, uin
             if (mevatrust_engine_->get_activity_score(nid)<0.50f) return false;
             return mevatrust_engine_->get_uptime_percentage(nid)>=it->second.minimum_uptime_percentage;
         }
+        case BadgeType::WELCOME:
+            return e.status != NodeStatus::BANNED;
         default: return false;
     }
 }
@@ -388,7 +391,8 @@ bool BadgeSystem::qualifies_for_badge(const crypto::hash& nid, BadgeType bt, uin
 bool BadgeSystem::auto_evaluate_badges(const crypto::hash& nid, uint64_t h) {
     static const BadgeType ALL[]={BadgeType::ACTIVE_MINER,BadgeType::FULL_NODE_OPERATOR,BadgeType::STABLE_NODE,
         BadgeType::CORE_NETWORK_NODE,BadgeType::LONG_UPTIME_NODE,BadgeType::EARLY_SUPPORTER,
-        BadgeType::NETWORK_VALIDATOR,BadgeType::BRIDGE_NODE,BadgeType::PRIVACY_GUARDIAN,BadgeType::RELAY_MASTER};
+        BadgeType::NETWORK_VALIDATOR,BadgeType::BRIDGE_NODE,BadgeType::PRIVACY_GUARDIAN,BadgeType::RELAY_MASTER,
+        BadgeType::WELCOME};
     bool changed=false;
     for (BadgeType bt:ALL) {
         bool q=qualifies_for_badge(nid,bt,h), has=has_badge(nid,bt);
@@ -507,6 +511,7 @@ std::string BadgeSystem::get_disqualification_reason(const crypto::hash& nid, Ba
     if (!node_registry_) return "NodeRegistry not available";
     NodeRegistryEntry e; if (!node_registry_->get_node_by_id(nid,e)) return "Node not found";
     if (e.status==NodeStatus::BANNED) return "Node is banned";
+    if (bt == BadgeType::WELCOME) return "Solo registrazione richiesta";
     auto it=badge_requirements_.find(bt); if (it==badge_requirements_.end()) return "Unknown badge";
     const auto& req=it->second;
     uint64_t days=((uint64_t)std::time(nullptr)-e.registered_timestamp)/86400;
