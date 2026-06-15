@@ -127,16 +127,14 @@ public:
     uint32_t response_count   = 0;
   };
 
-  // Max challenge inviate verso un singolo target per finestra
-  static constexpr uint32_t MAX_CHALLENGES_PER_WINDOW = 10;
+  // Max challenge per peer per finestra
+  static constexpr uint32_t MAX_CHALLENGES_PER_WINDOW = 1;
   // Finestra temporale (ms)
   static constexpr uint64_t WINDOW_MS = 60'000; // 1 minuto
   // Penalità per chi supera il limite: ban temporaneo
   static constexpr uint64_t RATE_LIMIT_BAN_MS = 300'000; // 5 minuti
 
   // Combina peer_id (crittografico) + IP per la chiave.
-  // Previene elusione via IP rotation: lo stesso peer_id è tracciato
-  // anche se cambia IP, e viceversa.
   static std::string make_key(const std::string& peer_ip, const crypto::hash& peer_id) {
     std::string k;
     k.reserve(64 + peer_ip.size());
@@ -158,13 +156,40 @@ public:
     return true;
   }
 
+  bool is_global_allowed(uint64_t now_ms) {
+    std::lock_guard<std::mutex> lock(m_);
+    if (now_ms - global_window_start_ > WINDOW_MS) {
+      global_window_start_ = now_ms;
+      global_challenge_count_ = 0;
+    }
+    if (global_challenge_count_ >= GLOBAL_MAX_PER_WINDOW) return false;
+    ++global_challenge_count_;
+    return true;
+  }
+
+  bool is_challenge_id_seen(const crypto::hash& cid, uint64_t now_ms) {
+    std::lock_guard<std::mutex> lock(m_);
+    auto it = seen_challenges_.find(cid);
+    if (it != seen_challenges_.end()) {
+      if (now_ms - it->second < DEDUP_TTL_MS) return true;
+      seen_challenges_.erase(it);
+    }
+    seen_challenges_[cid] = now_ms;
+    if (seen_challenges_.size() > DEDUP_MAX_SIZE) {
+      auto oldest = seen_challenges_.begin();
+      for (auto i = seen_challenges_.begin(); i != seen_challenges_.end(); ++i)
+        if (i->second < oldest->second) oldest = i;
+      seen_challenges_.erase(oldest);
+    }
+    return false;
+  }
+
   void record_response(const std::string& peer_ip, const crypto::hash& peer_id) {
     std::lock_guard<std::mutex> lock(m_);
     auto it = peers_.find(make_key(peer_ip, peer_id));
     if (it != peers_.end()) ++it->second.response_count;
   }
 
-  // Cleanup: rimuovi state vecchi (chiamare periodicamente)
   void cleanup(uint64_t now_ms) {
     std::lock_guard<std::mutex> lock(m_);
     for (auto it = peers_.begin(); it != peers_.end(); ) {
@@ -173,11 +198,25 @@ public:
       else
         ++it;
     }
+    for (auto it = seen_challenges_.begin(); it != seen_challenges_.end(); ) {
+      if (now_ms - it->second > DEDUP_TTL_MS)
+        it = seen_challenges_.erase(it);
+      else
+        ++it;
+    }
   }
 
 private:
   std::mutex m_;
   std::unordered_map<std::string, PeerState> peers_;
+
+  uint64_t global_window_start_ = 0;
+  uint32_t global_challenge_count_ = 0;
+  static constexpr uint32_t GLOBAL_MAX_PER_WINDOW = 60;
+
+  std::unordered_map<crypto::hash, uint64_t> seen_challenges_;
+  static constexpr uint64_t DEDUP_TTL_MS = 30'000;
+  static constexpr size_t DEDUP_MAX_SIZE = 5000;
 };
 
 // ── 5. CHALLENGE WINDOW: Scadenza e penalità ────────────────────────────────

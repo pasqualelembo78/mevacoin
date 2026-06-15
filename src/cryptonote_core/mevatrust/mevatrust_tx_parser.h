@@ -52,6 +52,15 @@ bool parse_mevatrust_circle_vote_from_tx(const transaction& tx, tx_extra_mevatru
 bool build_mevatrust_circle_vote_extra(const tx_extra_mevatrust_circle_vote& op, std::vector<uint8_t>& extra);
 bool verify_circle_vote_signature(const tx_extra_mevatrust_circle_vote& op);
 
+// ── Tag 0xAA: Pool Distribution ────────────────────────────────────────────
+bool parse_mevatrust_pool_distribution_from_tx(const transaction& tx, tx_extra_mevatrust_pool_distribution& out);
+bool build_mevatrust_pool_distribution_extra(const tx_extra_mevatrust_pool_distribution& dist, std::vector<uint8_t>& extra);
+
+// ── Tag 0xAB: Validator ────────────────────────────────────────────────────
+bool parse_mevatrust_validator_from_tx(const transaction& tx, tx_extra_mevatrust_validator& out);
+bool build_mevatrust_validator_extra(const tx_extra_mevatrust_validator& v, std::vector<uint8_t>& extra);
+bool verify_validator_signature(const tx_extra_mevatrust_validator& v);
+
 inline crypto::hash store_message_hash(const tx_extra_mevatrust_store& s) {
     std::string m;
     m.push_back(static_cast<uint8_t>(s.op));
@@ -126,6 +135,13 @@ inline crypto::hash challenge_message_hash(const tx_extra_mevatrust_challenge& c
     m.push_back(c.success ? 1 : 0);
     m.append(reinterpret_cast<const char*>(&c.response_time_ms), sizeof(c.response_time_ms));
     m.append(reinterpret_cast<const char*>(&c.height), sizeof(c.height));
+    return crypto::cn_fast_hash(m.data(), m.size());
+}
+inline crypto::hash validator_message_hash(const crypto::hash& node_id, const crypto::public_key& wallet_pubkey) {
+    std::string m;
+    m.append(reinterpret_cast<const char*>(node_id.data), sizeof(node_id.data));
+    m.append(reinterpret_cast<const char*>(&wallet_pubkey), sizeof(wallet_pubkey));
+    m.append("validator", 9);
     return crypto::cn_fast_hash(m.data(), m.size());
 }
 }} // namespace cryptonote::mevatrust

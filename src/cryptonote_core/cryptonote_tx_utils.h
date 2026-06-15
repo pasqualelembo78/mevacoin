@@ -39,19 +39,23 @@
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1);
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1, uint64_t custom_unlock_window = 0);
   // [C2] snapshot_extra_bytes: blob 0xA2 da embeddare nel miner_tx (badge on-chain).
   // Passare pm->consume_pending_snapshot_extra(). Parametro opzionale per retrocompat.
+  // NEW: total_block_reward (base_reward + fees), nettype per indirizzo pool deterministico.
+  // Pool riceve 3% hardcoded ogni blocco. Miner riceve 97% - node_rewards.
   bool construct_miner_tx_with_mevatrust(
     size_t height, size_t median_weight,
     uint64_t already_generated_coins, size_t current_block_weight,
-    uint64_t miner_reward,
+    uint64_t total_block_reward,
     const account_public_address& miner_address,
     const std::vector<NodeCoinbaseReward>& node_rewards,
     transaction& tx,
     const blobdata& extra_nonce = blobdata(),
     size_t max_outs = 999, uint8_t hard_fork_version = 1,
-    const std::vector<uint8_t>& snapshot_extra_bytes = {});
+    const std::vector<uint8_t>& snapshot_extra_bytes = {},
+    uint64_t custom_unlock_window = 0,
+    network_type nettype = MAINNET);
 
 
   struct tx_source_entry

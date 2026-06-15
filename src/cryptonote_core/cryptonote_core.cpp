@@ -1817,6 +1817,11 @@ namespace cryptonote
     if(!pm||!pm->is_initialized()) return true;
     auto poa=pm->availability_proof();
     if(!poa) return true;
+
+    // Solo i nodi validator possono inviare challenge
+    crypto::hash my_id;
+    if (!mevatrust::get_my_node_id(my_id) || !pm->is_validator(my_id))
+      return true;
     const uint64_t ts_ms=static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
     const uint64_t height=m_blockchain_storage.get_current_blockchain_height();
     static bool first_run=true;

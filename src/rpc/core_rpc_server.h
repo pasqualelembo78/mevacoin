@@ -194,6 +194,7 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_node_status",           on_get_node_status,           cryptonote::rpc::COMMAND_RPC_GET_NODE_STATUS)
         MAP_JON_RPC_WE("get_reward_history",        on_get_reward_history,        cryptonote::rpc::COMMAND_RPC_GET_REWARD_HISTORY)
         MAP_JON_RPC_WE("get_badges",                on_get_badges,                cryptonote::rpc::COMMAND_RPC_GET_BADGES)
+        MAP_JON_RPC_WE("get_badge_requirements",    on_get_badge_requirements,    cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS)
         MAP_JON_RPC_WE_IF("register_node",          on_register_node,             cryptonote::rpc::COMMAND_RPC_REGISTER_NODE, !m_restricted)
         MAP_JON_RPC_WE_IF("unregister_node",        on_unregister_node,           cryptonote::rpc::COMMAND_RPC_UNREGISTER_NODE, !m_restricted)
         MAP_JON_RPC_WE("get_incentive_pool_status", on_get_incentive_pool_status, cryptonote::rpc::COMMAND_RPC_GET_INCENTIVE_POOL_STATUS)
@@ -305,6 +306,7 @@ namespace cryptonote
     bool on_get_node_status(const cryptonote::rpc::COMMAND_RPC_GET_NODE_STATUS::request& req, cryptonote::rpc::COMMAND_RPC_GET_NODE_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_reward_history(const cryptonote::rpc::COMMAND_RPC_GET_REWARD_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_REWARD_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_badges(const cryptonote::rpc::COMMAND_RPC_GET_BADGES::request& req, cryptonote::rpc::COMMAND_RPC_GET_BADGES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_badge_requirements(const cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::request& req, cryptonote::rpc::COMMAND_RPC_GET_BADGE_REQUIREMENTS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_register_node(const cryptonote::rpc::COMMAND_RPC_REGISTER_NODE::request& req, cryptonote::rpc::COMMAND_RPC_REGISTER_NODE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_unregister_node(const cryptonote::rpc::COMMAND_RPC_UNREGISTER_NODE::request& req, cryptonote::rpc::COMMAND_RPC_UNREGISTER_NODE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_incentive_pool_status(const cryptonote::rpc::COMMAND_RPC_GET_INCENTIVE_POOL_STATUS::request& req, cryptonote::rpc::COMMAND_RPC_GET_INCENTIVE_POOL_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

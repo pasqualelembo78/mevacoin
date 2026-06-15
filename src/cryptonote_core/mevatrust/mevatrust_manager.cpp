@@ -16,6 +16,9 @@
 
 #include "mevatrust_tx_parser.h"
 #include "penalty.h"
+#include "pool_distribution.h"
+#include "pool_address.h"
+#include "frost_threshold.h"
 
 namespace cryptonote {
 
@@ -148,23 +151,79 @@ void MevaTrustManager::shutdown() {
   if (m_badge_system)         m_badge_system->save_to_disk();
 }
 
+// ── Validator system ──────────────────────────────────────────────────────
+static constexpr uint64_t VALIDATOR_MIN_STAKE = 1'000'000'000'000'000ULL; // 1000 MVC
+static constexpr uint64_t VALIDATOR_AUTO_UPTIME_SECS = 30 * 86400ULL;     // 30 giorni
+static constexpr float    VALIDATOR_AUTO_UPTIME_PCT = 0.95f;              // 95%
+
+void MevaTrustManager::promote_to_validator(const crypto::hash& node_id, uint64_t height, uint64_t stake) {
+    if (!m_node_registry) return;
+    NodeRegistryEntry entry;
+    if (!m_node_registry->get_node_by_id(node_id, entry)) return;
+    if (entry.is_validator) return;
+    // Persiste in NodeRegistry + LMDB
+    if (!m_node_registry->update_node_validator(node_id, true, height, stake)) {
+        MWARNING("[Validator] Fallito aggiornamento LMDB per nodo "
+                 << epee::string_tools::pod_to_hex(node_id).substr(0,16));
+        return;
+    }
+    MINFO("[Validator] Promosso nodo " << epee::string_tools::pod_to_hex(node_id).substr(0,16)
+          << " a h=" << height << " stake=" << stake);
+    if (m_badge_system)
+        m_badge_system->award_badge(node_id, BadgeType::NETWORK_VALIDATOR, height, "validator-promotion");
+    PoppedOp po; po.op = PoppedOp::VALIDATOR_PROMOTION; po.node_id = node_id;
+    po.badge_type = static_cast<uint8_t>(BadgeType::NETWORK_VALIDATOR);
+    m_reorg_log[height].push_back(po);
+}
+
+bool MevaTrustManager::check_auto_validator_promotion(uint64_t height) {
+    if (!m_node_registry || !m_mevatrust_engine) return false;
+    uint32_t promoted = 0;
+    auto nodes = m_node_registry->get_active_nodes();
+    for (const auto& n : nodes) {
+        if (n.is_validator) continue;
+        if (n.status != NodeStatus::ACTIVE) continue;
+        uint64_t uptime_secs = m_mevatrust_engine->get_total_uptime_seconds(n.node_id);
+        float uptime_pct = m_mevatrust_engine->get_uptime_percentage(n.node_id);
+        if (uptime_secs >= VALIDATOR_AUTO_UPTIME_SECS && uptime_pct >= VALIDATOR_AUTO_UPTIME_PCT) {
+            promote_to_validator(n.node_id, height, 0);
+            ++promoted;
+        }
+    }
+    if (promoted) MINFO("[Validator] Auto-promossi " << promoted << " nodi a h=" << height);
+    return promoted > 0;
+}
+
+bool MevaTrustManager::is_validator(const crypto::hash& node_id) const {
+    if (!m_node_registry) return false;
+    NodeRegistryEntry entry;
+    return m_node_registry->get_node_by_id(node_id, entry) && entry.is_validator;
+}
+
+uint32_t MevaTrustManager::get_validator_count() const {
+    if (!m_node_registry) return 0;
+    uint32_t count = 0;
+    auto nodes = m_node_registry->get_active_nodes();
+    for (const auto& n : nodes)
+        if (n.is_validator) ++count;
+    return count;
+}
+
 void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint8_t hf) {
   if (!m_initialized.load()) return;
   std::lock_guard<std::mutex> lk(m_lock);
   m_hf_version = hf;
 
-  if (hf>=2 && m_reward_distributor) {
-    uint64_t amt = m_reward_distributor->calculate_pool_contribution(block_reward);
-    m_reward_distributor->accumulate_reward(amt, height);
-  }
-
-  if (height>0 && height%m_period_length==0) {
+  // Pool è on-chain: 3% nel coinbase -> pool_address deterministica.
+  // Non accumuliamo più in LMDB. pool_balance = sum(3% coinbase) - distribuzioni.
+    if (height>0 && height%m_period_length==0) {
     MINFO("Period boundary h="<<height);
     if (m_mevatrust_engine) m_mevatrust_engine->process_reward_period(height);
     if (m_badge_system) {
       uint32_t ch = m_badge_system->evaluate_all_badges(height);
       if (ch) MINFO("Badge changes: "<<ch<<" at h="<<height);
     }
+    check_auto_validator_promotion(height);
     trigger_distribution(height);
 
     // Fase 3: broadcast snapshot 0xA2 P2P con badge assegnati nel periodo
@@ -186,7 +245,7 @@ void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint
         // [C2] Badge On-Chain: prepara snapshot 0xA2 da embeddare nel prossimo miner_tx
         build_pending_snapshot(height);
 
-        // Fase 5: escalate SUSPENDED da >2 periodi a BANNED
+        // Escalate SUSPENDED da >2 periodi a BANNED
         if (m_node_registry) {
             auto suspended = m_node_registry->get_nodes_by_status(NodeStatus::SUSPENDED);
             const uint64_t suspend_window = m_period_length * 2u;
@@ -206,12 +265,16 @@ void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint
 void MevaTrustManager::trigger_distribution(uint64_t height) {
   if (!m_reward_distributor||!m_mevatrust_engine) return;
 
-  // Process welcome bonuses (separate from score-based distribution)
+  // Pool balance from on-chain state root (not LMDB)
+  uint64_t pool_balance = compute_pool_balance_from_chain();
+  if (pool_balance == 0) return;
+
+  // Process welcome bonuses  
   auto welcome_outputs = m_reward_distributor->process_welcome_bonuses(height);
   if (!m_reward_distributor->is_distribution_due(height) && welcome_outputs.empty()) return;
-  MINFO("Triggering distribution h="<<height);
+  MINFO("Triggering distribution h=" << height << " pool_balance=" << pool_balance);
 
-  // Regular distribution
+  // Regular distribution (uses MevaTrustEngine scores)
   if (!m_reward_distributor->distribute_rewards(m_mevatrust_engine, height)) {
     MERROR("distribute_rewards failed h="<<height); return;
   }
@@ -219,7 +282,6 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
 
   // Merge welcome + regular outputs
   for (auto& pco : welcome_outputs) pending.push_back(std::move(pco));
-
   if (pending.empty()) return;
 
   std::vector<NodeCoinbaseReward> resolved; resolved.reserve(pending.size());
@@ -238,19 +300,30 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
     resolved.push_back(std::move(ncr));
   }
   if (resolved.empty()) return;
-  // Spread pool payout across the full period: per-block share = total / period_length
-  // Without this, node_total (240*10%*R = 24R) >> block_reward (R), safety check fires,
-  // distribution never happens. With this fix: per-block = 24R/240 = 0.1R < R ? OK.
-  if (m_period_length > 1 && !resolved.empty()) {
-    for (auto& r : resolved)
-      r.amount = r.amount / static_cast<uint64_t>(m_period_length);
-    resolved.erase(
-      std::remove_if(resolved.begin(), resolved.end(),
-        [](const NodeCoinbaseReward& r){ return r.amount == 0; }),
-      resolved.end());
-  }
-  if (resolved.empty()) return;
+  
+  // Node rewards go into MINER_COINBASE as vouts (spendable by nodes)
+  // The 0xAA FROST blob proves authorization
   m_resolved_rewards=std::move(resolved); m_resolved_at_height=height;
+  
+  // Build FROST-authorized pool distribution blob (0xAA) for consensus validation
+  // TODO: real FROST signing
+  cryptonote::mevatrust::frost::FrostSignature frost_sig;
+  memset(&frost_sig, 0, sizeof(frost_sig)); // TODO: real FROST signing
+  
+  std::vector<uint8_t> dist_extra;
+  if (mevatrust::construct_pool_distribution_extra(
+      height,
+      static_cast<uint32_t>(height / m_period_length),
+      pool_balance,
+      m_resolved_rewards,
+      frost_sig,
+      dist_extra)) {
+    m_pending_pool_distribution_extra = std::move(dist_extra);
+    m_has_pending_pool_distribution = true;
+    MINFO("Pool distribution 0xAA ready: " << m_resolved_rewards.size()
+          << " outputs, period=" << (height / m_period_length));
+  }
+  
   MINFO("Distribution ready: "<<m_resolved_rewards.size()<<" outputs h="<<height);
 }
 
@@ -353,6 +426,11 @@ void MevaTrustManager::process_mevatrust_txs(
                     MINFO("[MevaTrustManager] Nodo registrato on-chain h="
                           << height << " node_id="
                           << epee::string_tools::pod_to_hex(reg.node_id));
+                    // Welcome badge immediato
+                    if (m_badge_system) {
+                        m_badge_system->award_badge(reg.node_id, BadgeType::WELCOME,
+                            height, "new-registration");
+                    }
                     PoppedOp po; po.op = PoppedOp::REGISTER; po.node_id = reg.node_id;
                     m_reorg_log[height].push_back(po);
                 } else if (m_node_registry->is_wallet_pubkey_registered(reg.wallet_pubkey)) {
@@ -386,6 +464,37 @@ void MevaTrustManager::process_mevatrust_txs(
                 }
             }
         }
+        // Tag 0xAB ? Validator promotion
+        {
+            tx_extra_mevatrust_validator val;
+            if (mevatrust::parse_mevatrust_validator_from_tx(tx, val)) {
+                if (!mevatrust::verify_validator_signature(val)) {
+                    MWARNING("[MevaTrustManager] Validator sig INVALIDA, skip");
+                    continue;
+                }
+                // Verifica che il tx contenga stake sufficiente verso pool address
+                uint64_t stake = 0;
+                account_public_address pool_addr = mevatrust::get_pool_address(m_nettype);
+                for (const auto& vout : tx.vout) {
+                    if (vout.amount < stake) continue; // cerca l'output piu' grande verso pool
+                    txout_to_key tk;
+                    if (vout.target.type() == typeid(txout_to_key)) {
+                        tk = boost::get<txout_to_key>(vout.target);
+                        if (tk.key == pool_addr.m_spend_public_key)
+                            stake = vout.amount;
+                    }
+                }
+                if (stake < VALIDATOR_MIN_STAKE) {
+                    MWARNING("[MevaTrustManager] Validator stake insufficiente: " << stake);
+                    continue;
+                }
+                promote_to_validator(val.node_id, height, stake);
+                PoppedOp po; po.op = PoppedOp::BADGE_AWARD; po.node_id = val.node_id;
+                po.badge_type = static_cast<uint8_t>(BadgeType::NETWORK_VALIDATOR);
+                m_reorg_log[height].push_back(po);
+            }
+        }
+
         // Tag 0xA2 ? Snapshot on-chain: applica badge awards (Fase 3)
         {
             tx_extra_mevatrust_snapshot snap;
@@ -713,6 +822,19 @@ void MevaTrustManager::process_mevatrust_txs(
                 m_reorg_log[height].push_back(po);
             }
         }
+        // Tag 0xAA ? Pool Distribution
+        {
+            tx_extra_mevatrust_pool_distribution pd;
+            if (mevatrust::parse_mevatrust_pool_distribution_from_tx(tx, pd)) {
+                MINFO("[MevaTrustManager] Pool distribution TX found h=" << height
+                      << " period=" << pd.period
+                      << " amount=" << pd.total_distributed);
+                // Validazione consensus fatta in check_distribution_tx
+                PoppedOp po; po.op = PoppedOp::POOL_DISTRIBUTION;
+                po.reorg_data = std::to_string(pd.total_distributed);
+                m_reorg_log[height].push_back(po);
+            }
+        }
     }
 
     // Expire nodi offline ogni 240 blocchi
@@ -831,6 +953,19 @@ std::vector<uint8_t> MevaTrustManager::consume_pending_snapshot_extra()
   return result;
 }
 
+// ?? Pool Distribution: restituisce e svuota il buffer 0xAA (consume semantics).
+std::vector<uint8_t> MevaTrustManager::consume_pending_pool_distribution_extra()
+{
+  std::lock_guard<std::mutex> lk(m_lock);
+  if (!m_has_pending_pool_distribution) return {};
+  m_has_pending_pool_distribution = false;
+  MINFO("[PoolDist] consume_pending_pool_distribution_extra: "
+        << m_pending_pool_distribution_extra.size() << " bytes consegnati al miner");
+  auto result = std::move(m_pending_pool_distribution_extra);
+  m_pending_pool_distribution_extra.clear();
+  return result;
+}
+
 
 
 // ── [C4] Accumula voto da proposer P2P — chiama SnapshotBroadcaster::on_receive_vote().
@@ -901,6 +1036,12 @@ void MevaTrustManager::on_mevatrust_block_popped(const block& bl, uint64_t heigh
             case PoppedOp::BADGE_REVOKE:
                 // Non possiamo ri-assegnare automaticamente
                 break;
+            case PoppedOp::VALIDATOR_PROMOTION:
+                if (m_node_registry)
+                    m_node_registry->update_node_validator(po.node_id, false, 0, 0);
+                if (m_badge_system)
+                    m_badge_system->revoke_badge(po.node_id, static_cast<BadgeType>(po.badge_type), "reorg-rollback");
+                break;
             case PoppedOp::CIRCLE_CREATE:
                 if (m_circle_registry)
                     m_circle_registry->disband_circle(po.circle_id, po.pubkey);
@@ -947,6 +1088,7 @@ void MevaTrustManager::on_mevatrust_block_popped(const block& bl, uint64_t heigh
             case PoppedOp::CIRCLE_PROPOSE:
             case PoppedOp::CIRCLE_VOTE:
             case PoppedOp::CIRCLE_FINALIZE:
+            case PoppedOp::POOL_DISTRIBUTION:
                 // Dati non reversibili, verranno ricalcolati al prossimo re-scan
                 break;
         }
@@ -965,6 +1107,7 @@ crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
     // 1. Hash di tutti i nodi registrati
     // 2. Hash di tutte le cerchie
     // 3. Hash di tutti i badge attivi
+    // 4. Pool balance (on-chain, deterministico da chain)
     std::string state_data;
 
     // Nodi registrati
@@ -1001,7 +1144,67 @@ crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
         }
     }
 
+    // Pool balance — deterministico da chain (non da LMDB locale)
+    uint64_t pool_balance = compute_pool_balance_from_chain();
+    state_data.append(reinterpret_cast<const char*>(&pool_balance), sizeof(pool_balance));
+
     return crypto::cn_fast_hash(state_data.data(), state_data.size());
+}
+
+// Calcola pool_balance on-chain: somma 3% contributi - distribuzioni eseguite
+// Itera blocchi da HF_MEVATRUST_POOL activation height
+uint64_t MevaTrustManager::compute_pool_balance_from_chain() const
+{
+    if (!m_get_block_func) return 0;
+    
+    const uint64_t HF_POOL_ACTIVATION = 100000; // TODO: usare costante HF reale
+    uint64_t current_height = 0;
+    if (m_get_block_func) {
+        block dummy;
+        if (m_get_block_func(0, dummy)) {
+            // Find current tip height
+            for (uint64_t h = 1; ; ++h) {
+                if (!m_get_block_func(h, dummy)) { current_height = h - 1; break; }
+            }
+        }
+    }
+    if (current_height <= HF_POOL_ACTIVATION) return 0;
+
+    uint64_t total_contributions = 0;
+    uint64_t total_distributions = 0;
+    
+    block bl;
+    for (uint64_t h = HF_POOL_ACTIVATION + 1; h <= current_height; ++h) {
+        if (!m_get_block_func(h, bl)) continue;
+        
+        // 1. Contribution: 3% of block reward (base_reward + fees)
+        uint64_t block_reward = bl.miner_tx.vout.empty() ? 0 : bl.miner_tx.vout[0].amount;
+        for (size_t i = 1; i < bl.miner_tx.vout.size(); ++i) {
+            block_reward += bl.miner_tx.vout[i].amount;
+        }
+        if (block_reward > 0) {
+            total_contributions += block_reward * 3 / 100;
+        }
+        
+        // 2. Check for distribution transactions in this block (identifiable by tag 0xAA)
+        for (const auto& tx_hash : bl.tx_hashes) {
+            transaction tx;
+            if (!m_get_tx_func(tx_hash, tx)) continue;
+
+            // Check if this TX has a pool distribution extra tag (0xAA)
+            tx_extra_mevatrust_pool_distribution dist;
+            if (mevatrust::parse_mevatrust_pool_distribution_from_tx(tx, dist)) {
+                // Sum all outputs — these are rewards distributed to nodes
+                uint64_t tx_total = 0;
+                for (const auto& out : tx.vout) {
+                    tx_total += out.amount;
+                }
+                total_distributions += tx_total;
+            }
+        }
+    }
+    
+    return total_contributions >= total_distributions ? total_contributions - total_distributions : 0;
 }
 
 bool MevaTrustManager::verify_mevatrust_state_root(const block& bl, uint64_t height) const

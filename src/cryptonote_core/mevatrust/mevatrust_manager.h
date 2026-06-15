@@ -97,13 +97,17 @@ public:
   // Dopo la chiamata il buffer e' svuotato (consume semantics).
   std::vector<uint8_t> consume_pending_snapshot_extra();
 
+  // ?? Pool Distribution: pending 0xAA blob (FROST-authorized) ??
+  // Restituisce il blob 0xAA da appendere al miner_tx extra.
+  std::vector<uint8_t> consume_pending_pool_distribution_extra();
+
   // ── Reorg rollback ──────────────────────────────────────────────────────
   // Chiamato quando un blocco viene rimosso dalla catena principale (reorg).
   // Inverte le modifiche allo stato MevaTrust applicate da quel blocco.
   void on_mevatrust_block_popped(const cryptonote::block& bl, uint64_t height);
 
   // ── State commitment (fork resistance) ───────────────────────────────────
-  // Calcola un hash Merkle dello stato MevaTrust corrente (nodi + cerchie + badge).
+  // Calcola un hash Merkle dello stato MevaTrust corrente (nodi + cerchie + badge + pool_balance).
   // Questo root viene incluso nella coinbase tx_extra (tag 0xA7) di ogni blocco.
   crypto::hash compute_mevatrust_state_root() const;
 
@@ -111,13 +115,23 @@ public:
   // Se non matcha => fork detection => blocco rifiutato.
   bool verify_mevatrust_state_root(const cryptonote::block& bl, uint64_t height) const;
 
+  // ── Validator system ─────────────────────────────────────────────────────
+  void promote_to_validator(const crypto::hash& node_id, uint64_t height, uint64_t stake = 0);
+  bool check_auto_validator_promotion(uint64_t height);
+  bool is_validator(const crypto::hash& node_id) const;
+  uint32_t get_validator_count() const;
+
   // Attiva/disattiva verifica state root allo switch HF
   void set_state_root_verification_enabled(bool en) { m_state_root_verification_enabled = en; }
   bool is_state_root_verification_enabled() const { return m_state_root_verification_enabled; }
 
+  // Calcola pool_balance on-chain: somma 3% contributi - distribuzioni eseguite
+  uint64_t compute_pool_balance_from_chain() const;
+
   void set_pool_fraction_percent(uint32_t pct);
   void set_min_score_threshold(float s);
   void set_period_length(uint32_t blocks);
+  uint32_t period_length() const { return m_period_length; }
 
 private:
   std::atomic<bool>  m_initialized{false};
@@ -159,6 +173,10 @@ private:
   std::vector<uint8_t>  m_pending_snapshot_extra;
   bool                  m_has_pending_snapshot{false};
 
+  // ?? Pool Distribution: pending 0xAA blob (FROST-authorized) ??
+  std::vector<uint8_t>  m_pending_pool_distribution_extra;
+  bool                  m_has_pending_pool_distribution{false};
+
   // ── State commitment (fork resistance) ──────────────────────────────────
   bool                  m_state_root_verification_enabled{true};
   // Reorg rollback: tiene traccia delle operazioni per ogni blocco
@@ -166,7 +184,8 @@ private:
     enum Op { REGISTER, DEREGISTER, BADGE_AWARD, BADGE_REVOKE,
               CIRCLE_CREATE, CIRCLE_DISBAND, CIRCLE_JOIN, CIRCLE_LEAVE,
               CIRCLE_CHANGE_ADMIN, PENALTY, UPTIME, CHALLENGE, STORE,
-              CIRCLE_PROPOSE, CIRCLE_VOTE, CIRCLE_FINALIZE };
+              CIRCLE_PROPOSE, CIRCLE_VOTE, CIRCLE_FINALIZE, POOL_DISTRIBUTION,
+              VALIDATOR_PROMOTION };
     Op op;
     crypto::hash node_id;
     crypto::hash circle_id;

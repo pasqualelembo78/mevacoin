@@ -25,7 +25,9 @@ static bool find_mevatrust_tag(const std::vector<uint8_t>& extra, uint8_t target
             tag == TX_EXTRA_TAG_MEVATRUST_CHALLENGE    ||
             tag == TX_EXTRA_TAG_MEVATRUST_STATE_ROOT   ||
             tag == TX_EXTRA_TAG_MEVATRUST_STORE        ||
-            tag == TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE) {
+            tag == TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE ||
+            tag == TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION ||
+            tag == TX_EXTRA_TAG_MEVATRUST_VALIDATOR) {
             if (i + 2 > n) return false;
             uint16_t len = static_cast<uint16_t>(extra[i]) | (static_cast<uint16_t>(extra[i+1]) << 8);
             i += 2;
@@ -183,6 +185,30 @@ bool verify_circle_vote_signature(const tx_extra_mevatrust_circle_vote& op) {
         crypto::hash h = circle_vote_message_hash(op);
         return crypto::check_signature(h, op.signer_pubkey, op.signature);
     } catch (const std::exception& e) { MWARNING("mevatrust: verify_circle_vote_signature failed: " << e.what()); return false; }
+}
+
+// ── Tag 0xAA: Pool Distribution ────────────────────────────────────────────
+bool parse_mevatrust_pool_distribution_from_tx(const transaction& tx, tx_extra_mevatrust_pool_distribution& out) {
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION, "pool_distribution", out);
+}
+bool build_mevatrust_pool_distribution_extra(const tx_extra_mevatrust_pool_distribution& dist, std::vector<uint8_t>& o) {
+    std::string b; tx_extra_mevatrust_pool_distribution c = dist;
+    if (!::serialization::dump_binary(c,b)) return false;
+    return pack_blob(TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION, b, o);
+}
+
+// ── Tag 0xAB: Validator ────────────────────────────────────────────────────
+bool parse_mevatrust_validator_from_tx(const transaction& tx, tx_extra_mevatrust_validator& out) {
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_VALIDATOR, "validator", out);
+}
+bool build_mevatrust_validator_extra(const tx_extra_mevatrust_validator& v, std::vector<uint8_t>& o) {
+    std::string b; tx_extra_mevatrust_validator c = v;
+    if (!::serialization::dump_binary(c,b)) return false;
+    return pack_blob(TX_EXTRA_TAG_MEVATRUST_VALIDATOR, b, o);
+}
+bool verify_validator_signature(const tx_extra_mevatrust_validator& v) {
+    const crypto::hash h = validator_message_hash(v.node_id, v.wallet_pubkey);
+    return crypto::check_signature(h, v.wallet_pubkey, v.signature);
 }
 
 }} // namespace cryptonote::mevatrust

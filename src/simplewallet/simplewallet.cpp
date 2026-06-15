@@ -3704,7 +3704,7 @@ simple_wallet::simple_wallet()
                            tr("Comandi MevaTrust. Senza argomenti mostra la lista dei subcomandi.\n"
                               "Subcomandi:\n"
                               "  register, unregister, list, status, score, uptime,\n"
-                              "  badges, penalties, incentives, my_status,\n"
+                               "  badges, badge_requirements, penalties, incentives, my_status,\n"
                               "  circle_create, circle_info, circle_list, circle_join,\n"
                               "  circle_leave, circle_change_admin, circle_disband,\n"
                               "  propose, vote, finalize, proposals,\n"
@@ -9413,6 +9413,9 @@ bool simple_wallet::run()
   m_idle_thread = boost::thread([&]{wallet_idle_thread();});
 
   message_writer(console_color_green, false) << "Background refresh thread started";
+
+  show_welcome_badge_trophy();
+
   return m_cmd_binder.run_handling([this](){return get_prompt();}, "");
 }
 //----------------------------------------------------------------------------------------------------
@@ -11835,6 +11838,7 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   if (sub == "score")    return cmd_node_score(sub_args);
   if (sub == "uptime")   return cmd_get_uptime(sub_args);
   if (sub == "badges")   return cmd_get_badges(sub_args);
+  if (sub == "badge_requirements") return cmd_get_badge_requirements(sub_args);
   if (sub == "penalties") return cmd_node_penalties(sub_args);
   if (sub == "incentives") return cmd_get_incentive_history(sub_args);
   if (sub == "my_status") return cmd_my_status(sub_args);
@@ -11869,6 +11873,10 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   // ── Admin commands ─────────────────────────────────────────────────
   if (sub == "ban")   return cmd_ban_node(sub_args);
   if (sub == "unban") return cmd_unban_node(sub_args);
+
+  // ── Validator commands ──────────────────────────────────────────────
+  if (sub == "become_validator") return cmd_become_validator(sub_args);
+  if (sub == "validator_info")  return cmd_validator_info(sub_args);
 
   // ── Unknown subcommand ─────────────────────────────────────────────
   fail_msg_writer() << tr("Subcomando MevaTrust sconosciuto: ") << sub;
