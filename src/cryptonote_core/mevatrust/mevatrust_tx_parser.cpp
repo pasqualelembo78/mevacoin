@@ -52,7 +52,8 @@ static bool pack_blob(uint8_t tag, const std::string& blob, std::vector<uint8_t>
     out.insert(out.end(), blob.begin(), blob.end()); return true;
 }
 
-static bool parse_tagged(const transaction& tx, uint8_t tag, const std::string& name, auto& out) {
+template<typename T>
+static bool parse_tagged(const transaction& tx, uint8_t tag, const std::string& name, T& out) {
     try {
         std::vector<uint8_t> b;
         if (!find_mevatrust_tag(tx.extra, tag, b)) return false;

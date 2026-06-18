@@ -122,6 +122,10 @@ public:
   uint32_t get_validator_count() const;
 
   // Attiva/disattiva verifica state root allo switch HF
+  // ── Node public key accessor (per RPC get_node_pubkey) ────────────
+  crypto::public_key get_node_pk() const { std::lock_guard<std::mutex> lk(m_lock); return m_node_pk; }
+  bool has_node_key() const { std::lock_guard<std::mutex> lk(m_lock); return m_node_key_set; }
+
   void set_state_root_verification_enabled(bool en) { m_state_root_verification_enabled = en; }
   bool is_state_root_verification_enabled() const { return m_state_root_verification_enabled; }
 
