@@ -873,6 +873,24 @@ struct Wallet
                                                    std::set<uint32_t> subaddr_indices = {}) = 0;
 
     /*!
+     * \brief createTransactionWithExtra creates a transaction with custom extra data (e.g. for MevaTrust operations)
+     * \param extra_hex             hex string of the extra data to include in the transaction
+     * \param amount                amount
+     * \param mixin_count           mixin count. if 0 passed, wallet will use default value
+     * \param priority
+     * \param subaddr_account       subaddress account from which the input funds are taken
+     * \param subaddr_indices       set of subaddress indices to use for transfer or sweeping
+     * \return                      PendingTransaction object. caller is responsible to check PendingTransaction::status()
+     *                              after object returned
+     */
+
+    virtual PendingTransaction * createTransactionWithExtra(const std::string &extra_hex,
+                                                   optional<uint64_t> amount, uint32_t mixin_count,
+                                                   PendingTransaction::Priority = PendingTransaction::Priority_Low,
+                                                   uint32_t subaddr_account = 0,
+                                                   std::set<uint32_t> subaddr_indices = {}) = 0;
+
+    /*!
      * \brief createSweepUnmixableTransaction creates transaction with unmixable outputs.
      * \return                  PendingTransaction object. caller is responsible to check PendingTransaction::status()
      *                          after object returned

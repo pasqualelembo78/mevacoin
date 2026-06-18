@@ -413,6 +413,25 @@ struct COMMAND_RPC_STORE_MY_PURCHASES {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+// ── Get Node Public Key ──────────────────────────────────────────────────────
+// Restituisce la chiave pubblica del nodo (node_pk) caricata nel daemon.
+// Utile per registrare il nodo da remoto senza SSH.
+struct COMMAND_RPC_GET_NODE_PUBKEY {
+  struct request_t {
+    BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP()
+  };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t {
+    std::string node_pubkey;   // 64 hex chars
+    std::string status;
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(node_pubkey)
+      KV_SERIALIZE(status)
+    END_KV_SERIALIZE_MAP()
+  };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 } // namespace rpc
 } // namespace cryptonote
 

@@ -217,6 +217,7 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_penalty_history", on_get_penalty_history,  cryptonote::rpc::COMMAND_RPC_GET_PENALTY_HISTORY)
         MAP_JON_RPC_WE_IF("ban_node",         on_ban_node,            cryptonote::rpc::COMMAND_RPC_BAN_NODE,     !m_restricted)
         MAP_JON_RPC_WE_IF("unban_node",       on_unban_node,          cryptonote::rpc::COMMAND_RPC_UNBAN_NODE,   !m_restricted)
+        MAP_JON_RPC_WE("get_node_pubkey",          on_get_node_pubkey,              cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY)
         // ── Store ──────────────────────────────────────────────────────────────
         MAP_JON_RPC_WE("store_list",         on_store_list,           cryptonote::rpc::COMMAND_RPC_STORE_LIST)
         MAP_JON_RPC_WE("store_show",         on_store_show,           cryptonote::rpc::COMMAND_RPC_STORE_SHOW)
@@ -329,6 +330,7 @@ namespace cryptonote
     bool on_get_penalty_history(const cryptonote::rpc::COMMAND_RPC_GET_PENALTY_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_PENALTY_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_ban_node(const cryptonote::rpc::COMMAND_RPC_BAN_NODE::request& req, cryptonote::rpc::COMMAND_RPC_BAN_NODE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_unban_node(const cryptonote::rpc::COMMAND_RPC_UNBAN_NODE::request& req, cryptonote::rpc::COMMAND_RPC_UNBAN_NODE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_node_pubkey(const cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY::request& req, cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     // ── Store RPC ──────────────────────────────────────────────────────────────
     bool on_store_list(const cryptonote::rpc::COMMAND_RPC_STORE_LIST::request& req, cryptonote::rpc::COMMAND_RPC_STORE_LIST::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_store_show(const cryptonote::rpc::COMMAND_RPC_STORE_SHOW::request& req, cryptonote::rpc::COMMAND_RPC_STORE_SHOW::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

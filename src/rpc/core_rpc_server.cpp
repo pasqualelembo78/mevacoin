@@ -4948,6 +4948,20 @@ bool core_rpc_server::on_unban_node(
   return true;
 }
 
+// ── get_node_pubkey ──────────────────────────────────────────────────────────
+bool core_rpc_server::on_get_node_pubkey(
+    const rpc::COMMAND_RPC_GET_NODE_PUBKEY::request& req,
+    rpc::COMMAND_RPC_GET_NODE_PUBKEY::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  auto* pm = cryptonote::mevatrust::get_manager();
+  if (!pm || !pm->is_initialized()) { res.status = "MevaTrust system not initialized"; return true; }
+  if (!pm->has_node_key()) { res.status = "Node key not loaded"; return true; }
+  res.node_pubkey = epee::string_tools::pod_to_hex(pm->get_node_pk());
+  res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
 // ── Store RPC handlers ─────────────────────────────────────────────────────
 bool core_rpc_server::on_store_list(
     const rpc::COMMAND_RPC_STORE_LIST::request& req,
