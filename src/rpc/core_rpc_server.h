@@ -223,6 +223,10 @@ namespace cryptonote
         MAP_JON_RPC_WE("store_show",         on_store_show,           cryptonote::rpc::COMMAND_RPC_STORE_SHOW)
         MAP_JON_RPC_WE("store_search",       on_store_search,         cryptonote::rpc::COMMAND_RPC_STORE_SEARCH)
         MAP_JON_RPC_WE_IF("store_my_purchases", on_store_my_purchases, cryptonote::rpc::COMMAND_RPC_STORE_MY_PURCHASES, !m_restricted)
+        // ── Mining (JSON-RPC) ──────────────────────────────────────────────
+        MAP_JON_RPC_WE_IF("start_mining",    on_start_mining_json,    COMMAND_RPC_START_MINING,    !m_restricted)
+        MAP_JON_RPC_WE_IF("stop_mining",     on_stop_mining_json,     COMMAND_RPC_STOP_MINING,     !m_restricted)
+        MAP_JON_RPC_WE_IF("mining_status",   on_mining_status_json,   COMMAND_RPC_MINING_STATUS,   !m_restricted)
       END_JSON_RPC_MAP()
     END_URI_MAP2()
 
@@ -238,6 +242,9 @@ namespace cryptonote
     bool on_start_mining(const COMMAND_RPC_START_MINING::request& req, COMMAND_RPC_START_MINING::response& res, const connection_context *ctx = NULL);
     bool on_stop_mining(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, const connection_context *ctx = NULL);
     bool on_mining_status(const COMMAND_RPC_MINING_STATUS::request& req, COMMAND_RPC_MINING_STATUS::response& res, const connection_context *ctx = NULL);
+    bool on_start_mining_json(const COMMAND_RPC_START_MINING::request& req, COMMAND_RPC_START_MINING::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_stop_mining_json(const COMMAND_RPC_STOP_MINING::request& req, COMMAND_RPC_STOP_MINING::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_mining_status_json(const COMMAND_RPC_MINING_STATUS::request& req, COMMAND_RPC_MINING_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_outs_bin(const COMMAND_RPC_GET_OUTPUTS_BIN::request& req, COMMAND_RPC_GET_OUTPUTS_BIN::response& res, const connection_context *ctx = NULL);
     bool on_get_outs(const COMMAND_RPC_GET_OUTPUTS::request& req, COMMAND_RPC_GET_OUTPUTS::response& res, const connection_context *ctx = NULL);
     bool on_get_info(const COMMAND_RPC_GET_INFO::request& req, COMMAND_RPC_GET_INFO::response& res, const connection_context *ctx = NULL);
