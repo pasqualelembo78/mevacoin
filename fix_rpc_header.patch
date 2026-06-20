@@ -1,0 +1,39 @@
+--- a/src/rpc/participation_rpc_commands.h
++++ b/src/rpc/participation_rpc_commands.h
+@@ -150,6 +150,36 @@
+   typedef epee::misc_utils::struct_init<response_t> response;
+ };
+ 
++// =============================================================================
++// COMMAND_RPC_UNREGISTER_NODE
++//
++// Permette al proprietario del wallet di rimuovere il proprio nodo dalla rete
++// di partecipazione, cessando di ricevere incentivi.
++// La firma crittografica garantisce che solo il proprietario possa farlo.
++// =============================================================================
++struct COMMAND_RPC_UNREGISTER_NODE {
++  struct request_t {
++    std::string node_id;       // ID del nodo da de-registrare (hex 64 char)
++    std::string address;       // indirizzo wallet del proprietario
++    std::string signature;     // firma Ed25519 su (node_id || address)
++    BEGIN_KV_SERIALIZE_MAP()
++      KV_SERIALIZE(node_id)
++      KV_SERIALIZE(address)
++      KV_SERIALIZE(signature)
++    END_KV_SERIALIZE_MAP()
++  };
++  typedef epee::misc_utils::struct_init<request_t> request;
++  struct response_t {
++    bool        success{false};
++    std::string status;
++    BEGIN_KV_SERIALIZE_MAP()
++      KV_SERIALIZE(success)
++      KV_SERIALIZE(status)
++    END_KV_SERIALIZE_MAP()
++  };
++  typedef epee::misc_utils::struct_init<response_t> response;
++};
++
+ struct COMMAND_RPC_GET_REWARD_HISTORY_BY_NODE {
+   struct request_t { std::string node_id; uint32_t limit{50};
+     BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(node_id) KV_SERIALIZE_OPT(limit,(uint32_t)50) END_KV_SERIALIZE_MAP() };
