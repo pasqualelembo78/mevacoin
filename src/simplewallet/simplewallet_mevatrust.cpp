@@ -753,8 +753,6 @@ bool simple_wallet::cmd_store_list(const std::vector<std::string>&) {
   rpc::COMMAND_RPC_STORE_LIST::request req;
   rpc::COMMAND_RPC_STORE_LIST::response res;
   req.active_only = true;
-  req.limit = 20;
-  req.top = true;
   if (!m_wallet->invoke_http_json_rpc("/json_rpc", "store_list", req, res)) {
     tools::fail_msg_writer() << tr("Errore: impossibile contattare il demone.");
     return true;
