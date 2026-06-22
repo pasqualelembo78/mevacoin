@@ -666,6 +666,51 @@ bool StoreRegistry::auto_refund_expired(const crypto::hash& store_id, const cryp
   return false;
 }
 
+bool StoreRegistry::buyer_cancel_purchase(const crypto::hash& store_id,
+    const crypto::hash& item_id,
+    const crypto::public_key& buyer_pubkey,
+    const crypto::hash& cancel_txid, uint64_t height) {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string key(reinterpret_cast<const char*>(buyer_pubkey.data), 32);
+  auto range = purchases_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, store_id.data, 32) != 0) continue;
+    if (memcmp(it->second.item_id.data, item_id.data, 32) != 0) continue;
+    if (it->second.status != PURCHASE_PENDING) return false;
+    if (height > it->second.confirm_expiry_height) return false;
+    it->second.status = PURCHASE_CANCELLED;
+    it->second.confirm_txid = cancel_txid;
+    it->second.confirm_height = height;
+    std::string ikey(reinterpret_cast<const char*>(item_id.data), 32);
+    auto iit = items_.find(ikey);
+    if (iit != items_.end()) {
+      iit->second.quantity++;
+      iit->second.active = true;
+      db_put_item(iit->second);
+    }
+    return db_put_purchase(it->second);
+  }
+  return false;
+}
+
+bool StoreRegistry::buyer_confirm_receipt(const crypto::hash& store_id,
+    const crypto::hash& item_id,
+    const crypto::public_key& buyer_pubkey,
+    uint64_t height) {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string key(reinterpret_cast<const char*>(buyer_pubkey.data), 32);
+  auto range = purchases_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, store_id.data, 32) != 0) continue;
+    if (memcmp(it->second.item_id.data, item_id.data, 32) != 0) continue;
+    if (it->second.status != PURCHASE_CONFIRMED) return false;
+    it->second.status = PURCHASE_COMPLETED;
+    it->second.confirm_height = height;
+    return db_put_purchase(it->second);
+  }
+  return false;
+}
+
 // ── Query ──────────────────────────────────────────────────────────────────
 bool StoreRegistry::get_store(const crypto::hash& store_id, StoreEntry& out) const {
   std::lock_guard<std::mutex> lk(lock_);

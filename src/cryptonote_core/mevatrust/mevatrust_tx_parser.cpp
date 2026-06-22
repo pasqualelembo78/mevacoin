@@ -184,6 +184,20 @@ bool verify_store_cancel_signature(const tx_extra_mevatrust_store& op) {
     } catch (const std::exception& e) { MWARNING("mevatrust: verify_store_cancel_signature failed: " << e.what()); return false; }
 }
 
+bool verify_store_buyer_cancel_signature(const tx_extra_mevatrust_store& op) {
+    try {
+        crypto::hash h = buyer_action_message_hash(op);
+        return crypto::check_signature(h, op.buyer_pubkey, op.owner_sig);
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_store_buyer_cancel_signature failed: " << e.what()); return false; }
+}
+
+bool verify_store_buyer_confirm_receipt_signature(const tx_extra_mevatrust_store& op) {
+    try {
+        crypto::hash h = buyer_action_message_hash(op);
+        return crypto::check_signature(h, op.buyer_pubkey, op.owner_sig);
+    } catch (const std::exception& e) { MWARNING("mevatrust: verify_store_buyer_confirm_receipt_signature failed: " << e.what()); return false; }
+}
+
 // ── Tag 0xA9: Circle Vote ───────────────────────────────────────────────────
 bool parse_mevatrust_circle_vote_from_tx(const transaction& tx, tx_extra_mevatrust_circle_vote& out) {
     return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE, "circle_vote", out);

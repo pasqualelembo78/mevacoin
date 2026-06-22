@@ -61,6 +61,19 @@ inline crypto::hash store_confirm_message_hash(const tx_extra_mevatrust_store& s
 bool verify_store_confirm_signature(const tx_extra_mevatrust_store& op);
 bool verify_store_cancel_signature(const tx_extra_mevatrust_store& op);
 
+// ── Store BUYER_CANCEL / BUYER_CONFIRM_RECEIPT ──────────────────────────────
+inline crypto::hash buyer_action_message_hash(const tx_extra_mevatrust_store& s) {
+    std::string m;
+    m.push_back(static_cast<uint8_t>(s.op));
+    m.append(reinterpret_cast<const char*>(s.store_id.data), sizeof(s.store_id.data));
+    m.append(reinterpret_cast<const char*>(s.item_id.data), sizeof(s.item_id.data));
+    m.append(reinterpret_cast<const char*>(s.buyer_pubkey.data), sizeof(s.buyer_pubkey.data));
+    m.append(s.cancel_reason);
+    return crypto::cn_fast_hash(m.data(), m.size());
+}
+bool verify_store_buyer_cancel_signature(const tx_extra_mevatrust_store& op);
+bool verify_store_buyer_confirm_receipt_signature(const tx_extra_mevatrust_store& op);
+
 // ── Tag 0xA9: Circle Vote ───────────────────────────────────────────────────
 bool parse_mevatrust_circle_vote_from_tx(const transaction& tx, tx_extra_mevatrust_circle_vote& out);
 bool build_mevatrust_circle_vote_extra(const tx_extra_mevatrust_circle_vote& op, std::vector<uint8_t>& extra);

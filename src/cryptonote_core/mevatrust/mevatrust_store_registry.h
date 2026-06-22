@@ -57,6 +57,7 @@ enum PurchaseStatus : uint8_t {
     PURCHASE_CONFIRMED  = 1,
     PURCHASE_CANCELLED  = 2,
     PURCHASE_REFUNDED   = 3,
+    PURCHASE_COMPLETED  = 4,
 };
 
 struct StorePurchaseEntry {
@@ -142,6 +143,12 @@ public:
   bool auto_refund_expired(const crypto::hash& store_id, const crypto::hash& item_id,
                            const crypto::public_key& buyer_pubkey, uint64_t current_height,
                            const crypto::hash& refund_txid);
+  bool buyer_cancel_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
+                             const crypto::public_key& buyer_pubkey,
+                             const crypto::hash& cancel_txid, uint64_t height);
+  bool buyer_confirm_receipt(const crypto::hash& store_id, const crypto::hash& item_id,
+                             const crypto::public_key& buyer_pubkey,
+                             uint64_t height);
 
   // ── Query ───────────────────────────────────────────────────────────────
   bool get_store(const crypto::hash& store_id, StoreEntry& out) const;
