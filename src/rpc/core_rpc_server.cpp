@@ -5015,25 +5015,31 @@ bool core_rpc_server::on_store_list(
   auto sr = pm->store_registry();
   if (!sr) { res.status = "StoreRegistry non disponibile"; return true; }
 
-  std::vector<StoreEntry> stores;
-  if (req.top && req.limit > 0)
-    stores = sr->list_top_stores(req.limit, req.active_only);
-  else if (req.limit > 0)
-    stores = sr->list_top_stores(req.limit, req.active_only);
-  else
-    stores = sr->list_stores(req.active_only);
+  cryptonote::StoreSearchParams params;
+  params.category = req.category;
+  params.min_price = req.min_price;
+  params.max_price = req.max_price;
+  params.sort_by = req.sort_by;
+  params.page = req.page;
+  params.per_page = req.per_page;
 
-  for (const auto& s : stores) {
+  auto result = sr->list_stores(params);
+  for (const auto& s : result.results) {
     rpc::COMMAND_RPC_STORE_LIST::response::StoreInfo si;
     si.store_id = epee::string_tools::pod_to_hex(s.store_id);
     si.name = s.name;
     si.description = s.description;
     si.url = s.url;
     si.owner_pubkey = epee::string_tools::pod_to_hex(s.owner_pubkey);
+    si.payment_address = s.payment_address;
     si.created_height = s.created_height;
     si.item_count = s.item_count;
     res.stores.push_back(si);
   }
+  res.total_count = result.total_count;
+  res.total_pages = result.total_pages;
+  res.page = result.page;
+  res.categories = sr->list_categories();
   res.status = "OK";
   return true;
 }
@@ -5058,6 +5064,7 @@ bool core_rpc_server::on_store_show(
   res.description = se.description;
   res.url = se.url;
   res.owner_pubkey = epee::string_tools::pod_to_hex(se.owner_pubkey);
+  res.payment_address = se.payment_address;
   res.created_height = se.created_height;
   res.item_count = se.item_count;
 
@@ -5068,7 +5075,9 @@ bool core_rpc_server::on_store_show(
     ii.name = item.name;
     ii.description = item.description;
     ii.price = item.price;
+    ii.quantity = item.quantity;
     ii.category = item.category;
+    ii.metadata = item.metadata;
     ii.active = item.active;
     res.items.push_back(ii);
   }
@@ -5112,20 +5121,34 @@ bool core_rpc_server::on_store_search(
   auto sr = pm->store_registry();
   if (!sr) { res.status = "StoreRegistry non disponibile"; return true; }
 
-  if (req.keyword.empty()) { res.status = "Keyword vuota"; return true; }
+  if (req.keyword.empty() && req.category.empty()) { res.status = "Keyword o categoria richiesta"; return true; }
 
-  auto stores = sr->search_stores(req.keyword, req.search_items);
-  for (const auto& s : stores) {
+  cryptonote::StoreSearchParams params;
+  params.keyword = req.keyword;
+  params.category = req.category;
+  params.min_price = req.min_price;
+  params.max_price = req.max_price;
+  params.sort_by = req.sort_by;
+  params.search_items = req.search_items;
+  params.page = req.page;
+  params.per_page = req.per_page;
+
+  auto result = sr->search_stores(params);
+  for (const auto& s : result.results) {
     rpc::COMMAND_RPC_STORE_SEARCH::response::StoreInfo si;
     si.store_id = epee::string_tools::pod_to_hex(s.store_id);
     si.name = s.name;
     si.description = s.description;
     si.url = s.url;
     si.owner_pubkey = epee::string_tools::pod_to_hex(s.owner_pubkey);
+    si.payment_address = s.payment_address;
     si.created_height = s.created_height;
     si.item_count = s.item_count;
     res.stores.push_back(si);
   }
+  res.total_count = result.total_count;
+  res.total_pages = result.total_pages;
+  res.page = result.page;
   res.status = "OK";
   return true;
 }

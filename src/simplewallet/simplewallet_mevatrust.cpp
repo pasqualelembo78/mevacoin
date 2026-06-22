@@ -787,7 +787,7 @@ bool simple_wallet::cmd_store_search(const std::vector<std::string>& args) {
 
 bool simple_wallet::cmd_store_create(const std::vector<std::string>& args) {
   if (args.size() < 2) {
-    tools::fail_msg_writer() << tr("Uso: store_create \"Nome\" \"Descrizione\" [url]"); return true;
+    tools::fail_msg_writer() << tr("Uso: store_create \"Nome\" \"Descrizione\" [url] [indirizzo_pagamento]"); return true;
   }
   const account_keys& keys = m_wallet->get_account().get_keys();
   cryptonote::tx_extra_mevatrust_store op{};
@@ -796,6 +796,7 @@ bool simple_wallet::cmd_store_create(const std::vector<std::string>& args) {
   op.name = args[0];
   op.description = args[1];
   op.url = (args.size() > 2) ? args[2] : "";
+  op.payment_address = (args.size() > 3) ? args[3] : "";
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);
@@ -947,6 +948,27 @@ bool simple_wallet::cmd_store_delist(const std::vector<std::string>& args) {
   return true;
 }
 
+bool simple_wallet::cmd_store_deactivate(const std::vector<std::string>& args) {
+  if (args.size() < 1) {
+    tools::fail_msg_writer() << tr("Uso: store_deactivate <store_id>"); return true;
+  }
+  const account_keys& keys = m_wallet->get_account().get_keys();
+  cryptonote::tx_extra_mevatrust_store op{};
+  op.op = cryptonote::tx_extra_mevatrust_store::STORE_DEACTIVATE;
+  epee::string_tools::hex_to_pod(args[0], op.store_id);
+  op.owner_pubkey = keys.m_account_address.m_spend_public_key;
+  crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
+  crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);
+  std::vector<uint8_t> extra;
+  if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
+    tools::fail_msg_writer() << tr("Errore creazione extra disattivazione negozio."); return true;
+  }
+  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) return true;
+  tools::msg_writer() << tr("Negozio disattivato! TXID: ") << txid;
+  return true;
+}
+
 bool simple_wallet::cmd_store_update(const std::vector<std::string>& args) {
   if (args.size() < 3) {
     tools::fail_msg_writer() << tr("Uso: store_update <store_id> \"Nome\" \"Descrizione\" [url]"); return true;
@@ -958,6 +980,7 @@ bool simple_wallet::cmd_store_update(const std::vector<std::string>& args) {
   op.name = args[1];
   op.description = args[2];
   op.url = (args.size() > 3) ? args[3] : "";
+  op.payment_address = (args.size() > 4) ? args[4] : "";
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);

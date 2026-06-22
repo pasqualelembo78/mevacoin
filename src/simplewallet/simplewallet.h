@@ -519,6 +519,7 @@ namespace cryptonote
     bool cmd_store_my_stores(const std::vector<std::string>& args);
     bool cmd_store_my_purchases(const std::vector<std::string>& args);
     bool cmd_store_delist(const std::vector<std::string>& args);
+    bool cmd_store_deactivate(const std::vector<std::string>& args);
     bool cmd_store_search(const std::vector<std::string>& args);
     bool cmd_store_update(const std::vector<std::string>& args);
     // ── Score / Penalty / Admin commands ─────────

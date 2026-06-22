@@ -70,7 +70,9 @@ inline crypto::hash store_message_hash(const tx_extra_mevatrust_store& s) {
     m.append(s.description);
     m.append(s.url);
     m.append(reinterpret_cast<const char*>(&s.price), sizeof(s.price));
+    m.append(reinterpret_cast<const char*>(&s.quantity), sizeof(s.quantity));
     m.append(s.category);
+    m.append(s.payment_address);
     return crypto::cn_fast_hash(m.data(), m.size());
 }
 

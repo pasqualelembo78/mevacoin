@@ -3880,6 +3880,12 @@ simple_wallet::simple_wallet()
                            tr("mevatrust store_delist <store_id> <item_id>"),
                            tr("Rimuove un item dal negozio. "
                               "Uso: mevatrust store_delist <store_id> <item_id>"));
+  m_cmd_binder.set_handler("mevatrust store_deactivate",
+                           boost::bind(&simple_wallet::on_command, this,
+                                       &simple_wallet::mevatrust, _1),
+                           tr("mevatrust store_deactivate <store_id>"),
+                           tr("Disattiva un negozio on-chain. "
+                              "Uso: mevatrust store_deactivate <store_id>"));
   m_cmd_binder.set_handler("mevatrust store_buy",
                            boost::bind(&simple_wallet::on_command, this,
                                        &simple_wallet::mevatrust, _1),
@@ -11865,6 +11871,7 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   if (sub == "store_update")      return cmd_store_update(sub_args);
   if (sub == "store_add_item")    return cmd_store_add_item(sub_args);
   if (sub == "store_delist")      return cmd_store_delist(sub_args);
+  if (sub == "store_deactivate")  return cmd_store_deactivate(sub_args);
   if (sub == "store_buy")         return cmd_store_buy(sub_args);
   if (sub == "store_search")      return cmd_store_search(sub_args);
   if (sub == "store_my_stores")   return cmd_store_my_stores(sub_args);

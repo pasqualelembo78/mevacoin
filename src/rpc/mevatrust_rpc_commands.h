@@ -351,17 +351,62 @@ struct COMMAND_RPC_UNBAN_NODE {
 
 // ── Store commands ──────────────────────────────────────────────────────────
 struct COMMAND_RPC_STORE_LIST {
-  struct request_t { bool active_only{true}; uint32_t limit{0}; bool top{true};
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(active_only) KV_SERIALIZE(limit) KV_SERIALIZE(top) END_KV_SERIALIZE_MAP() };
+  struct request_t {
+    bool active_only{true};
+    std::string category;
+    uint64_t min_price{0}; uint64_t max_price{0};
+    std::string sort_by{"relevance"};
+    uint32_t page{1}; uint32_t per_page{20};
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(active_only) KV_SERIALIZE(category)
+      KV_SERIALIZE(min_price) KV_SERIALIZE(max_price)
+      KV_SERIALIZE(sort_by) KV_SERIALIZE(page) KV_SERIALIZE(per_page)
+    END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<request_t> request;
   struct response_t { std::string status;
     struct StoreInfo { std::string store_id; std::string name; std::string description;
-      std::string url; std::string owner_pubkey; uint64_t created_height; uint32_t item_count;
+      std::string url; std::string owner_pubkey; std::string payment_address;
+      uint64_t created_height; uint32_t item_count;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(name)
         KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
+        KV_SERIALIZE(payment_address)
         KV_SERIALIZE(created_height) KV_SERIALIZE(item_count) END_KV_SERIALIZE_MAP() };
     std::vector<StoreInfo> stores;
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(stores) END_KV_SERIALIZE_MAP() };
+    uint32_t total_count{0}; uint32_t total_pages{1}; uint32_t page{1};
+    std::vector<std::string> categories;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(stores)
+      KV_SERIALIZE(total_count) KV_SERIALIZE(total_pages) KV_SERIALIZE(page)
+      KV_SERIALIZE(categories) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+struct COMMAND_RPC_STORE_SEARCH {
+  struct request_t {
+    std::string keyword;
+    std::string category;
+    uint64_t min_price{0}; uint64_t max_price{0};
+    std::string sort_by{"relevance"};
+    bool search_items{true};
+    uint32_t page{1}; uint32_t per_page{20};
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(keyword) KV_SERIALIZE(category)
+      KV_SERIALIZE(min_price) KV_SERIALIZE(max_price)
+      KV_SERIALIZE(sort_by) KV_SERIALIZE(search_items)
+      KV_SERIALIZE(page) KV_SERIALIZE(per_page)
+    END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t { std::string status;
+    struct StoreInfo { std::string store_id; std::string name; std::string description;
+      std::string url; std::string owner_pubkey; std::string payment_address;
+      uint64_t created_height; uint32_t item_count;
+      BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(name)
+        KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
+        KV_SERIALIZE(payment_address)
+        KV_SERIALIZE(created_height) KV_SERIALIZE(item_count) END_KV_SERIALIZE_MAP() };
+    std::vector<StoreInfo> stores;
+    uint32_t total_count{0}; uint32_t total_pages{1}; uint32_t page{1};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(stores)
+      KV_SERIALIZE(total_count) KV_SERIALIZE(total_pages) KV_SERIALIZE(page) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
@@ -370,32 +415,19 @@ struct COMMAND_RPC_STORE_SHOW {
     BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<request_t> request;
   struct response_t { std::string status; std::string name; std::string description;
-    std::string url; std::string owner_pubkey; uint64_t created_height; uint32_t item_count;
+    std::string url; std::string owner_pubkey; std::string payment_address;
+    uint64_t created_height; uint32_t item_count;
     struct ItemInfo { std::string item_id; std::string name; std::string description;
-      uint64_t price; std::string category; bool active;
+      uint64_t price; uint64_t quantity; std::string category; std::string metadata; bool active;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(item_id) KV_SERIALIZE(name)
-        KV_SERIALIZE(description) KV_SERIALIZE(price) KV_SERIALIZE(category)
-        KV_SERIALIZE(active) END_KV_SERIALIZE_MAP() };
+        KV_SERIALIZE(description) KV_SERIALIZE(price) KV_SERIALIZE(quantity) KV_SERIALIZE(category)
+        KV_SERIALIZE(metadata) KV_SERIALIZE(active) END_KV_SERIALIZE_MAP() };
     std::vector<ItemInfo> items;
     BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(name)
       KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
+      KV_SERIALIZE(payment_address)
       KV_SERIALIZE(created_height) KV_SERIALIZE(item_count)
       KV_SERIALIZE(items) END_KV_SERIALIZE_MAP() };
-  typedef epee::misc_utils::struct_init<response_t> response;
-};
-
-struct COMMAND_RPC_STORE_SEARCH {
-  struct request_t { std::string keyword; bool search_items{true};
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(keyword) KV_SERIALIZE(search_items) END_KV_SERIALIZE_MAP() };
-  typedef epee::misc_utils::struct_init<request_t> request;
-  struct response_t { std::string status;
-    struct StoreInfo { std::string store_id; std::string name; std::string description;
-      std::string url; std::string owner_pubkey; uint64_t created_height; uint32_t item_count;
-      BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(name)
-        KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
-        KV_SERIALIZE(created_height) KV_SERIALIZE(item_count) END_KV_SERIALIZE_MAP() };
-    std::vector<StoreInfo> stores;
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(stores) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 

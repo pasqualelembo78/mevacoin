@@ -762,7 +762,8 @@ void MevaTrustManager::process_mevatrust_txs(
                 switch (st.op) {
                 case tx_extra_mevatrust_store::STORE_CREATE: {
                     crypto::hash sid = m_store_registry->create_store(
-                        st.name, st.description, st.url, st.owner_pubkey, height);
+                        st.name, st.description, st.url, st.payment_address,
+                        st.owner_pubkey, height);
                     if (sid != crypto::hash{}) {
                         MINFO("[MevaTrustManager] Store creato h=" << height
                               << " sid=" << epee::string_tools::pod_to_hex(sid));
@@ -771,32 +772,39 @@ void MevaTrustManager::process_mevatrust_txs(
                 }
                 case tx_extra_mevatrust_store::STORE_UPDATE: {
                     if (m_store_registry->update_store(st.store_id, st.name,
-                        st.description, st.url, st.owner_pubkey)) {
+                        st.description, st.url, st.payment_address, st.owner_pubkey)) {
                         MINFO("[MevaTrustManager] Store aggiornato h=" << height);
                     }
                     break;
                 }
-                case tx_extra_mevatrust_store::ITEM_LIST: {
-                    crypto::hash iid = m_store_registry->list_item(
-                        st.store_id, st.name, st.description, st.price,
-                        st.category, st.metadata, height);
-                    if (iid != crypto::hash{}) {
-                        MINFO("[MevaTrustManager] Item listato h=" << height
-                              << " iid=" << epee::string_tools::pod_to_hex(iid));
-                    }
-                    break;
-                }
+case tx_extra_mevatrust_store::ITEM_LIST: {
+    crypto::hash iid = m_store_registry->list_item(
+        st.store_id, st.name, st.description, st.price,
+        st.quantity, st.category, st.metadata, height);
+    if (iid != crypto::hash{}) {
+        MINFO("[MevaTrustManager] Item listato h=" << height
+              << " iid=" << epee::string_tools::pod_to_hex(iid));
+    }
+    break;
+}
                 case tx_extra_mevatrust_store::ITEM_DELIST: {
                     m_store_registry->delist_item(st.store_id, st.item_id, st.owner_pubkey);
                     break;
                 }
+                case tx_extra_mevatrust_store::STORE_DEACTIVATE: {
+                    if (m_store_registry->deactivate_store(st.store_id, st.owner_pubkey)) {
+                        MINFO("[MevaTrustManager] Store disattivato h=" << height
+                              << " sid=" << epee::string_tools::pod_to_hex(st.store_id));
+                    }
+                    break;
+                }
                 case tx_extra_mevatrust_store::ITEM_BUY: {
                     // Verifica pagamento: la tx deve contenere output >= prezzo item
-                    StoreItemEntry item;
-                    uint64_t min_payment = 0;
-                    bool payment_ok = false;
-                    if (m_store_registry->get_item(st.item_id, item) && item.active)
-                        min_payment = item.price;
+    StoreItemEntry item;
+    uint64_t min_payment = 0;
+    bool payment_ok = false;
+    if (m_store_registry->get_item(st.item_id, item) && item.active && item.quantity > 0)
+        min_payment = item.price;
                     if (min_payment > 0) {
                         uint64_t total_out = 0;
                         for (const auto& out : tx.vout)
