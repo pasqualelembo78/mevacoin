@@ -366,10 +366,14 @@ struct COMMAND_RPC_STORE_LIST {
   struct response_t { std::string status;
     struct StoreInfo { std::string store_id; std::string name; std::string description;
       std::string url; std::string owner_pubkey; std::string payment_address;
+      bool euro_enabled{false}; std::string euro_details;
+      uint8_t mvc_percent{100}; uint8_t euro_percent{0};
       uint64_t created_height; uint32_t item_count;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(name)
         KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
         KV_SERIALIZE(payment_address)
+        KV_SERIALIZE(euro_enabled) KV_SERIALIZE(euro_details)
+        KV_SERIALIZE(mvc_percent) KV_SERIALIZE(euro_percent)
         KV_SERIALIZE(created_height) KV_SERIALIZE(item_count) END_KV_SERIALIZE_MAP() };
     std::vector<StoreInfo> stores;
     uint32_t total_count{0}; uint32_t total_pages{1}; uint32_t page{1};
@@ -398,10 +402,14 @@ struct COMMAND_RPC_STORE_SEARCH {
   struct response_t { std::string status;
     struct StoreInfo { std::string store_id; std::string name; std::string description;
       std::string url; std::string owner_pubkey; std::string payment_address;
+      bool euro_enabled{false}; std::string euro_details;
+      uint8_t mvc_percent{100}; uint8_t euro_percent{0};
       uint64_t created_height; uint32_t item_count;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(name)
         KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
         KV_SERIALIZE(payment_address)
+        KV_SERIALIZE(euro_enabled) KV_SERIALIZE(euro_details)
+        KV_SERIALIZE(mvc_percent) KV_SERIALIZE(euro_percent)
         KV_SERIALIZE(created_height) KV_SERIALIZE(item_count) END_KV_SERIALIZE_MAP() };
     std::vector<StoreInfo> stores;
     uint32_t total_count{0}; uint32_t total_pages{1}; uint32_t page{1};
@@ -416,16 +424,21 @@ struct COMMAND_RPC_STORE_SHOW {
   typedef epee::misc_utils::struct_init<request_t> request;
   struct response_t { std::string status; std::string name; std::string description;
     std::string url; std::string owner_pubkey; std::string payment_address;
+    bool euro_enabled{false}; std::string euro_details;
+    uint8_t mvc_percent{100}; uint8_t euro_percent{0};
     uint64_t created_height; uint32_t item_count;
     struct ItemInfo { std::string item_id; std::string name; std::string description;
       uint64_t price; uint64_t quantity; std::string category; std::string metadata; bool active;
+      std::string payment_mode;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(item_id) KV_SERIALIZE(name)
         KV_SERIALIZE(description) KV_SERIALIZE(price) KV_SERIALIZE(quantity) KV_SERIALIZE(category)
-        KV_SERIALIZE(metadata) KV_SERIALIZE(active) END_KV_SERIALIZE_MAP() };
+        KV_SERIALIZE(metadata) KV_SERIALIZE(active) KV_SERIALIZE(payment_mode) END_KV_SERIALIZE_MAP() };
     std::vector<ItemInfo> items;
     BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(name)
       KV_SERIALIZE(description) KV_SERIALIZE(url) KV_SERIALIZE(owner_pubkey)
       KV_SERIALIZE(payment_address)
+      KV_SERIALIZE(euro_enabled) KV_SERIALIZE(euro_details)
+      KV_SERIALIZE(mvc_percent) KV_SERIALIZE(euro_percent)
       KV_SERIALIZE(created_height) KV_SERIALIZE(item_count)
       KV_SERIALIZE(items) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;
@@ -440,6 +453,26 @@ struct COMMAND_RPC_STORE_MY_PURCHASES {
       std::string buyer_pubkey; uint64_t purchase_height;
       BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(item_id)
         KV_SERIALIZE(buyer_pubkey) KV_SERIALIZE(purchase_height) END_KV_SERIALIZE_MAP() };
+    std::vector<PurchaseInfo> purchases;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(purchases) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Store Purchases By Store (per venditore) ──────────────────────────────────
+struct COMMAND_RPC_STORE_PURCHASES_BY_STORE {
+  struct request_t { std::string store_id;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t { std::string status;
+    struct PurchaseInfo { std::string store_id; std::string item_id;
+      std::string buyer_pubkey; uint64_t purchase_height;
+      uint64_t mvc_amount_paid; std::string euro_ref; uint64_t euro_amount;
+      uint8_t status; uint64_t confirm_height;
+      BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(store_id) KV_SERIALIZE(item_id)
+        KV_SERIALIZE(buyer_pubkey) KV_SERIALIZE(purchase_height)
+        KV_SERIALIZE(mvc_amount_paid) KV_SERIALIZE(euro_ref)
+        KV_SERIALIZE(euro_amount) KV_SERIALIZE(status)
+        KV_SERIALIZE(confirm_height) END_KV_SERIALIZE_MAP() };
     std::vector<PurchaseInfo> purchases;
     BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(status) KV_SERIALIZE(purchases) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;

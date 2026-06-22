@@ -127,4 +127,26 @@ bool ver_non_input_consensus(const transaction& tx, tx_verification_context& tvc
 bool ver_non_input_consensus(const pool_supplement& ps, tx_verification_context& tvc,
     std::uint8_t hf_version);
 
+/**
+ * @brief Pre-validate a MevaTrust store transaction before mempool acceptance
+ *
+ * Parses tx_extra for tag 0xA8 (tx_extra_mevatrust_store) and validates:
+ *   - Signature validity
+ *   - For STORE_CREATE: payment_address not empty, mvc_percent + euro_percent == 100, mvc_percent > 0
+ *   - For ITEM_LIST: price > 0
+ *   - For ITEM_BUY: quantity > 0, referenced item exists and is active with sufficient quantity
+ *   - For STORE_CONFIRM / STORE_CANCEL: referenced purchase exists and is in PENDING status
+ *   - For STORE_UPDATE / ITEM_DELIST / STORE_DEACTIVATE: store exists and caller is owner
+ *
+ * If the tx does not contain a store operation, returns true.
+ * If hf_version < HF_VERSION_MEVATRUST, returns true (pre-check not active).
+ *
+ * @param tx transaction to inspect
+ * @param tvc verification context (set on failure)
+ * @param hf_version current hard fork version
+ * @return true if the store operation passes pre-validation, false otherwise
+ */
+bool check_mevatrust_store_tx(const transaction& tx, tx_verification_context& tvc,
+    std::uint8_t hf_version);
+
 } // namespace cryptonote

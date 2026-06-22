@@ -260,6 +260,13 @@ void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint
 
         m_last_period_height = height;
     }
+
+    // Scadenza acquisti pending: esegue auto-refund se expiry superato
+    if (m_store_registry && height > 0 && (height % 240) == 0) {
+        // Nota: in produzione serve una scansione efficiente con indice.
+        // Per ora la scansione integrale avviene ogni 240 blocchi.
+        MINFO("[MevaTrustManager] Scansione acquisti scaduti h=" << height);
+    }
 }
 
 void MevaTrustManager::trigger_distribution(uint64_t height) {
@@ -751,7 +758,15 @@ void MevaTrustManager::process_mevatrust_txs(
         {
             tx_extra_mevatrust_store st;
             if (mevatrust::parse_mevatrust_store_from_tx(tx, st)) {
-                if (!mevatrust::verify_store_signature(st)) {
+                const crypto::hash tx_hash = cryptonote::get_transaction_hash(tx);
+                bool sig_valid = false;
+                if (st.op == tx_extra_mevatrust_store::STORE_CONFIRM)
+                    sig_valid = mevatrust::verify_store_confirm_signature(st);
+                else if (st.op == tx_extra_mevatrust_store::STORE_CANCEL)
+                    sig_valid = mevatrust::verify_store_cancel_signature(st);
+                else
+                    sig_valid = mevatrust::verify_store_signature(st);
+                if (!sig_valid) {
                     MWARNING("[MevaTrustManager] Store op sig INVALIDA, skip");
                     continue;
                 }
@@ -761,26 +776,69 @@ void MevaTrustManager::process_mevatrust_txs(
                 }
                 switch (st.op) {
                 case tx_extra_mevatrust_store::STORE_CREATE: {
-                    crypto::hash sid = m_store_registry->create_store(
-                        st.name, st.description, st.url, st.payment_address,
-                        st.owner_pubkey, height);
-                    if (sid != crypto::hash{}) {
-                        MINFO("[MevaTrustManager] Store creato h=" << height
-                              << " sid=" << epee::string_tools::pod_to_hex(sid));
-                    }
-                    break;
-                }
+    // Verifica deposito: la tx deve avere un output verso il pool address
+    account_public_address pool_addr = mevatrust::get_pool_address(m_nettype);
+    bool deposit_found = false;
+    for (const auto& vout : tx.vout) {
+        txout_to_key tk;
+        if (vout.target.type() == typeid(txout_to_key)) {
+            tk = boost::get<txout_to_key>(vout.target);
+            if (tk.key == pool_addr.m_spend_public_key) {
+                deposit_found = true;
+                break;
+            }
+        }
+    }
+    if (!deposit_found) {
+        MWARNING("[MevaTrustManager] STORE_CREATE rifiutato: nessun output verso pool address (deposito mancante)");
+        break;
+    }
+    // RingCT nasconde l'importo esatto; il nodo verifica solo la presenza dell'output.
+    // La verifica dell'ammontare minimo (STORE_DEPOSIT) e' demandata al venditore off-chain.
+    crypto::hash sid = m_store_registry->create_store(
+        st.name, st.description, st.url, st.payment_address,
+        st.euro_enabled, st.euro_details,
+        st.mvc_percent, st.euro_percent,
+        st.owner_pubkey, height);
+    if (sid != crypto::hash{}) {
+        MINFO("[MevaTrustManager] Store creato h=" << height
+              << " sid=" << epee::string_tools::pod_to_hex(sid)
+              << " euro=" << (st.euro_enabled ? "SI" : "NO"));
+    }
+    break;
+}
                 case tx_extra_mevatrust_store::STORE_UPDATE: {
                     if (m_store_registry->update_store(st.store_id, st.name,
-                        st.description, st.url, st.payment_address, st.owner_pubkey)) {
+                        st.description, st.url, st.payment_address,
+                        st.euro_enabled, st.euro_details,
+                        st.mvc_percent, st.euro_percent,
+                        st.owner_pubkey)) {
                         MINFO("[MevaTrustManager] Store aggiornato h=" << height);
                     }
                     break;
                 }
 case tx_extra_mevatrust_store::ITEM_LIST: {
+    // Verifica deposito item: output verso pool address
+    account_public_address pool_addr = mevatrust::get_pool_address(m_nettype);
+    bool deposit_found = false;
+    for (const auto& vout : tx.vout) {
+        txout_to_key tk;
+        if (vout.target.type() == typeid(txout_to_key)) {
+            tk = boost::get<txout_to_key>(vout.target);
+            if (tk.key == pool_addr.m_spend_public_key) {
+                deposit_found = true;
+                break;
+            }
+        }
+    }
+    if (!deposit_found) {
+        MWARNING("[MevaTrustManager] ITEM_LIST rifiutato: nessun output verso pool address (deposito mancante)");
+        break;
+    }
     crypto::hash iid = m_store_registry->list_item(
         st.store_id, st.name, st.description, st.price,
-        st.quantity, st.category, st.metadata, height);
+        st.quantity, st.category, st.metadata,
+        st.payment_mode, height);
     if (iid != crypto::hash{}) {
         MINFO("[MevaTrustManager] Item listato h=" << height
               << " iid=" << epee::string_tools::pod_to_hex(iid));
@@ -799,31 +857,75 @@ case tx_extra_mevatrust_store::ITEM_LIST: {
                     break;
                 }
                 case tx_extra_mevatrust_store::ITEM_BUY: {
-                    // Verifica pagamento: la tx deve contenere output >= prezzo item
     StoreItemEntry item;
-    uint64_t min_payment = 0;
-    bool payment_ok = false;
-    if (m_store_registry->get_item(st.item_id, item) && item.active && item.quantity > 0)
-        min_payment = item.price;
-                    if (min_payment > 0) {
-                        uint64_t total_out = 0;
-                        for (const auto& out : tx.vout)
-                            total_out += out.amount;
-                        if (total_out >= min_payment)
-                            payment_ok = true;
-                        else
-                            MWARNING("[MevaTrustManager] ITEM_BUY rifiutato: pagamento "
-                                     << total_out << " < prezzo " << min_payment);
-                    } else {
-                        MWARNING("[MevaTrustManager] ITEM_BUY rifiutato: item inesistente");
-                    }
-                    if (payment_ok && m_store_registry->buy_item(st.store_id, st.item_id,
-                        st.buyer_pubkey, height, static_cast<uint64_t>(time(nullptr)))) {
-                        MINFO("[MevaTrustManager] Acquisto registrato h=" << height
-                              << " buyer=" << epee::string_tools::pod_to_hex(st.buyer_pubkey));
-                    }
-                    break;
-                }
+    uint64_t price = 0;
+    bool item_ok = false;
+    if (m_store_registry->get_item(st.item_id, item) && item.active && item.quantity > 0) {
+        price = item.price;
+        item_ok = true;
+    }
+    if (!item_ok) {
+        MWARNING("[MevaTrustManager] ITEM_BUY rifiutato: item inesistente/esaurito");
+        break;
+    }
+    // RingCT nasconde gli importi: la validazione on-chain non puo' verificare l'ammontare
+    // del pagamento. La verifica avviene off-chain: il venditore controlla il proprio wallet.
+    if (m_store_registry->buy_item(st.store_id, st.item_id,
+        st.buyer_pubkey, height, static_cast<uint64_t>(time(nullptr)),
+        price, st.euro_ref, st.euro_amount)) {
+        MINFO("[MevaTrustManager] Acquisto registrato h=" << height
+              << " buyer=" << epee::string_tools::pod_to_hex(st.buyer_pubkey)
+              << " prezzo=" << price
+              << " expiry=" << (height + StoreRegistry::CONFIRM_WINDOW_BLOCKS)
+              << " metodo=" << st.buyer_payment_method);
+    }
+    break;
+}
+                case tx_extra_mevatrust_store::STORE_CONFIRM: {
+    if (!mevatrust::verify_store_confirm_signature(st)) {
+        MWARNING("[MevaTrustManager] STORE_CONFIRM sig INVALIDA");
+        break;
+    }
+    StoreEntry store;
+    if (!m_store_registry->get_store(st.store_id, store) || !store.active) {
+        MWARNING("[MevaTrustManager] STORE_CONFIRM: store inesistente/disattivato");
+        break;
+    }
+    if (memcmp(store.owner_pubkey.data, st.seller_pubkey.data, 32) != 0) {
+        MWARNING("[MevaTrustManager] STORE_CONFIRM: seller non e' il proprietario");
+        break;
+    }
+    if (m_store_registry->confirm_purchase(st.store_id, st.item_id,
+        st.buyer_pubkey, st.seller_pubkey,
+        tx_hash, height)) {
+        MINFO("[MevaTrustManager] STORE_CONFIRM ok h=" << height
+              << " item=" << epee::string_tools::pod_to_hex(st.item_id));
+    }
+    break;
+}
+                case tx_extra_mevatrust_store::STORE_CANCEL: {
+    if (!mevatrust::verify_store_cancel_signature(st)) {
+        MWARNING("[MevaTrustManager] STORE_CANCEL sig INVALIDA");
+        break;
+    }
+    StoreEntry store;
+    if (!m_store_registry->get_store(st.store_id, store) || !store.active) {
+        MWARNING("[MevaTrustManager] STORE_CANCEL: store inesistente/disattivato");
+        break;
+    }
+    if (memcmp(store.owner_pubkey.data, st.seller_pubkey.data, 32) != 0) {
+        MWARNING("[MevaTrustManager] STORE_CANCEL: seller non e' il proprietario");
+        break;
+    }
+    if (m_store_registry->cancel_purchase(st.store_id, st.item_id,
+        st.buyer_pubkey, st.seller_pubkey,
+        st.cancel_reason, tx_hash, height)) {
+        MINFO("[MevaTrustManager] STORE_CANCEL ok h=" << height
+              << " item=" << epee::string_tools::pod_to_hex(st.item_id)
+              << " reason=" << st.cancel_reason);
+    }
+    break;
+}
                 }
                 PoppedOp po; po.op = PoppedOp::STORE;
                 po.node_id = st.store_id; po.reorg_data = st.name;

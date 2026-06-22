@@ -421,12 +421,14 @@ struct tx_extra_mevatrust_state_root
 struct tx_extra_mevatrust_store
 {
   enum Operation : uint8_t {
-    STORE_CREATE   = 0,
-    STORE_UPDATE   = 1,
-    ITEM_LIST      = 2,
-    ITEM_DELIST    = 3,
-    ITEM_BUY       = 4,
-    STORE_DEACTIVATE = 5,
+    STORE_CREATE      = 0,
+    STORE_UPDATE      = 1,
+    ITEM_LIST         = 2,
+    ITEM_DELIST       = 3,
+    ITEM_BUY          = 4,
+    STORE_CONFIRM     = 5,
+    STORE_CANCEL      = 6,
+    STORE_DEACTIVATE  = 7,
   };
 
   Operation op{STORE_CREATE};
@@ -444,6 +446,25 @@ struct tx_extra_mevatrust_store
   crypto::signature owner_sig{};
   crypto::public_key buyer_pubkey{};
 
+  // ── Euro / mixed payment fields ─────────────────────────────────────
+  // STORE_CREATE / STORE_UPDATE: abilitazione pagamento misto
+  bool     euro_enabled{false};
+  std::string euro_details;      // IBAN, PayPal email, etc.
+  uint8_t  mvc_percent{100};     // % obbligatoria in MVC (1-100, mai 0)
+  uint8_t  euro_percent{0};      // % in Euro (0-99, mvc+euro = 100)
+  // ITEM_LIST: modalità pagamento dell'item
+  std::string payment_mode = "mvc_only"; // "mvc_only" | "mvc_euro"
+  // ITEM_BUY: scelta dell'acquirente
+  std::string buyer_payment_method = "mvc_only"; // "mvc_only" | "mvc_euro"
+  std::string euro_ref;          // hash/ref del pagamento Euro off-chain
+  uint64_t    euro_amount{0};    // importo Euro in cent
+
+  // ── CONFIRM / CANCEL fields ─────────────────────────────────────────
+  crypto::public_key seller_pubkey{};      // venditore che conferma/cancella
+  crypto::signature  seller_sig{};         // firma del venditore
+  std::string        cancel_reason;        // motivo cancellazione (solo CANCEL)
+  uint64_t           confirm_expiry_height{0}; // ITEM_BUY: deadline per conferma
+
   BEGIN_SERIALIZE()
     VARINT_FIELD(op)
     FIELD(store_id)
@@ -459,6 +480,18 @@ struct tx_extra_mevatrust_store
     FIELD(owner_pubkey)
     FIELD(owner_sig)
     FIELD(buyer_pubkey)
+    FIELD(euro_enabled)
+    FIELD(euro_details)
+    VARINT_FIELD(mvc_percent)
+    VARINT_FIELD(euro_percent)
+    FIELD(payment_mode)
+    FIELD(buyer_payment_method)
+    FIELD(euro_ref)
+    VARINT_FIELD(euro_amount)
+    FIELD(seller_pubkey)
+    FIELD(seller_sig)
+    FIELD(cancel_reason)
+    VARINT_FIELD(confirm_expiry_height)
   END_SERIALIZE()
 };
 

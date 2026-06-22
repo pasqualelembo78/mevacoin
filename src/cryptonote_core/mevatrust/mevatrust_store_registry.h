@@ -52,6 +52,13 @@ struct StoreItemEntry {
   std::string payment_mode = "mvc_only";
 };
 
+enum PurchaseStatus : uint8_t {
+    PURCHASE_PENDING    = 0,
+    PURCHASE_CONFIRMED  = 1,
+    PURCHASE_CANCELLED  = 2,
+    PURCHASE_REFUNDED   = 3,
+};
+
 struct StorePurchaseEntry {
   crypto::hash store_id;
   crypto::hash item_id;
@@ -61,6 +68,11 @@ struct StorePurchaseEntry {
   uint64_t mvc_amount_paid = 0;  // MVC effettivamente pagati on-chain
   std::string euro_ref = "";     // hash/ref del pagamento Euro off-chain (vuoto = solo MVC)
   uint64_t euro_amount = 0;     // importo Euro pagato (in cent)
+  // ── Two-phase purchase status ──────────────────────────────────────
+  PurchaseStatus status{PURCHASE_PENDING};
+  crypto::hash confirm_txid{};   // tx della conferma/cancellazione/rimborso
+  uint64_t confirm_height{0};
+  uint64_t confirm_expiry_height{0}; // ITEM_BUY: deadline per conferma
 };
 
 struct StoreSearchParams {
@@ -117,6 +129,20 @@ public:
                 uint64_t mvc_amount_paid = 0, const std::string& euro_ref = "",
                 uint64_t euro_amount = 0);
 
+  // ── Two-phase confirm/cancel ────────────────────────────────────────────
+  bool confirm_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
+                        const crypto::public_key& buyer_pubkey,
+                        const crypto::public_key& seller_pubkey,
+                        const crypto::hash& confirm_txid, uint64_t height);
+  bool cancel_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
+                       const crypto::public_key& buyer_pubkey,
+                       const crypto::public_key& seller_pubkey,
+                       const std::string& reason,
+                       const crypto::hash& cancel_txid, uint64_t height);
+  bool auto_refund_expired(const crypto::hash& store_id, const crypto::hash& item_id,
+                           const crypto::public_key& buyer_pubkey, uint64_t current_height,
+                           const crypto::hash& refund_txid);
+
   // ── Query ───────────────────────────────────────────────────────────────
   bool get_store(const crypto::hash& store_id, StoreEntry& out) const;
   bool get_item(const crypto::hash& item_id, StoreItemEntry& out) const;
@@ -138,6 +164,7 @@ public:
   static constexpr size_t MAX_ITEMS_PER_STORE = 100;
   static constexpr uint64_t STORE_DEPOSIT = 10ULL * 1'000'000'000'000ULL;   // 10 MVC
   static constexpr uint64_t ITEM_DEPOSIT  = 1ULL * 1'000'000'000'000ULL;    // 1 MVC
+  static constexpr uint64_t CONFIRM_WINDOW_BLOCKS = 1440;                   // ~24h a 1 min/blocco
 
   // ── Reorg helpers ───────────────────────────────────────────────────────
   bool restore_item(const StoreItemEntry& e);

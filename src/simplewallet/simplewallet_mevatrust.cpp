@@ -67,6 +67,50 @@ static std::string submit_mevatrust_tx(tools::wallet2* w, const std::vector<uint
         return {};
     }
 }
+
+//! Helper: invia MVC all'indirizzo indicato con tx_extra personalizzato (per acquisti store)
+static std::string submit_mevatrust_tx_to(tools::wallet2* w, const std::string& dst_address,
+                                           uint64_t amount, const std::vector<uint8_t>& extra)
+{
+    try {
+    cryptonote::address_parse_info info;
+    if (!cryptonote::get_account_address_from_str(info, w->nettype(), dst_address)) {
+        tools::fail_msg_writer() << tr("Indirizzo destinazione non valido: ") << dst_address;
+        return {};
+    }
+    cryptonote::tx_destination_entry de;
+    de.addr   = info.address;
+    de.amount = amount;
+    de.is_subaddress = info.is_subaddress;
+    std::vector<cryptonote::tx_destination_entry> dsts = {de};
+    std::set<uint32_t> subaddr_indices;
+
+    uint64_t blocks_to_unlock = 0, time_to_unlock = 0;
+    uint64_t unlocked = w->unlocked_balance(0, false, &blocks_to_unlock, &time_to_unlock);
+    uint64_t total    = w->balance(0, false);
+    uint64_t needed = amount + 1000000000ULL; // amount + fee buffer
+    if (unlocked < needed) {
+        tools::fail_msg_writer() << tr("Fondi insufficienti per la TX.");
+        tools::fail_msg_writer() << tr("  Occorrono: ") << cryptonote::print_money(needed);
+        tools::fail_msg_writer() << tr("  Balance unlocked: ") << cryptonote::print_money(unlocked);
+        return {};
+    }
+
+    const size_t fake_outs_count = w->get_min_ring_size() - 1;
+    auto ptx_vector = w->create_transactions_2(dsts, fake_outs_count, tools::fee_priority::Normal,
+                                                 extra, 0, subaddr_indices);
+    if (ptx_vector.empty()) {
+        tools::fail_msg_writer() << tr("Errore creazione tx (saldo insufficiente per la fee?)");
+        return {};
+    }
+    const crypto::hash tx_hash = cryptonote::get_transaction_hash(ptx_vector[0].tx);
+    w->commit_tx(ptx_vector);
+    return epee::string_tools::pod_to_hex(tx_hash);
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer() << tr("ERRORE TX: ") << e.what();
+        return {};
+    }
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace cryptonote {
@@ -787,7 +831,8 @@ bool simple_wallet::cmd_store_search(const std::vector<std::string>& args) {
 
 bool simple_wallet::cmd_store_create(const std::vector<std::string>& args) {
   if (args.size() < 2) {
-    tools::fail_msg_writer() << tr("Uso: store_create \"Nome\" \"Descrizione\" [url] [indirizzo_pagamento]"); return true;
+    tools::fail_msg_writer() << tr("Uso: store_create \"Nome\" \"Descrizione\" [url] [indirizzo_pagamento] [euro_enabled=0/1] [euro_details] [mvc_percent=100] [euro_percent=0]");
+    return true;
   }
   const account_keys& keys = m_wallet->get_account().get_keys();
   cryptonote::tx_extra_mevatrust_store op{};
@@ -797,6 +842,10 @@ bool simple_wallet::cmd_store_create(const std::vector<std::string>& args) {
   op.description = args[1];
   op.url = (args.size() > 2) ? args[2] : "";
   op.payment_address = (args.size() > 3) ? args[3] : "";
+  op.euro_enabled = (args.size() > 4) ? (args[4] == "1" || args[4] == "true") : false;
+  op.euro_details = (args.size() > 5) ? args[5] : "";
+  op.mvc_percent  = (args.size() > 6) ? static_cast<uint8_t>(std::stoul(args[6])) : 100;
+  op.euro_percent = (args.size() > 7) ? static_cast<uint8_t>(std::stoul(args[7])) : 0;
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);
@@ -812,7 +861,8 @@ bool simple_wallet::cmd_store_create(const std::vector<std::string>& args) {
 
 bool simple_wallet::cmd_store_add_item(const std::vector<std::string>& args) {
   if (args.size() < 3) {
-    tools::fail_msg_writer() << tr("Uso: store_add_item <store_id> \"Nome\" <price_mvc> [categoria]"); return true;
+    tools::fail_msg_writer() << tr("Uso: store_add_item <store_id> \"Nome\" <price_mvc> [categoria] [payment_mode=mvc_only]");
+    return true;
   }
   uint64_t price_atomic = std::stoull(args[2]) * 1000000000000ULL;
   const account_keys& keys = m_wallet->get_account().get_keys();
@@ -822,6 +872,7 @@ bool simple_wallet::cmd_store_add_item(const std::vector<std::string>& args) {
   op.name = args[1];
   op.price = price_atomic;
   op.category = (args.size() > 3) ? args[3] : "";
+  op.payment_mode = (args.size() > 4) ? args[4] : "mvc_only";
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);
@@ -837,35 +888,45 @@ bool simple_wallet::cmd_store_add_item(const std::vector<std::string>& args) {
 
 bool simple_wallet::cmd_store_buy(const std::vector<std::string>& args) {
   if (args.size() < 2) {
-    tools::fail_msg_writer() << tr("Uso: store_buy <store_id> <item_id>"); return true;
+    tools::fail_msg_writer() << tr("Uso: store_buy <store_id> <item_id> [payment_method=mvc_only] [euro_ref] [euro_amount_cent]");
+    return true;
   }
-  // Prima mostra info item
-  {
-    rpc::COMMAND_RPC_STORE_SHOW::request s_req;
-    rpc::COMMAND_RPC_STORE_SHOW::response s_res;
-    s_req.store_id = args[0];
-    if (m_wallet->invoke_http_json_rpc("/json_rpc", "store_show", s_req, s_res) && s_res.status == "OK") {
-      bool found = false;
-      for (const auto& item : s_res.items) {
-        if (item.item_id == args[1] || item.item_id.substr(0, 16) == args[1].substr(0, 16)) {
-          auto price_mvc = item.price / 1000000000000ULL;
-          tools::msg_writer() << "Acquisto: " << item.name << " - " << price_mvc << " MVC";
-          found = true;
-          break;
-        }
+  // Ricava store e item via RPC
+  rpc::COMMAND_RPC_STORE_SHOW::request s_req;
+  rpc::COMMAND_RPC_STORE_SHOW::response s_res;
+  s_req.store_id = args[0];
+  std::string seller_address;
+  uint64_t item_price = 0;
+  if (m_wallet->invoke_http_json_rpc("/json_rpc", "store_show", s_req, s_res) && s_res.status == "OK") {
+    seller_address = s_res.payment_address;
+    for (const auto& item : s_res.items) {
+      if (item.item_id == args[1] || item.item_id.substr(0, 16) == args[1].substr(0, 16)) {
+        item_price = item.price;
+        tools::msg_writer() << "Acquisto: " << item.name << " - " << (item.price / 1000000000000ULL) << " MVC";
+        break;
       }
-      if (!found) tools::msg_writer() << tr("Item non trovato, procedo comunque...");
     }
+  }
+  if (seller_address.empty()) {
+    tools::fail_msg_writer() << tr("Impossibile trovare il negozio/venditore.");
+    return true;
   }
   crypto::hash store_id, item_id;
   epee::string_tools::hex_to_pod(args[0], store_id);
   epee::string_tools::hex_to_pod(args[1], item_id);
   const account_keys& keys = m_wallet->get_account().get_keys();
+  std::string payment_method = (args.size() > 2) ? args[2] : "mvc_only";
+  std::string euro_ref = (args.size() > 3) ? args[3] : "";
+  uint64_t euro_amount = (args.size() > 4) ? std::stoull(args[4]) : 0;
+
   cryptonote::tx_extra_mevatrust_store op{};
   op.op = cryptonote::tx_extra_mevatrust_store::ITEM_BUY;
   op.store_id = store_id;
   op.item_id = item_id;
   op.buyer_pubkey = keys.m_account_address.m_spend_public_key;
+  op.buyer_payment_method = payment_method;
+  op.euro_ref = euro_ref;
+  op.euro_amount = euro_amount;
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);
@@ -873,10 +934,12 @@ bool simple_wallet::cmd_store_buy(const std::vector<std::string>& args) {
   if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
     tools::fail_msg_writer() << tr("Errore creazione extra acquisto."); return true;
   }
-  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  // Invia pagamento al venditore (non self-send!)
+  std::string txid = submit_mevatrust_tx_to(m_wallet.get(), seller_address, item_price, extra);
   if (txid.empty()) return true;
   tools::msg_writer() << tr("Acquisto inviato! TXID: ") << txid;
-  tools::msg_writer() << tr("L'acquisto sara' registrato on-chain al prossimo blocco.");
+  tools::msg_writer() << tr("Pagamento di ") << cryptonote::print_money(item_price)
+                      << tr(" MVC inviato a: ") << seller_address;
   return true;
 }
 
@@ -971,7 +1034,8 @@ bool simple_wallet::cmd_store_deactivate(const std::vector<std::string>& args) {
 
 bool simple_wallet::cmd_store_update(const std::vector<std::string>& args) {
   if (args.size() < 3) {
-    tools::fail_msg_writer() << tr("Uso: store_update <store_id> \"Nome\" \"Descrizione\" [url]"); return true;
+    tools::fail_msg_writer() << tr("Uso: store_update <store_id> \"Nome\" \"Descrizione\" [url] [indirizzo_pagamento] [euro_enabled=0/1] [euro_details] [mvc_percent=100] [euro_percent=0]");
+    return true;
   }
   const account_keys& keys = m_wallet->get_account().get_keys();
   cryptonote::tx_extra_mevatrust_store op{};
@@ -981,6 +1045,10 @@ bool simple_wallet::cmd_store_update(const std::vector<std::string>& args) {
   op.description = args[2];
   op.url = (args.size() > 3) ? args[3] : "";
   op.payment_address = (args.size() > 4) ? args[4] : "";
+  op.euro_enabled = (args.size() > 5) ? (args[5] == "1" || args[5] == "true") : false;
+  op.euro_details = (args.size() > 6) ? args[6] : "";
+  op.mvc_percent  = (args.size() > 7) ? static_cast<uint8_t>(std::stoul(args[7])) : 100;
+  op.euro_percent = (args.size() > 8) ? static_cast<uint8_t>(std::stoul(args[8])) : 0;
   op.owner_pubkey = keys.m_account_address.m_spend_public_key;
   crypto::hash h = cryptonote::mevatrust::store_message_hash(op);
   crypto::generate_signature(h, op.owner_pubkey, keys.m_spend_secret_key, op.owner_sig);

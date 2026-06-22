@@ -32,6 +32,8 @@
 #include "cryptonote_core/blockchain.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/tx_verification_utils.h"
+#include "cryptonote_core/mevatrust/mevatrust_manager.h"
+#include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
 #include "hardforks/hardforks.h"
 #include "ringct/rctSigs.h"
 
@@ -294,6 +296,13 @@ static bool ver_non_input_consensus_templated(TxForwardIt tx_begin, TxForwardIt 
         if (!Blockchain::check_tx_outputs(tx, tvc, hf_version) || tvc.m_verifivation_failed)
             return false;
 
+        // Rule 8 — MevaTrust store operation pre-validation
+        if (hf_version >= HF_VERSION_MEVATRUST)
+        {
+            if (!check_mevatrust_store_tx(tx, tvc, hf_version))
+                return false;
+        }
+
         // We only want to check RingCT semantics if this is actually a RingCT transaction
         if (tx.version >= 2)
             rvv.push_back(&tx.rct_signatures);
@@ -489,6 +498,185 @@ bool ver_non_input_consensus(const pool_supplement& ps, tx_verification_context&
         ps.nic_verified_hf_version = hf_version;
 
     return verified;
+}
+
+bool check_mevatrust_store_tx(const transaction& tx, tx_verification_context& tvc,
+                               std::uint8_t hf_version)
+{
+    if (hf_version < HF_VERSION_MEVATRUST)
+        return true;
+
+    tx_extra_mevatrust_store op{};
+    if (!mevatrust::parse_mevatrust_store_from_tx(tx, op))
+        return true; // not a store tx
+
+    // Verify the operation signature (different key for confirm/cancel)
+    bool sig_ok = false;
+    if (op.op == tx_extra_mevatrust_store::STORE_CONFIRM)
+        sig_ok = mevatrust::verify_store_confirm_signature(op);
+    else if (op.op == tx_extra_mevatrust_store::STORE_CANCEL)
+        sig_ok = mevatrust::verify_store_cancel_signature(op);
+    else
+        sig_ok = mevatrust::verify_store_signature(op);
+    if (!sig_ok)
+    {
+        MWARNING("MevaTrust store tx signature verification failed, op=" << (int)op.op);
+        tvc.m_verifivation_failed = true;
+        tvc.m_invalid_input = true;
+        return false;
+    }
+
+    // Field-level validation per operation type
+    switch (op.op)
+    {
+    case tx_extra_mevatrust_store::STORE_CREATE:
+        if (op.payment_address.empty())
+        {
+            MWARNING("STORE_CREATE: empty payment_address");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        if (op.mvc_percent == 0 || op.mvc_percent + op.euro_percent != 100)
+        {
+            MWARNING("STORE_CREATE: invalid percentages mvc=" << (int)op.mvc_percent
+                     << " euro=" << (int)op.euro_percent);
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        break;
+
+    case tx_extra_mevatrust_store::STORE_UPDATE:
+    case tx_extra_mevatrust_store::ITEM_DELIST:
+    case tx_extra_mevatrust_store::STORE_DEACTIVATE:
+    {
+        // Verify the referenced store exists and caller is owner
+        auto* mgr = mevatrust::get_manager();
+        if (!mgr || !mgr->is_initialized())
+        {
+            MWARNING("MevaTrust manager not initialized");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        StoreEntry store{};
+        if (!mgr->store_registry()->get_store(op.store_id, store) || !store.active)
+        {
+            MWARNING("Store op " << (int)op.op << ": store not found or inactive");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        if (store.owner_pubkey != op.owner_pubkey)
+        {
+            MWARNING("Store op " << (int)op.op << ": caller is not store owner");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        break;
+    }
+
+    case tx_extra_mevatrust_store::ITEM_LIST:
+        if (op.price == 0)
+        {
+            MWARNING("ITEM_LIST: price is zero");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        // Verify store exists and is active
+        {
+            auto* mgr = mevatrust::get_manager();
+            if (!mgr || !mgr->is_initialized())
+            {
+                MWARNING("MevaTrust manager not initialized");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+            StoreEntry store{};
+            if (!mgr->store_registry()->get_store(op.store_id, store) || !store.active)
+            {
+                MWARNING("ITEM_LIST: store not found or inactive");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+            if (store.owner_pubkey != op.owner_pubkey)
+            {
+                MWARNING("ITEM_LIST: caller is not store owner");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+        }
+        break;
+
+    case tx_extra_mevatrust_store::ITEM_BUY:
+        if (op.quantity == 0)
+        {
+            MWARNING("ITEM_BUY: quantity is zero");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        // Verify item exists, is active, and has sufficient quantity
+        {
+            auto* mgr = mevatrust::get_manager();
+            if (!mgr || !mgr->is_initialized())
+            {
+                MWARNING("MevaTrust manager not initialized");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+            StoreItemEntry item{};
+            if (!mgr->store_registry()->get_item(op.item_id, item) || !item.active)
+            {
+                MWARNING("ITEM_BUY: item not found or inactive");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+            if (item.quantity < op.quantity)
+            {
+                MWARNING("ITEM_BUY: insufficient quantity (have " << item.quantity
+                         << ", need " << op.quantity << ")");
+                tvc.m_verifivation_failed = true;
+                return false;
+            }
+        }
+        break;
+
+    case tx_extra_mevatrust_store::STORE_CONFIRM:
+    case tx_extra_mevatrust_store::STORE_CANCEL:
+    {
+        auto* mgr = mevatrust::get_manager();
+        if (!mgr || !mgr->is_initialized())
+        {
+            MWARNING("MevaTrust manager not initialized");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        // Verify a pending purchase exists for this store+item+buyer
+        auto purchases = mgr->store_registry()->get_store_purchases(op.store_id);
+        bool found_pending = false;
+        for (const auto& p : purchases)
+        {
+            if (p.item_id == op.item_id &&
+                p.buyer_pubkey == op.buyer_pubkey &&
+                p.status == PURCHASE_PENDING)
+            {
+                found_pending = true;
+                break;
+            }
+        }
+        if (!found_pending)
+        {
+            MWARNING("STORE_CONFIRM/CANCEL: no pending purchase found");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        break;
+    }
+
+    default:
+        MWARNING("Unknown MevaTrust store operation: " << (int)op.op);
+        tvc.m_verifivation_failed = true;
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace cryptonote
