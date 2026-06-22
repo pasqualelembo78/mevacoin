@@ -5032,6 +5032,10 @@ bool core_rpc_server::on_store_list(
     si.url = s.url;
     si.owner_pubkey = epee::string_tools::pod_to_hex(s.owner_pubkey);
     si.payment_address = s.payment_address;
+    si.euro_enabled = s.euro_enabled;
+    si.euro_details = s.euro_details;
+    si.mvc_percent = s.mvc_percent;
+    si.euro_percent = s.euro_percent;
     si.created_height = s.created_height;
     si.item_count = s.item_count;
     res.stores.push_back(si);
@@ -5065,6 +5069,10 @@ bool core_rpc_server::on_store_show(
   res.url = se.url;
   res.owner_pubkey = epee::string_tools::pod_to_hex(se.owner_pubkey);
   res.payment_address = se.payment_address;
+  res.euro_enabled = se.euro_enabled;
+  res.euro_details = se.euro_details;
+  res.mvc_percent = se.mvc_percent;
+  res.euro_percent = se.euro_percent;
   res.created_height = se.created_height;
   res.item_count = se.item_count;
 
@@ -5079,6 +5087,7 @@ bool core_rpc_server::on_store_show(
     ii.category = item.category;
     ii.metadata = item.metadata;
     ii.active = item.active;
+    ii.payment_mode = item.payment_mode;
     res.items.push_back(ii);
   }
   res.status = "OK";
@@ -5105,6 +5114,37 @@ bool core_rpc_server::on_store_my_purchases(
     pi.item_id = epee::string_tools::pod_to_hex(p.item_id);
     pi.buyer_pubkey = epee::string_tools::pod_to_hex(p.buyer_pubkey);
     pi.purchase_height = p.purchase_height;
+    res.purchases.push_back(pi);
+  }
+  res.status = "OK";
+  return true;
+}
+
+bool core_rpc_server::on_store_purchases_by_store(
+    const rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE::request& req,
+    rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  auto* pm = cryptonote::mevatrust::get_manager();
+  if (!pm || !pm->is_initialized()) { res.status = "MevaTrust non inizializzato"; return true; }
+  auto sr = pm->store_registry();
+  if (!sr) { res.status = "StoreRegistry non disponibile"; return true; }
+
+  crypto::hash store_id{};
+  if (!epee::string_tools::hex_to_pod(req.store_id, store_id)) { res.status = "store_id non valido"; return true; }
+
+  auto purchases = sr->get_store_purchases(store_id);
+  for (const auto& p : purchases) {
+    rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE::response::PurchaseInfo pi;
+    pi.store_id = epee::string_tools::pod_to_hex(p.store_id);
+    pi.item_id = epee::string_tools::pod_to_hex(p.item_id);
+    pi.buyer_pubkey = epee::string_tools::pod_to_hex(p.buyer_pubkey);
+    pi.purchase_height = p.purchase_height;
+    pi.mvc_amount_paid = p.mvc_amount_paid;
+    pi.euro_ref = p.euro_ref;
+    pi.euro_amount = p.euro_amount;
+    pi.status = static_cast<uint8_t>(p.status);
+    pi.confirm_height = p.confirm_height;
     res.purchases.push_back(pi);
   }
   res.status = "OK";
@@ -5142,6 +5182,10 @@ bool core_rpc_server::on_store_search(
     si.url = s.url;
     si.owner_pubkey = epee::string_tools::pod_to_hex(s.owner_pubkey);
     si.payment_address = s.payment_address;
+    si.euro_enabled = s.euro_enabled;
+    si.euro_details = s.euro_details;
+    si.mvc_percent = s.mvc_percent;
+    si.euro_percent = s.euro_percent;
     si.created_height = s.created_height;
     si.item_count = s.item_count;
     res.stores.push_back(si);

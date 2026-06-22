@@ -47,6 +47,20 @@ bool parse_mevatrust_store_from_tx(const transaction& tx, tx_extra_mevatrust_sto
 bool build_mevatrust_store_extra(const tx_extra_mevatrust_store& op, std::vector<uint8_t>& extra);
 bool verify_store_signature(const tx_extra_mevatrust_store& op);
 
+// ── Store CONFIRM / CANCEL signature verification ───────────────────────────
+inline crypto::hash store_confirm_message_hash(const tx_extra_mevatrust_store& s) {
+    std::string m;
+    m.push_back(static_cast<uint8_t>(s.op));
+    m.append(reinterpret_cast<const char*>(s.store_id.data), sizeof(s.store_id.data));
+    m.append(reinterpret_cast<const char*>(s.item_id.data), sizeof(s.item_id.data));
+    m.append(reinterpret_cast<const char*>(s.buyer_pubkey.data), sizeof(s.buyer_pubkey.data));
+    m.append(reinterpret_cast<const char*>(s.seller_pubkey.data), sizeof(s.seller_pubkey.data));
+    m.append(s.cancel_reason);
+    return crypto::cn_fast_hash(m.data(), m.size());
+}
+bool verify_store_confirm_signature(const tx_extra_mevatrust_store& op);
+bool verify_store_cancel_signature(const tx_extra_mevatrust_store& op);
+
 // ── Tag 0xA9: Circle Vote ───────────────────────────────────────────────────
 bool parse_mevatrust_circle_vote_from_tx(const transaction& tx, tx_extra_mevatrust_circle_vote& out);
 bool build_mevatrust_circle_vote_extra(const tx_extra_mevatrust_circle_vote& op, std::vector<uint8_t>& extra);
@@ -73,6 +87,17 @@ inline crypto::hash store_message_hash(const tx_extra_mevatrust_store& s) {
     m.append(reinterpret_cast<const char*>(&s.quantity), sizeof(s.quantity));
     m.append(s.category);
     m.append(s.payment_address);
+    m.push_back(s.euro_enabled ? 1 : 0);
+    m.append(s.euro_details);
+    m.push_back(s.mvc_percent);
+    m.push_back(s.euro_percent);
+    m.append(s.payment_mode);
+    m.append(s.buyer_payment_method);
+    m.append(s.euro_ref);
+    m.append(reinterpret_cast<const char*>(&s.euro_amount), sizeof(s.euro_amount));
+    m.append(reinterpret_cast<const char*>(s.seller_pubkey.data), sizeof(s.seller_pubkey.data));
+    m.append(s.cancel_reason);
+    m.append(reinterpret_cast<const char*>(&s.confirm_expiry_height), sizeof(s.confirm_expiry_height));
     return crypto::cn_fast_hash(m.data(), m.size());
 }
 

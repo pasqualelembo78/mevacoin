@@ -22,7 +22,7 @@ namespace cryptonote {
 // ── Serialization helpers ──────────────────────────────────────────────────
 static void pack_store(const StoreEntry& e, std::string& out) {
   out.clear();
-  const uint8_t version = 1;
+  const uint8_t version = 2;
   mevatrust::lmdb_write_pod(out, version);
   out.append(reinterpret_cast<const char*>(e.store_id.data), 32);
   mevatrust::lmdb_write_str(out, e.name);
@@ -34,6 +34,11 @@ static void pack_store(const StoreEntry& e, std::string& out) {
   mevatrust::lmdb_write_pod(out, e.created_timestamp);
   mevatrust::lmdb_write_pod(out, e.active);
   mevatrust::lmdb_write_pod(out, e.item_count);
+  // v2: euro fields
+  mevatrust::lmdb_write_pod(out, e.euro_enabled);
+  mevatrust::lmdb_write_str(out, e.euro_details);
+  mevatrust::lmdb_write_pod(out, e.mvc_percent);
+  mevatrust::lmdb_write_pod(out, e.euro_percent);
 }
 
 static bool unpack_store(const std::string& data, StoreEntry& e) {
@@ -57,11 +62,25 @@ static bool unpack_store(const std::string& data, StoreEntry& e) {
   if (!mevatrust::lmdb_read_pod(p, end, e.created_timestamp)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.active)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.item_count)) return false;
+  // v2: euro fields
+  if (version >= 2) {
+    if (!mevatrust::lmdb_read_pod(p, end, e.euro_enabled)) return false;
+    if (!mevatrust::lmdb_read_str(p, end, e.euro_details)) return false;
+    if (!mevatrust::lmdb_read_pod(p, end, e.mvc_percent)) return false;
+    if (!mevatrust::lmdb_read_pod(p, end, e.euro_percent)) return false;
+  } else {
+    e.euro_enabled = false;
+    e.euro_details.clear();
+    e.mvc_percent = 100;
+    e.euro_percent = 0;
+  }
   return true;
 }
 
 static void pack_item(const StoreItemEntry& e, std::string& out) {
   out.clear();
+  const uint8_t version = 1;
+  mevatrust::lmdb_write_pod(out, version);
   out.append(reinterpret_cast<const char*>(e.item_id.data), 32);
   out.append(reinterpret_cast<const char*>(e.store_id.data), 32);
   mevatrust::lmdb_write_str(out, e.name);
@@ -72,12 +91,16 @@ static void pack_item(const StoreItemEntry& e, std::string& out) {
   mevatrust::lmdb_write_pod(out, e.quantity);
   mevatrust::lmdb_write_pod(out, e.active);
   mevatrust::lmdb_write_pod(out, e.listed_height);
+  // v1: payment_mode
+  mevatrust::lmdb_write_str(out, e.payment_mode);
 }
 
 static bool unpack_item(const std::string& data, StoreItemEntry& e) {
-  if (data.size() < 64) return false;
+  if (data.size() < 65) return false;
   const char* p = data.data();
   const char* end = p + data.size();
+  uint8_t version;
+  memcpy(&version, p, 1); p += 1;
   memcpy(e.item_id.data, p, 32); p += 32;
   memcpy(e.store_id.data, p, 32); p += 32;
   if (!mevatrust::lmdb_read_str(p, end, e.name)) return false;
@@ -88,27 +111,73 @@ static bool unpack_item(const std::string& data, StoreItemEntry& e) {
   if (!mevatrust::lmdb_read_pod(p, end, e.quantity)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.active)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.listed_height)) return false;
+  // v1: payment_mode
+  if (version >= 1) {
+    if (!mevatrust::lmdb_read_str(p, end, e.payment_mode)) return false;
+  } else {
+    e.payment_mode = "mvc_only";
+  }
   return true;
 }
 
 static void pack_purchase(const StorePurchaseEntry& e, std::string& out) {
   out.clear();
+  const uint8_t version = 1;
+  mevatrust::lmdb_write_pod(out, version);
   out.append(reinterpret_cast<const char*>(e.store_id.data), 32);
   out.append(reinterpret_cast<const char*>(e.item_id.data), 32);
   out.append(reinterpret_cast<const char*>(e.buyer_pubkey.data), 32);
   mevatrust::lmdb_write_pod(out, e.purchase_height);
   mevatrust::lmdb_write_pod(out, e.purchase_timestamp);
+  // v1 fields
+  mevatrust::lmdb_write_pod(out, e.mvc_amount_paid);
+  mevatrust::lmdb_write_str(out, e.euro_ref);
+  mevatrust::lmdb_write_pod(out, e.euro_amount);
+  mevatrust::lmdb_write_pod(out, static_cast<uint8_t>(e.status));
+  out.append(reinterpret_cast<const char*>(e.confirm_txid.data), 32);
+  mevatrust::lmdb_write_pod(out, e.confirm_height);
+  mevatrust::lmdb_write_pod(out, e.confirm_expiry_height);
 }
 
 static bool unpack_purchase(const std::string& data, StorePurchaseEntry& e) {
   if (data.size() < 96) return false;
   const char* p = data.data();
   const char* end = p + data.size();
+  uint8_t version = 0;
+  // Se >= 97 byte, il primo byte e' il version marker (v1+)
+  if (data.size() >= 97) {
+    memcpy(&version, p, 1);
+    if (version == 1) {
+      p += 1;
+    } else {
+      version = 0; // no version byte, old format
+    }
+  }
   memcpy(e.store_id.data, p, 32); p += 32;
   memcpy(e.item_id.data, p, 32); p += 32;
   memcpy(e.buyer_pubkey.data, p, 32); p += 32;
   if (!mevatrust::lmdb_read_pod(p, end, e.purchase_height)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.purchase_timestamp)) return false;
+  // defaults for v0
+  e.mvc_amount_paid = 0;
+  e.euro_ref.clear();
+  e.euro_amount = 0;
+  e.status = PURCHASE_PENDING;
+  e.confirm_txid = crypto::hash{};
+  e.confirm_height = 0;
+  e.confirm_expiry_height = 0;
+  if (version >= 1) {
+    if (!mevatrust::lmdb_read_pod(p, end, e.mvc_amount_paid)) return false;
+    if (!mevatrust::lmdb_read_str(p, end, e.euro_ref)) return false;
+    if (!mevatrust::lmdb_read_pod(p, end, e.euro_amount)) return false;
+    uint8_t status_byte;
+    if (!mevatrust::lmdb_read_pod(p, end, status_byte)) return false;
+    e.status = static_cast<PurchaseStatus>(status_byte);
+    if (p + 32 > end) return false;
+    memcpy(e.confirm_txid.data, p, 32); p += 32;
+    if (!mevatrust::lmdb_read_pod(p, end, e.confirm_height)) return false;
+    if (!mevatrust::lmdb_read_pod(p, end, e.confirm_expiry_height)) return false;
+  }
   return true;
 }
 
@@ -305,9 +374,24 @@ crypto::hash StoreRegistry::create_store(const std::string& name,
                                           const std::string& description,
                                           const std::string& url,
                                           const std::string& payment_address,
+                                          bool euro_enabled,
+                                          const std::string& euro_details,
+                                          uint8_t mvc_percent,
+                                          uint8_t euro_percent,
                                           const crypto::public_key& owner_pubkey,
                                           uint64_t height) {
   std::lock_guard<std::mutex> lk(lock_);
+
+  // Validazione: MVC percentuale mai 0, somma = 100
+  if (euro_enabled) {
+    if (mvc_percent == 0 || mvc_percent > 100) return crypto::hash{};
+    if (euro_percent > 99) return crypto::hash{};
+    if (static_cast<uint16_t>(mvc_percent) + static_cast<uint16_t>(euro_percent) != 100)
+      return crypto::hash{};
+  } else {
+    mvc_percent = 100;
+    euro_percent = 0;
+  }
 
   crypto::hash store_id;
   crypto::cn_fast_hash(owner_pubkey.data, 32, store_id.data);
@@ -327,6 +411,10 @@ crypto::hash StoreRegistry::create_store(const std::string& name,
   e.url = url;
   e.owner_pubkey = owner_pubkey;
   e.payment_address = payment_address;
+  e.euro_enabled = euro_enabled;
+  e.euro_details = euro_details;
+  e.mvc_percent = mvc_percent;
+  e.euro_percent = euro_percent;
   e.created_height = height;
   e.created_timestamp = static_cast<uint64_t>(time(nullptr));
   e.active = true;
@@ -339,6 +427,10 @@ crypto::hash StoreRegistry::create_store(const std::string& name,
 bool StoreRegistry::update_store(const crypto::hash& store_id, const std::string& name,
                                   const std::string& description, const std::string& url,
                                   const std::string& payment_address,
+                                  bool euro_enabled,
+                                  const std::string& euro_details,
+                                  uint8_t mvc_percent,
+                                  uint8_t euro_percent,
                                   const crypto::public_key& caller) {
   std::lock_guard<std::mutex> lk(lock_);
   std::string key(reinterpret_cast<const char*>(store_id.data), 32);
@@ -346,11 +438,26 @@ bool StoreRegistry::update_store(const crypto::hash& store_id, const std::string
   if (it == stores_.end() || !it->second.active) return false;
   if (memcmp(it->second.owner_pubkey.data, caller.data, 32) != 0) return false;
 
+  // Validazione: MVC percentuale mai 0, somma = 100
+  if (euro_enabled) {
+    if (mvc_percent == 0 || mvc_percent > 100) return false;
+    if (euro_percent > 99) return false;
+    if (static_cast<uint16_t>(mvc_percent) + static_cast<uint16_t>(euro_percent) != 100)
+      return false;
+  } else {
+    mvc_percent = 100;
+    euro_percent = 0;
+  }
+
   it->second.name = name;
   it->second.description = description;
   it->second.url = url;
   if (!payment_address.empty())
     it->second.payment_address = payment_address;
+  it->second.euro_enabled = euro_enabled;
+  it->second.euro_details = euro_details;
+  it->second.mvc_percent = mvc_percent;
+  it->second.euro_percent = euro_percent;
   return db_put_store(it->second);
 }
 
@@ -368,18 +475,29 @@ bool StoreRegistry::deactivate_store(const crypto::hash& store_id,
 
 // ── Item CRUD ──────────────────────────────────────────────────────────────
 crypto::hash StoreRegistry::list_item(const crypto::hash& store_id,
-                                       const std::string& name,
-                                       const std::string& description,
-                                       uint64_t price,
-                                       uint64_t quantity,
-                                       const std::string& category,
-                                       const std::string& metadata,
-                                       uint64_t height) {
+                                        const std::string& name,
+                                        const std::string& description,
+                                        uint64_t price,
+                                        uint64_t quantity,
+                                        const std::string& category,
+                                        const std::string& metadata,
+                                        const std::string& payment_mode,
+                                        uint64_t height) {
   std::lock_guard<std::mutex> lk(lock_);
   std::string skey(reinterpret_cast<const char*>(store_id.data), 32);
   auto sit = stores_.find(skey);
   if (sit == stores_.end() || !sit->second.active) return crypto::hash{};
   if (sit->second.item_count >= MAX_ITEMS_PER_STORE) return crypto::hash{};
+
+  // Prezzo MVC mai zero
+  if (price == 0) return crypto::hash{};
+
+  // Se lo store ha euro disabilitato, forza mvc_only
+  std::string pm = payment_mode;
+  if (!sit->second.euro_enabled)
+    pm = "mvc_only";
+  if (pm != "mvc_only" && pm != "mvc_euro")
+    pm = "mvc_only";
 
   crypto::hash item_id;
   std::string mix(reinterpret_cast<const char*>(store_id.data), 32);
@@ -396,6 +514,7 @@ crypto::hash StoreRegistry::list_item(const crypto::hash& store_id,
   e.quantity = quantity > 0 ? quantity : 1;
   e.category = category;
   e.metadata = metadata;
+  e.payment_mode = pm;
   e.active = true;
   e.listed_height = height;
 
@@ -432,7 +551,9 @@ bool StoreRegistry::delist_item(const crypto::hash& store_id, const crypto::hash
 // ── Purchase ───────────────────────────────────────────────────────────────
 bool StoreRegistry::buy_item(const crypto::hash& store_id, const crypto::hash& item_id,
                               const crypto::public_key& buyer_pubkey,
-                              uint64_t height, uint64_t timestamp) {
+                              uint64_t height, uint64_t timestamp,
+                              uint64_t mvc_amount_paid, const std::string& euro_ref,
+                              uint64_t euro_amount) {
   std::lock_guard<std::mutex> lk(lock_);
 
   std::string ikey(reinterpret_cast<const char*>(item_id.data), 32);
@@ -458,8 +579,91 @@ bool StoreRegistry::buy_item(const crypto::hash& store_id, const crypto::hash& i
   pe.buyer_pubkey = buyer_pubkey;
   pe.purchase_height = height;
   pe.purchase_timestamp = timestamp;
+  pe.mvc_amount_paid = mvc_amount_paid;
+  pe.euro_ref = euro_ref;
+  pe.euro_amount = euro_amount;
+  pe.status = PURCHASE_PENDING;
+  pe.confirm_expiry_height = height + CONFIRM_WINDOW_BLOCKS;
 
   return db_put_purchase(pe);
+}
+
+// ── Two-phase confirm/cancel ────────────────────────────────────────────────
+bool StoreRegistry::confirm_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
+                                      const crypto::public_key& buyer_pubkey,
+                                      const crypto::public_key& seller_pubkey,
+                                      const crypto::hash& confirm_txid, uint64_t height) {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string key(reinterpret_cast<const char*>(buyer_pubkey.data), 32);
+  auto range = purchases_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, store_id.data, 32) != 0) continue;
+    if (memcmp(it->second.item_id.data, item_id.data, 32) != 0) continue;
+    if (it->second.status != PURCHASE_PENDING) return false;
+    if (height > it->second.confirm_expiry_height) return false;
+    it->second.status = PURCHASE_CONFIRMED;
+    it->second.confirm_txid = confirm_txid;
+    it->second.confirm_height = height;
+    return db_put_purchase(it->second);
+  }
+  return false;
+}
+
+bool StoreRegistry::cancel_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
+                                     const crypto::public_key& buyer_pubkey,
+                                     const crypto::public_key& seller_pubkey,
+                                     const std::string& reason,
+                                     const crypto::hash& cancel_txid, uint64_t height) {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string key(reinterpret_cast<const char*>(buyer_pubkey.data), 32);
+  auto range = purchases_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, store_id.data, 32) != 0) continue;
+    if (memcmp(it->second.item_id.data, item_id.data, 32) != 0) continue;
+    if (it->second.status != PURCHASE_PENDING) return false;
+    if (height > it->second.confirm_expiry_height) return false;
+    it->second.status = PURCHASE_CANCELLED;
+    it->second.confirm_txid = cancel_txid;
+    it->second.confirm_height = height;
+    // Ripristina quantita' item
+    std::string ikey(reinterpret_cast<const char*>(item_id.data), 32);
+    auto iit = items_.find(ikey);
+    if (iit != items_.end()) {
+      iit->second.quantity++;
+      iit->second.active = true;
+      db_put_item(iit->second);
+    }
+    return db_put_purchase(it->second);
+  }
+  return false;
+}
+
+bool StoreRegistry::auto_refund_expired(const crypto::hash& store_id, const crypto::hash& item_id,
+                                         const crypto::public_key& buyer_pubkey,
+                                         uint64_t current_height,
+                                         const crypto::hash& refund_txid) {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string key(reinterpret_cast<const char*>(buyer_pubkey.data), 32);
+  auto range = purchases_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, store_id.data, 32) != 0) continue;
+    if (memcmp(it->second.item_id.data, item_id.data, 32) != 0) continue;
+    if (it->second.status != PURCHASE_PENDING) return false;
+    if (current_height < it->second.confirm_expiry_height) return false;
+    it->second.status = PURCHASE_REFUNDED;
+    it->second.confirm_txid = refund_txid;
+    it->second.confirm_height = current_height;
+    // Ripristina quantita' item
+    std::string ikey(reinterpret_cast<const char*>(item_id.data), 32);
+    auto iit = items_.find(ikey);
+    if (iit != items_.end()) {
+      iit->second.quantity++;
+      iit->second.active = true;
+      db_put_item(iit->second);
+    }
+    return db_put_purchase(it->second);
+  }
+  return false;
 }
 
 // ── Query ──────────────────────────────────────────────────────────────────

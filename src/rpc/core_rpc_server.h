@@ -223,6 +223,7 @@ namespace cryptonote
         MAP_JON_RPC_WE("store_show",         on_store_show,           cryptonote::rpc::COMMAND_RPC_STORE_SHOW)
         MAP_JON_RPC_WE("store_search",       on_store_search,         cryptonote::rpc::COMMAND_RPC_STORE_SEARCH)
         MAP_JON_RPC_WE_IF("store_my_purchases", on_store_my_purchases, cryptonote::rpc::COMMAND_RPC_STORE_MY_PURCHASES, !m_restricted)
+        MAP_JON_RPC_WE_IF("store_purchases_by_store", on_store_purchases_by_store, cryptonote::rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE, !m_restricted)
         // ── Mining (JSON-RPC) ──────────────────────────────────────────────
         MAP_JON_RPC_WE_IF("start_mining",    on_start_mining_json,    COMMAND_RPC_START_MINING,    !m_restricted)
         MAP_JON_RPC_WE_IF("stop_mining",     on_stop_mining_json,     COMMAND_RPC_STOP_MINING,     !m_restricted)
@@ -343,6 +344,7 @@ namespace cryptonote
     bool on_store_show(const cryptonote::rpc::COMMAND_RPC_STORE_SHOW::request& req, cryptonote::rpc::COMMAND_RPC_STORE_SHOW::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_store_search(const cryptonote::rpc::COMMAND_RPC_STORE_SEARCH::request& req, cryptonote::rpc::COMMAND_RPC_STORE_SEARCH::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_store_my_purchases(const cryptonote::rpc::COMMAND_RPC_STORE_MY_PURCHASES::request& req, cryptonote::rpc::COMMAND_RPC_STORE_MY_PURCHASES::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_store_purchases_by_store(const cryptonote::rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE::request& req, cryptonote::rpc::COMMAND_RPC_STORE_PURCHASES_BY_STORE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     //-----------------------
 
 private:
