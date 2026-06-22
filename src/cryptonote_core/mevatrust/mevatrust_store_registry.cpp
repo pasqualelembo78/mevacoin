@@ -9,6 +9,7 @@
 #include <ctime>
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 using namespace cryptonote::mevatrust;
 
@@ -21,11 +22,14 @@ namespace cryptonote {
 // ── Serialization helpers ──────────────────────────────────────────────────
 static void pack_store(const StoreEntry& e, std::string& out) {
   out.clear();
+  const uint8_t version = 1;
+  mevatrust::lmdb_write_pod(out, version);
   out.append(reinterpret_cast<const char*>(e.store_id.data), 32);
   mevatrust::lmdb_write_str(out, e.name);
   mevatrust::lmdb_write_str(out, e.description);
   mevatrust::lmdb_write_str(out, e.url);
   out.append(reinterpret_cast<const char*>(e.owner_pubkey.data), 32);
+  mevatrust::lmdb_write_str(out, e.payment_address);
   mevatrust::lmdb_write_pod(out, e.created_height);
   mevatrust::lmdb_write_pod(out, e.created_timestamp);
   mevatrust::lmdb_write_pod(out, e.active);
@@ -33,15 +37,22 @@ static void pack_store(const StoreEntry& e, std::string& out) {
 }
 
 static bool unpack_store(const std::string& data, StoreEntry& e) {
-  if (data.size() < 32) return false;
+  if (data.size() < 33) return false; // minimo: version + store_id
   const char* p = data.data();
   const char* end = p + data.size();
+  uint8_t version;
+  memcpy(&version, p, 1); p += 1;
   memcpy(e.store_id.data, p, 32); p += 32;
   if (!mevatrust::lmdb_read_str(p, end, e.name)) return false;
   if (!mevatrust::lmdb_read_str(p, end, e.description)) return false;
   if (!mevatrust::lmdb_read_str(p, end, e.url)) return false;
   if (p + 32 > end) return false;
   memcpy(e.owner_pubkey.data, p, 32); p += 32;
+  if (version >= 1) {
+    if (!mevatrust::lmdb_read_str(p, end, e.payment_address)) return false;
+  } else {
+    e.payment_address.clear();
+  }
   if (!mevatrust::lmdb_read_pod(p, end, e.created_height)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.created_timestamp)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.active)) return false;
@@ -58,6 +69,7 @@ static void pack_item(const StoreItemEntry& e, std::string& out) {
   mevatrust::lmdb_write_pod(out, e.price);
   mevatrust::lmdb_write_str(out, e.category);
   mevatrust::lmdb_write_str(out, e.metadata);
+  mevatrust::lmdb_write_pod(out, e.quantity);
   mevatrust::lmdb_write_pod(out, e.active);
   mevatrust::lmdb_write_pod(out, e.listed_height);
 }
@@ -73,6 +85,7 @@ static bool unpack_item(const std::string& data, StoreItemEntry& e) {
   if (!mevatrust::lmdb_read_pod(p, end, e.price)) return false;
   if (!mevatrust::lmdb_read_str(p, end, e.category)) return false;
   if (!mevatrust::lmdb_read_str(p, end, e.metadata)) return false;
+  if (!mevatrust::lmdb_read_pod(p, end, e.quantity)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.active)) return false;
   if (!mevatrust::lmdb_read_pod(p, end, e.listed_height)) return false;
   return true;
@@ -291,6 +304,7 @@ bool StoreRegistry::db_del_purchase(const crypto::hash& store_id, const crypto::
 crypto::hash StoreRegistry::create_store(const std::string& name,
                                           const std::string& description,
                                           const std::string& url,
+                                          const std::string& payment_address,
                                           const crypto::public_key& owner_pubkey,
                                           uint64_t height) {
   std::lock_guard<std::mutex> lk(lock_);
@@ -312,6 +326,7 @@ crypto::hash StoreRegistry::create_store(const std::string& name,
   e.description = description;
   e.url = url;
   e.owner_pubkey = owner_pubkey;
+  e.payment_address = payment_address;
   e.created_height = height;
   e.created_timestamp = static_cast<uint64_t>(time(nullptr));
   e.active = true;
@@ -323,6 +338,7 @@ crypto::hash StoreRegistry::create_store(const std::string& name,
 
 bool StoreRegistry::update_store(const crypto::hash& store_id, const std::string& name,
                                   const std::string& description, const std::string& url,
+                                  const std::string& payment_address,
                                   const crypto::public_key& caller) {
   std::lock_guard<std::mutex> lk(lock_);
   std::string key(reinterpret_cast<const char*>(store_id.data), 32);
@@ -333,6 +349,8 @@ bool StoreRegistry::update_store(const crypto::hash& store_id, const std::string
   it->second.name = name;
   it->second.description = description;
   it->second.url = url;
+  if (!payment_address.empty())
+    it->second.payment_address = payment_address;
   return db_put_store(it->second);
 }
 
@@ -353,6 +371,7 @@ crypto::hash StoreRegistry::list_item(const crypto::hash& store_id,
                                        const std::string& name,
                                        const std::string& description,
                                        uint64_t price,
+                                       uint64_t quantity,
                                        const std::string& category,
                                        const std::string& metadata,
                                        uint64_t height) {
@@ -374,6 +393,7 @@ crypto::hash StoreRegistry::list_item(const crypto::hash& store_id,
   e.name = name;
   e.description = description;
   e.price = price;
+  e.quantity = quantity > 0 ? quantity : 1;
   e.category = category;
   e.metadata = metadata;
   e.active = true;
@@ -423,6 +443,15 @@ bool StoreRegistry::buy_item(const crypto::hash& store_id, const crypto::hash& i
   // Check not already purchased by same buyer
   if (is_item_purchased(item_id, buyer_pubkey)) return false;
 
+  // Decrement quantity; se zero, auto-delist
+  if (it->second.quantity > 0)
+    it->second.quantity--;
+  if (it->second.quantity == 0)
+    it->second.active = false;
+
+  if (!db_put_item(it->second))
+    return false;
+
   StorePurchaseEntry pe;
   pe.store_id = store_id;
   pe.item_id = item_id;
@@ -450,16 +479,6 @@ bool StoreRegistry::get_item(const crypto::hash& item_id, StoreItemEntry& out) c
   if (it == items_.end()) return false;
   out = it->second;
   return true;
-}
-
-std::vector<StoreEntry> StoreRegistry::list_stores(bool active_only) const {
-  std::lock_guard<std::mutex> lk(lock_);
-  std::vector<StoreEntry> res;
-  for (const auto& kv : stores_) {
-    if (!active_only || kv.second.active)
-      res.push_back(kv.second);
-  }
-  return res;
 }
 
 std::vector<StoreItemEntry> StoreRegistry::list_items(const crypto::hash& store_id,
@@ -515,60 +534,157 @@ std::vector<StoreEntry> StoreRegistry::get_stores_by_owner(const crypto::public_
   return res;
 }
 
-std::vector<StoreEntry> StoreRegistry::list_top_stores(uint32_t limit, bool active_only) const {
-  std::lock_guard<std::mutex> lk(lock_);
-  std::vector<StoreEntry> res;
-  for (const auto& kv : stores_) {
-    if (active_only && !kv.second.active) continue;
-    res.push_back(kv.second);
-  }
-  std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) {
-    if (a.item_count != b.item_count) return a.item_count > b.item_count;
-    return a.created_height > b.created_height;
-  });
-  if (res.size() > limit) res.resize(limit);
-  return res;
+static std::string str_lower(const std::string& s) {
+  std::string r = s;
+  for (auto& c : r) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return r;
 }
 
-std::vector<StoreEntry> StoreRegistry::search_stores(const std::string& keyword, bool search_items) const {
+StoreSearchResult StoreRegistry::list_stores(const StoreSearchParams& params) const {
   std::lock_guard<std::mutex> lk(lock_);
-  std::string kw_lower = keyword;
-  for (auto& c : kw_lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-  // Collect stores that directly match
+  std::vector<StoreEntry> all;
+  for (const auto& kv : stores_) {
+    if (!kv.second.active) continue;
+
+    // Category filter (item-level: include store if any item matches category)
+    if (!params.category.empty()) {
+      bool cat_match = false;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, kv.second.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (str_lower(ikv.second.category) == str_lower(params.category)) {
+          cat_match = true; break;
+        }
+      }
+      if (!cat_match) continue;
+    }
+
+    // Price range filter (item-level: include store if any item in price range)
+    if (params.min_price > 0 || params.max_price > 0) {
+      bool price_match = false;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, kv.second.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (params.min_price > 0 && ikv.second.price < params.min_price) continue;
+        if (params.max_price > 0 && ikv.second.price > params.max_price) continue;
+        price_match = true; break;
+      }
+      if (!price_match) continue;
+    }
+
+    all.push_back(kv.second);
+  }
+
+  // Sort
+  if (params.sort_by == "price_asc" || params.sort_by == "price_desc") {
+    // Sort by min item price in store
+    for (auto& s : all) {
+      uint64_t min_p = UINT64_MAX;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, s.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (ikv.second.price < min_p) min_p = ikv.second.price;
+      }
+      s.item_count = (min_p == UINT64_MAX) ? 0 : (uint32_t)min_p; // temp reuse
+    }
+    if (params.sort_by == "price_asc")
+      std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.item_count < b.item_count; });
+    else
+      std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.item_count > b.item_count; });
+    // Restore real item counts
+    for (auto& s : all) {
+      auto it = stores_.find(std::string((const char*)s.store_id.data, 32));
+      if (it != stores_.end()) s.item_count = it->second.item_count;
+    }
+  } else if (params.sort_by == "newest") {
+    std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.created_height > b.created_height; });
+  } else if (params.sort_by == "oldest") {
+    std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.created_height < b.created_height; });
+  } else if (params.sort_by == "name") {
+    std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) { return str_lower(a.name) < str_lower(b.name); });
+  } else {
+    // relevance = by item_count descending
+    std::sort(all.begin(), all.end(), [](const StoreEntry& a, const StoreEntry& b) {
+      if (a.item_count != b.item_count) return a.item_count > b.item_count;
+      return a.created_height > b.created_height;
+    });
+  }
+
+  uint32_t total = (uint32_t)all.size();
+  uint32_t per_page = params.per_page > 0 ? params.per_page : 20;
+  uint32_t total_pages = (total + per_page - 1) / per_page;
+  if (total_pages < 1) total_pages = 1;
+  uint32_t page = params.page < 1 ? 1 : (params.page > total_pages ? total_pages : params.page);
+  uint32_t start = (page - 1) * per_page;
+  uint32_t end = std::min(start + per_page, total);
+
+  StoreSearchResult result;
+  result.total_count = total;
+  result.page = page;
+  result.total_pages = total_pages;
+  if (start < end)
+    result.results.assign(all.begin() + start, all.begin() + end);
+  return result;
+}
+
+StoreSearchResult StoreRegistry::search_stores(const StoreSearchParams& params) const {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::string kw_lower = str_lower(params.keyword);
+
+  // Collect stores that directly match keyword
   std::map<std::string, StoreEntry> matched;
   for (const auto& kv : stores_) {
     if (!kv.second.active) continue;
-    std::string name_l = kv.second.name;
-    for (auto& c : name_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    std::string desc_l = kv.second.description;
-    for (auto& c : desc_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    std::string url_l = kv.second.url;
-    for (auto& c : url_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    std::string owner_h = epee::string_tools::pod_to_hex(kv.second.owner_pubkey);
 
-    if (name_l.find(kw_lower) != std::string::npos ||
-        desc_l.find(kw_lower) != std::string::npos ||
-        url_l.find(kw_lower) != std::string::npos ||
-        owner_h.find(kw_lower) != std::string::npos) {
+    // Category filter
+    if (!params.category.empty()) {
+      bool cat_match = false;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, kv.second.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (str_lower(ikv.second.category) == str_lower(params.category)) { cat_match = true; break; }
+      }
+      if (!cat_match) continue;
+    }
+
+    // Price range filter
+    if (params.min_price > 0 || params.max_price > 0) {
+      bool price_match = false;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, kv.second.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (params.min_price > 0 && ikv.second.price < params.min_price) continue;
+        if (params.max_price > 0 && ikv.second.price > params.max_price) continue;
+        price_match = true; break;
+      }
+      if (!price_match) continue;
+    }
+
+    // Keyword match on store fields
+    if (kw_lower.empty() ||
+        str_lower(kv.second.name).find(kw_lower) != std::string::npos ||
+        str_lower(kv.second.description).find(kw_lower) != std::string::npos ||
+        str_lower(kv.second.url).find(kw_lower) != std::string::npos ||
+        str_lower(epee::string_tools::pod_to_hex(kv.second.owner_pubkey)).find(kw_lower) != std::string::npos) {
       matched[kv.first] = kv.second;
     }
   }
 
   // Search items and include their stores
-  if (search_items) {
+  if (params.search_items && !kw_lower.empty()) {
     for (const auto& kv : items_) {
       if (!kv.second.active) continue;
-      std::string iname_l = kv.second.name;
-      for (auto& c : iname_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-      std::string idesc_l = kv.second.description;
-      for (auto& c : idesc_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-      std::string icat_l = kv.second.category;
-      for (auto& c : icat_l) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-      if (iname_l.find(kw_lower) != std::string::npos ||
-          idesc_l.find(kw_lower) != std::string::npos ||
-          icat_l.find(kw_lower) != std::string::npos) {
+      // Category filter
+      if (!params.category.empty() && str_lower(kv.second.category) != str_lower(params.category)) continue;
+      // Price range filter
+      if (params.min_price > 0 && kv.second.price < params.min_price) continue;
+      if (params.max_price > 0 && kv.second.price > params.max_price) continue;
+
+      if (str_lower(kv.second.name).find(kw_lower) != std::string::npos ||
+          str_lower(kv.second.description).find(kw_lower) != std::string::npos ||
+          str_lower(kv.second.category).find(kw_lower) != std::string::npos) {
         std::string skey(reinterpret_cast<const char*>(kv.second.store_id.data), 32);
         auto sit = stores_.find(skey);
         if (sit != stores_.end() && sit->second.active)
@@ -577,9 +693,68 @@ std::vector<StoreEntry> StoreRegistry::search_stores(const std::string& keyword,
     }
   }
 
+  // Convert to vector
   std::vector<StoreEntry> res;
   for (const auto& m : matched) res.push_back(m.second);
-  return res;
+
+  // Sort
+  if (params.sort_by == "price_asc" || params.sort_by == "price_desc") {
+    for (auto& s : res) {
+      uint64_t min_p = UINT64_MAX;
+      for (const auto& ikv : items_) {
+        if (memcmp(ikv.second.store_id.data, s.store_id.data, 32) != 0) continue;
+        if (!ikv.second.active) continue;
+        if (ikv.second.price < min_p) min_p = ikv.second.price;
+      }
+      s.item_count = (min_p == UINT64_MAX) ? 0 : (uint32_t)min_p;
+    }
+    if (params.sort_by == "price_asc")
+      std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.item_count < b.item_count; });
+    else
+      std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.item_count > b.item_count; });
+    for (auto& s : res) {
+      auto it = stores_.find(std::string((const char*)s.store_id.data, 32));
+      if (it != stores_.end()) s.item_count = it->second.item_count;
+    }
+  } else if (params.sort_by == "newest") {
+    std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.created_height > b.created_height; });
+  } else if (params.sort_by == "oldest") {
+    std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) { return a.created_height < b.created_height; });
+  } else if (params.sort_by == "name") {
+    std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) { return str_lower(a.name) < str_lower(b.name); });
+  } else {
+    std::sort(res.begin(), res.end(), [](const StoreEntry& a, const StoreEntry& b) {
+      if (a.item_count != b.item_count) return a.item_count > b.item_count;
+      return a.created_height > b.created_height;
+    });
+  }
+
+  uint32_t total = (uint32_t)res.size();
+  uint32_t per_page = params.per_page > 0 ? params.per_page : 20;
+  uint32_t total_pages = (total + per_page - 1) / per_page;
+  if (total_pages < 1) total_pages = 1;
+  uint32_t page = params.page < 1 ? 1 : (params.page > total_pages ? total_pages : params.page);
+  uint32_t start = (page - 1) * per_page;
+  uint32_t end = std::min(start + per_page, total);
+
+  StoreSearchResult result;
+  result.total_count = total;
+  result.page = page;
+  result.total_pages = total_pages;
+  if (start < end)
+    result.results.assign(res.begin() + start, res.begin() + end);
+  return result;
+}
+
+std::vector<std::string> StoreRegistry::list_categories() const {
+  std::lock_guard<std::mutex> lk(lock_);
+  std::set<std::string> cats;
+  for (const auto& kv : items_) {
+    if (!kv.second.active) continue;
+    if (!kv.second.category.empty())
+      cats.insert(kv.second.category);
+  }
+  return std::vector<std::string>(cats.begin(), cats.end());
 }
 
 bool StoreRegistry::is_item_purchased(const crypto::hash& item_id,

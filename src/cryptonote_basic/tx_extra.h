@@ -426,6 +426,7 @@ struct tx_extra_mevatrust_store
     ITEM_LIST      = 2,
     ITEM_DELIST    = 3,
     ITEM_BUY       = 4,
+    STORE_DEACTIVATE = 5,
   };
 
   Operation op{STORE_CREATE};
@@ -435,8 +436,10 @@ struct tx_extra_mevatrust_store
   std::string description;
   std::string url;
   uint64_t price{0};
+  uint64_t quantity{1}; // numero pezzi disponibili (0 = esaurito)
   std::string category;
   std::string metadata;
+  std::string payment_address; // indirizzo MVC del venditore per pagamenti
   crypto::public_key owner_pubkey{};
   crypto::signature owner_sig{};
   crypto::public_key buyer_pubkey{};
@@ -449,8 +452,10 @@ struct tx_extra_mevatrust_store
     FIELD(description)
     FIELD(url)
     VARINT_FIELD(price)
+    VARINT_FIELD(quantity)
     FIELD(category)
     FIELD(metadata)
+    FIELD(payment_address)
     FIELD(owner_pubkey)
     FIELD(owner_sig)
     FIELD(buyer_pubkey)
