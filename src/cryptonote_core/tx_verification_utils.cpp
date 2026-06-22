@@ -510,12 +510,16 @@ bool check_mevatrust_store_tx(const transaction& tx, tx_verification_context& tv
     if (!mevatrust::parse_mevatrust_store_from_tx(tx, op))
         return true; // not a store tx
 
-    // Verify the operation signature (different key for confirm/cancel)
+    // Verify the operation signature (different key per op type)
     bool sig_ok = false;
     if (op.op == tx_extra_mevatrust_store::STORE_CONFIRM)
         sig_ok = mevatrust::verify_store_confirm_signature(op);
     else if (op.op == tx_extra_mevatrust_store::STORE_CANCEL)
         sig_ok = mevatrust::verify_store_cancel_signature(op);
+    else if (op.op == tx_extra_mevatrust_store::BUYER_CANCEL)
+        sig_ok = mevatrust::verify_store_buyer_cancel_signature(op);
+    else if (op.op == tx_extra_mevatrust_store::BUYER_CONFIRM_RECEIPT)
+        sig_ok = mevatrust::verify_store_buyer_confirm_receipt_signature(op);
     else
         sig_ok = mevatrust::verify_store_signature(op);
     if (!sig_ok)
@@ -664,6 +668,68 @@ bool check_mevatrust_store_tx(const transaction& tx, tx_verification_context& tv
         if (!found_pending)
         {
             MWARNING("STORE_CONFIRM/CANCEL: no pending purchase found");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        break;
+    }
+
+    case tx_extra_mevatrust_store::BUYER_CANCEL:
+    {
+        auto* mgr = mevatrust::get_manager();
+        if (!mgr || !mgr->is_initialized())
+        {
+            MWARNING("MevaTrust manager not initialized");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        // Verify a pending purchase exists for this buyer+item
+        auto purchases = mgr->store_registry()->get_store_purchases(op.store_id);
+        bool found_pending = false;
+        for (const auto& p : purchases)
+        {
+            if (p.item_id == op.item_id &&
+                p.buyer_pubkey == op.buyer_pubkey &&
+                p.status == PURCHASE_PENDING)
+            {
+                found_pending = true;
+                break;
+            }
+        }
+        if (!found_pending)
+        {
+            MWARNING("BUYER_CANCEL: no pending purchase found");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        break;
+    }
+
+    case tx_extra_mevatrust_store::BUYER_CONFIRM_RECEIPT:
+    {
+        auto* mgr = mevatrust::get_manager();
+        if (!mgr || !mgr->is_initialized())
+        {
+            MWARNING("MevaTrust manager not initialized");
+            tvc.m_verifivation_failed = true;
+            return false;
+        }
+        // Verify a confirmed (not yet completed) purchase exists
+        auto purchases = mgr->store_registry()->get_store_purchases(op.store_id);
+        bool found_confirmed = false;
+        for (const auto& p : purchases)
+        {
+            if (p.item_id == op.item_id &&
+                p.buyer_pubkey == op.buyer_pubkey &&
+                p.status == PURCHASE_CONFIRMED)
+            {
+                found_confirmed = true;
+                break;
+            }
+        }
+        if (!found_confirmed)
+        {
+            MWARNING("BUYER_CONFIRM_RECEIPT: no confirmed purchase found");
             tvc.m_verifivation_failed = true;
             return false;
         }

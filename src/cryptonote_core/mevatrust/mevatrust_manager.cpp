@@ -764,6 +764,10 @@ void MevaTrustManager::process_mevatrust_txs(
                     sig_valid = mevatrust::verify_store_confirm_signature(st);
                 else if (st.op == tx_extra_mevatrust_store::STORE_CANCEL)
                     sig_valid = mevatrust::verify_store_cancel_signature(st);
+                else if (st.op == tx_extra_mevatrust_store::BUYER_CANCEL)
+                    sig_valid = mevatrust::verify_store_buyer_cancel_signature(st);
+                else if (st.op == tx_extra_mevatrust_store::BUYER_CONFIRM_RECEIPT)
+                    sig_valid = mevatrust::verify_store_buyer_confirm_receipt_signature(st);
                 else
                     sig_valid = mevatrust::verify_store_signature(st);
                 if (!sig_valid) {
@@ -923,6 +927,30 @@ case tx_extra_mevatrust_store::ITEM_LIST: {
         MINFO("[MevaTrustManager] STORE_CANCEL ok h=" << height
               << " item=" << epee::string_tools::pod_to_hex(st.item_id)
               << " reason=" << st.cancel_reason);
+    }
+    break;
+}
+                case tx_extra_mevatrust_store::BUYER_CANCEL: {
+    if (!mevatrust::verify_store_buyer_cancel_signature(st)) {
+        MWARNING("[MevaTrustManager] BUYER_CANCEL sig INVALIDA");
+        break;
+    }
+    if (m_store_registry->buyer_cancel_purchase(st.store_id, st.item_id,
+        st.buyer_pubkey, tx_hash, height)) {
+        MINFO("[MevaTrustManager] BUYER_CANCEL ok h=" << height
+              << " item=" << epee::string_tools::pod_to_hex(st.item_id));
+    }
+    break;
+}
+                case tx_extra_mevatrust_store::BUYER_CONFIRM_RECEIPT: {
+    if (!mevatrust::verify_store_buyer_confirm_receipt_signature(st)) {
+        MWARNING("[MevaTrustManager] BUYER_CONFIRM_RECEIPT sig INVALIDA");
+        break;
+    }
+    if (m_store_registry->buyer_confirm_receipt(st.store_id, st.item_id,
+        st.buyer_pubkey, height)) {
+        MINFO("[MevaTrustManager] BUYER_CONFIRM_RECEIPT ok h=" << height
+              << " item=" << epee::string_tools::pod_to_hex(st.item_id));
     }
     break;
 }

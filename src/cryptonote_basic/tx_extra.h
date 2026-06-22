@@ -429,6 +429,8 @@ struct tx_extra_mevatrust_store
     STORE_CONFIRM     = 5,
     STORE_CANCEL      = 6,
     STORE_DEACTIVATE  = 7,
+    BUYER_CANCEL      = 8,
+    BUYER_CONFIRM_RECEIPT = 9,
   };
 
   Operation op{STORE_CREATE};
