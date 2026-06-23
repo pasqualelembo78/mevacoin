@@ -4929,8 +4929,9 @@ bool simple_wallet::try_connect_to_daemon(bool silent, uint32_t* version)
           "Please make sure the daemon is running the latest version or change the daemon address using the 'set_daemon' command.");
       else
         fail_msg_writer() << tr("wallet failed to connect to daemon: ") << m_wallet->get_daemon_address() << ". " <<
-          tr("Daemon either is not started or wrong port was passed. "
-          "Please make sure daemon is running or change the daemon address using the 'set_daemon' command.");
+          tr("Daemon either is not started, wrong port was passed, or RPC login credentials are required. "
+          "Please make sure daemon is running, change the daemon address using the 'set_daemon' command, "
+          "or provide RPC credentials with --daemon-login <user>:<password> or 'set_daemon <host>:<port> <user>:<password>'.");
     }
     return false;
   }
@@ -5923,6 +5924,8 @@ void simple_wallet::on_refresh_finished(uint64_t start_height, uint64_t fetched_
   if (err.empty() && rfbh > dh)
   {
     message_writer(console_color_yellow, false) << tr("The wallet's refresh-from-block-height setting is higher than the daemon's height: this may mean your wallet will skip over transactions");
+    message_writer(console_color_green, false) << tr("Automatically resetting refresh-from-block-height to 1. Use 'rescan_bc' if balance is incorrect.");
+    m_wallet->set_refresh_from_block_height(1);
   }
 
   // Key image sync after the first refresh
