@@ -10,6 +10,7 @@
 #include <string>
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "crypto/hash.h"
+#include "foundation_vesting.h"
 
 namespace cryptonote
 {
@@ -20,8 +21,12 @@ constexpr int DESY_MEMORIAL_DAY     = 18;   // Day 18
 constexpr int DESY_BONUS_PERCENT    = 10;   // +10% reward bonus
 constexpr int DESY_BONUS_DIVISOR    = 100 / DESY_BONUS_PERCENT; // 10
 constexpr int DESY_VISUAL_EVENTS_MAX = 5;   // max visual events per day
-constexpr uint64_t FOUNDATION_ALLOCATION = 1000000ULL * 1000000000000ULL; // 1,000,000 MVC in atomic units
-constexpr const char* FOUNDATION_ADDRESS = "ME21qnU8pi1UCdG5LN7MgedVtBSfqUfejiwHLwTVeM4pLEYiVP1nfxFeZ52SNyLRd4PcBZXprmT5Lfz1tvLYjmRx4PdxmdR";
+
+// Legacy total — sum of all premine allocations (now defined in foundation_vesting.h)
+constexpr uint64_t FOUNDATION_ALLOCATION = PREMINE_TOTAL;
+
+// Team lock address (the original foundation address)
+constexpr const char* FOUNDATION_ADDRESS = "M7gdpji4uBH2gRwEpmTyM6icFjLq3nrw6iyJUHEBGmdmRrcqw5nCPykZqLohifeJJpcR3K7ME94e9WRYhiJXY5brR3c3Gua";
 
 // ── Functions ──────────────────────────────────────────────────────
 

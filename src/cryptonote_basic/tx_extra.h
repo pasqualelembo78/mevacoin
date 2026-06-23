@@ -36,6 +36,8 @@
 #include <boost/variant/variant.hpp>
 
 #include "serialization/serialization.h"
+
+
 #include "serialization/binary_archive.h"
 #include "serialization/variant.h"
 #include "serialization/pair.h"
@@ -65,6 +67,12 @@
 #define TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE          0xA9
 #define TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION    0xAA
 #define TX_EXTRA_TAG_MEVATRUST_VALIDATOR            0xAB
+
+// ── Premine Governance tags ─────────────────────────────────────────────────
+#define TX_EXTRA_TAG_GOVERNANCE_TRANSFER         0xB0
+#define TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER       0xB1
+#define TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER    0xB2
+#define TX_EXTRA_TAG_NETWORK_FUND_TRANSFER       0xC0
 // ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -538,6 +546,77 @@ struct tx_extra_mevatrust_validator
     FIELD(wallet_pubkey)
     FIELD(node_pubkey)
     FIELD(signature)
+  END_SERIALIZE()
+};
+
+// ── Governance Signature — individual signer's signature on a tx ────────────
+struct governance_signature
+{
+  crypto::public_key signer_key;
+  crypto::signature  sig;
+
+  BEGIN_SERIALIZE()
+    FIELD(signer_key)
+    FIELD(sig)
+  END_SERIALIZE()
+};
+
+// ── Governance Transfer — tag 0xB0 ─────────────────────────────────────────
+// Spend from governance treasury. Requires ≥2-of-X signer signatures.
+struct tx_extra_governance_transfer
+{
+  uint64_t              amount;
+  crypto::public_key    recipient_spend;
+  crypto::public_key    recipient_view;
+  std::vector<governance_signature> signatures;
+
+  BEGIN_SERIALIZE()
+    VARINT_FIELD(amount)
+    FIELD(recipient_spend)
+    FIELD(recipient_view)
+    FIELD(signatures)
+  END_SERIALIZE()
+};
+
+// ── Governance Add Signer — tag 0xB1 ────────────────────────────────────────
+// Add a new signer to the governance set. Requires 2-of-X signatures.
+struct tx_extra_governance_add_signer
+{
+  crypto::public_key new_signer_key;
+  std::vector<governance_signature> signatures;
+
+  BEGIN_SERIALIZE()
+    FIELD(new_signer_key)
+    FIELD(signatures)
+  END_SERIALIZE()
+};
+
+// ── Governance Remove Signer — tag 0xB2 ─────────────────────────────────────
+// Remove a non-original signer. Requires 2-of-X signatures.
+// Cannot remove genesis signers (indices < GOVERNANCE_ORIGINAL_SIGNERS).
+struct tx_extra_governance_remove_signer
+{
+  uint64_t signer_index;
+  std::vector<governance_signature> signatures;
+
+  BEGIN_SERIALIZE()
+    VARINT_FIELD(signer_index)
+    FIELD(signatures)
+  END_SERIALIZE()
+};
+
+// ── Network Fund Transfer — tag 0xC0 ────────────────────────────────────────
+// Spend from network fund. Rate-limited to 10k MVC per 30-day rolling window.
+struct tx_extra_network_fund_transfer
+{
+  uint64_t              amount;
+  crypto::public_key    recipient_spend;
+  crypto::public_key    recipient_view;
+
+  BEGIN_SERIALIZE()
+    VARINT_FIELD(amount)
+    FIELD(recipient_spend)
+    FIELD(recipient_view)
   END_SERIALIZE()
 };
 

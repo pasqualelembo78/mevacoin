@@ -45,6 +45,7 @@
 #include "mevatrust/mevatrust_coinbase_validator.h"
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/events.h"
+#include "serialization/binary_utils.h"
 #include "cryptonote_config.h"
 #include "cryptonote_basic/miner.h"
 #include "hardforks/hardforks.h"
@@ -468,6 +469,8 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
     if (seedhash != crypto::null_hash)
       rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
   }
+
+  init_premine_state();
 
   return true;
 }
@@ -3704,6 +3707,17 @@ bool Blockchain::check_tx_inputs(transaction& tx,
 
   MDEBUG("Input verification for tx " << txid << " succeeded. Setting verID to " << valid_input_verification_id_inout);
 
+  // ── Premine spend validation ──────────────────────────────────────────
+  if (m_premine_initialized)
+  {
+    const uint64_t cur_height = m_db->height() - 1;
+    if (!check_premine_spend(tx, cur_height, hf_version))
+    {
+      MERROR_VER("Premine spend check failed for tx " << txid);
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -4518,6 +4532,38 @@ leave:
       }
     }
   }
+
+  // ── Process premine actions ──────────────────────────────────────
+  if (m_premine_initialized)
+  {
+    const uint64_t block_height = new_height - 1;
+    // Process miner tx
+    if (!process_premine_actions(bl.miner_tx, block_height))
+    {
+      MERROR("Failed to process premine actions in miner tx at height " << block_height);
+      pop_block_from_blockchain();
+      bvc.m_verifivation_failed = true;
+      return false;
+    }
+    // Process other transactions
+    for (const auto& tx_id : bl.tx_hashes)
+    {
+      transaction tx;
+      if (!m_db->get_tx(tx_id, tx))
+      {
+        MERROR("Failed to get tx " << tx_id << " for premine processing at height " << block_height);
+        continue;
+      }
+      if (!process_premine_actions(tx, block_height))
+      {
+        MERROR("Failed to process premine actions in tx " << tx_id);
+        pop_block_from_blockchain();
+        bvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
+  }
+
   ++m_sync_counter;
 
   // appears to be a NOP *and* is called elsewhere.  wat?
@@ -5778,10 +5824,477 @@ void Blockchain::send_miner_notifications(uint64_t height, const crypto::hash &s
   }
 }
 
+// ── Premine methods ─────────────────────────────────────────────────────────
+
+void Blockchain::init_premine_state()
+{
+    m_premine_initialized = false;
+
+    // Compute the foundation tx secret key (same derivation as genesis block code)
+    crypto::secret_key foundation_sec;
+    crypto::hash_to_scalar(FOUNDATION_ADDRESS, strlen(FOUNDATION_ADDRESS), foundation_sec);
+
+    // Read the genesis block from the DB to know output indices
+    block genesis;
+    if (m_db->height() > 0)
+    {
+        genesis = m_db->get_block_from_height(0);
+    }
+    else
+    {
+        generate_genesis_block(genesis, get_config(m_nettype).GENESIS_TX, get_config(m_nettype).GENESIS_NONCE);
+    }
+
+    // The last 3 vout entries in the genesis miner_tx are our premine outputs
+    // (team, treasury, network), added after the hardcoded genesis tx outputs.
+    const auto& vouts = genesis.miner_tx.vout;
+    if (vouts.size() < 3)
+    {
+        MERROR("Genesis block has too few outputs (" << vouts.size() << "), premine not initialized");
+        return;
+    }
+
+    // Get the output keys from the actual outputs in the genesis block
+    // Parse the one-time public key from each tx_out
+    auto extract_output_key = [](const tx_out& out) -> crypto::public_key
+    {
+        if (out.target.type() == typeid(txout_to_key))
+            return boost::get<txout_to_key>(out.target).key;
+        if (out.target.type() == typeid(txout_to_tagged_key))
+            return boost::get<txout_to_tagged_key>(out.target).key;
+        return crypto::public_key{};
+    };
+
+    size_t n = vouts.size();
+    m_premine_keys.team     = extract_output_key(vouts[n - 3]);
+    m_premine_keys.treasury = extract_output_key(vouts[n - 2]);
+    m_premine_keys.network  = extract_output_key(vouts[n - 1]);
+
+    // Also compute the expected keys for verification
+    auto addr_info_from_str = [](const std::string& addr_str) -> account_public_address
+    {
+        address_parse_info info;
+        get_account_address_from_str(info, MAINNET, addr_str);
+        return info.address;
+    };
+
+    crypto::public_key expected_team = compute_premine_output_key(
+        foundation_sec, addr_info_from_str(FOUNDATION_ADDRESS), n - 3);
+    crypto::public_key expected_treasury = compute_premine_output_key(
+        foundation_sec, get_governance_address(MAINNET), n - 2);
+    crypto::public_key expected_network = compute_premine_output_key(
+        foundation_sec, get_network_fund_address(MAINNET), n - 1);
+
+    if (m_premine_keys.team != expected_team ||
+        m_premine_keys.treasury != expected_treasury ||
+        m_premine_keys.network != expected_network)
+    {
+        MERROR("Premine output keys mismatch — genesis block structure may have changed");
+        // Still proceed, but log the error
+    }
+
+    // Initialize governance state from genesis signers
+    m_governance.signers = get_genesis_governance_signers();
+    m_governance.original_count = GOVERNANCE_ORIGINAL_SIGNERS;
+    m_governance.balance = TREASURY_ALLOCATION;
+    m_governance.threshold = GOVERNANCE_THRESHOLD;
+
+    // Initialize network fund state
+    m_network_fund.balance = NETWORK_FUND_ALLOCATION;
+    m_network_fund.recent_spends.clear();
+
+    // If there are existing blocks, rebuild state from them
+    if (m_db->height() > 1)
+    {
+        if (!rebuild_premine_state())
+        {
+            MERROR("Failed to rebuild premine state from existing blocks");
+            return;
+        }
+    }
+
+    m_premine_initialized = true;
+    MINFO("Premine state initialized: team=" << m_premine_keys.team
+        << " treasury=" << m_premine_keys.treasury
+        << " network=" << m_premine_keys.network);
+}
+
+bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uint8_t hf_version) const
+{
+    if (!m_premine_initialized)
+        return true;
+
+    // Determine the tx prefix hash for signature verification
+    const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+
+    // Whether we found a premine output among the inputs
+    bool found_team = false, found_treasury = false, found_network = false;
+
+    // Scan all inputs to collect output public keys
+    for (const auto& vin : tx.vin)
+    {
+        if (vin.type() != typeid(txin_to_key))
+            continue;
+        const txin_to_key& in = boost::get<txin_to_key>(vin);
+
+        struct collector
+        {
+            premine_output_keys keys;
+            bool& found_team;
+            bool& found_treasury;
+            bool& found_network;
+
+            bool handle_output(uint64_t unlock_time, const crypto::public_key& pubkey, const rct::key& commitment)
+            {
+                if (pubkey == keys.team) found_team = true;
+                if (pubkey == keys.treasury) found_treasury = true;
+                if (pubkey == keys.network) found_network = true;
+                return true;
+            }
+        };
+
+        uint64_t max_height = 0;
+        collector c{m_premine_keys, found_team, found_treasury, found_network};
+        if (!scan_outputkeys_for_indexes(tx.version, in, c, tx_prefix_hash, &max_height))
+        {
+            MERROR("Failed to scan output keys for premine check");
+            return false;
+        }
+    }
+
+    // ── Team lock check ──────────────────────────────────────────────────
+    if (found_team)
+    {
+        if (height < TEAM_LOCK_BLOCKS)
+        {
+            MERROR("Team lock spend attempted at height " << height
+                   << " but unlock height is " << TEAM_LOCK_BLOCKS);
+            return false;
+        }
+        MDEBUG("Team lock spend OK at height " << height);
+    }
+
+    // ── Treasury governance check ────────────────────────────────────────
+    if (found_treasury)
+    {
+        tx_extra_governance_transfer transfer;
+        bool has_governance = false;
+        std::vector<uint8_t> gov_blob;
+
+        // Parse governance transfer from tx_extra using the MevaTrust-like tag format
+        {
+            // Manual tx_extra walk to find tag 0xB0
+            const auto& extra = tx.extra;
+            size_t i = 0;
+            while (i < extra.size())
+            {
+                uint8_t tag = extra[i++];
+                if (tag == 0x00) { while (i < extra.size() && extra[i] == 0x00) ++i; continue; }
+                if (tag == 0x01) { if (i + 32 > extra.size()) break; i += 32; continue; }
+                if (tag == 0x02 || tag == 0x03 || tag == 0x04 || tag == 0xDE)
+                    break; // Standard fields — skip
+                if (tag == TX_EXTRA_TAG_GOVERNANCE_TRANSFER)
+                {
+                    if (i + 2 > extra.size()) break;
+                    uint16_t len = static_cast<uint16_t>(extra[i]) | (static_cast<uint16_t>(extra[i+1]) << 8);
+                    i += 2;
+                    if (i + len > extra.size()) break;
+                    gov_blob.assign(extra.begin() + i, extra.begin() + i + len);
+                    has_governance = true;
+                    break;
+                }
+                // Unknown tag — skip using varint length
+                if (i >= extra.size()) break;
+                uint64_t len = 0; int shift = 0;
+                while (i < extra.size()) {
+                    uint8_t b = extra[i++];
+                    len |= static_cast<uint64_t>(b & 0x7F) << shift;
+                    if (!(b & 0x80)) break;
+                    shift += 7;
+                    if (shift >= 63) break;
+                }
+                if (i + static_cast<size_t>(len) > extra.size()) break;
+                i += static_cast<size_t>(len);
+            }
+        }
+
+        if (!has_governance)
+        {
+            MERROR("Treasury spend requires governance transfer authorization (tag 0xB0)");
+            return false;
+        }
+
+        if (!::serialization::parse_binary(std::string(gov_blob.begin(), gov_blob.end()), transfer))
+        {
+            MERROR("Failed to parse governance transfer from tx_extra");
+            return false;
+        }
+
+        std::string err = validate_governance_transfer(m_governance, transfer, tx_prefix_hash);
+        if (!err.empty())
+        {
+            MERROR("Governance transfer validation failed: " << err);
+            return false;
+        }
+        MDEBUG("Treasury governance spend OK: " << print_money(transfer.amount));
+    }
+
+    // ── Network fund check ───────────────────────────────────────────────
+    if (found_network)
+    {
+        tx_extra_network_fund_transfer transfer;
+        bool has_network_fund = false;
+        std::vector<uint8_t> nf_blob;
+
+        // Parse network fund transfer from tx_extra (tag 0xC0)
+        {
+            const auto& extra = tx.extra;
+            size_t i = 0;
+            while (i < extra.size())
+            {
+                uint8_t tag = extra[i++];
+                if (tag == 0x00) { while (i < extra.size() && extra[i] == 0x00) ++i; continue; }
+                if (tag == 0x01) { if (i + 32 > extra.size()) break; i += 32; continue; }
+                if (tag == 0x02 || tag == 0x03 || tag == 0x04 || tag == 0xDE)
+                    break;
+                if (tag == TX_EXTRA_TAG_NETWORK_FUND_TRANSFER)
+                {
+                    if (i + 2 > extra.size()) break;
+                    uint16_t len = static_cast<uint16_t>(extra[i]) | (static_cast<uint16_t>(extra[i+1]) << 8);
+                    i += 2;
+                    if (i + len > extra.size()) break;
+                    nf_blob.assign(extra.begin() + i, extra.begin() + i + len);
+                    has_network_fund = true;
+                    break;
+                }
+                if (i >= extra.size()) break;
+                uint64_t len = 0; int shift = 0;
+                while (i < extra.size()) {
+                    uint8_t b = extra[i++];
+                    len |= static_cast<uint64_t>(b & 0x7F) << shift;
+                    if (!(b & 0x80)) break;
+                    shift += 7;
+                    if (shift >= 63) break;
+                }
+                if (i + static_cast<size_t>(len) > extra.size()) break;
+                i += static_cast<size_t>(len);
+            }
+        }
+
+        if (!has_network_fund)
+        {
+            MERROR("Network fund spend requires network fund transfer tag (0xC0)");
+            return false;
+        }
+
+        if (!::serialization::parse_binary(std::string(nf_blob.begin(), nf_blob.end()), transfer))
+        {
+            MERROR("Failed to parse network fund transfer from tx_extra");
+            return false;
+        }
+
+        std::string err = validate_network_fund_spend(m_network_fund, transfer.amount, height);
+        if (!err.empty())
+        {
+            MERROR("Network fund spend validation failed: " << err);
+            return false;
+        }
+        MDEBUG("Network fund spend OK: " << print_money(transfer.amount));
+    }
+
+    return true;
+}
+
+bool Blockchain::process_premine_actions(const transaction& tx, uint64_t height)
+{
+    if (!m_premine_initialized)
+        return true;
+
+    // Skip if this tx doesn't involve premine
+    bool involves_premine = false;
+    const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+
+    for (const auto& vin : tx.vin)
+    {
+        if (vin.type() != typeid(txin_to_key))
+            continue;
+        const txin_to_key& in = boost::get<txin_to_key>(vin);
+
+        struct checker
+        {
+            premine_output_keys keys;
+            bool& involves;
+            bool handle_output(uint64_t, const crypto::public_key& pubkey, const rct::key&)
+            {
+                if (pubkey == keys.team || pubkey == keys.treasury || pubkey == keys.network)
+                    involves = true;
+                return true;
+            }
+        };
+
+        checker c{m_premine_keys, involves_premine};
+        uint64_t max_height = 0;
+        if (!scan_outputkeys_for_indexes(tx.version, in, c, tx_prefix_hash, &max_height))
+            return false;
+    }
+
+    if (!involves_premine)
+        return true;
+
+    // ── Process treasury governance actions ──────────────────────────────
+    {
+        std::vector<uint8_t> blob;
+        const auto& extra = tx.extra;
+        size_t i = 0;
+        while (i < extra.size())
+        {
+            uint8_t tag = extra[i++];
+            if (tag == 0x00) { while (i < extra.size() && extra[i] == 0x00) ++i; continue; }
+            if (tag == 0x01) { if (i + 32 > extra.size()) break; i += 32; continue; }
+            if (tag == 0x02 || tag == 0x03 || tag == 0x04 || tag == 0xDE) break;
+
+            auto read_tagged_blob = [&]() -> std::vector<uint8_t> {
+                if (i + 2 > extra.size()) return {};
+                uint16_t len = static_cast<uint16_t>(extra[i]) | (static_cast<uint16_t>(extra[i+1]) << 8);
+                i += 2;
+                if (i + len > extra.size()) return {};
+                std::vector<uint8_t> b(extra.begin() + i, extra.begin() + i + len);
+                i += len;
+                return b;
+            };
+
+            if (tag == TX_EXTRA_TAG_GOVERNANCE_TRANSFER)
+            {
+                auto b = read_tagged_blob();
+                if (b.empty()) return false;
+                tx_extra_governance_transfer transfer;
+                if (!::serialization::parse_binary(std::string(b.begin(), b.end()), transfer))
+                    return false;
+                if (transfer.amount > m_governance.balance)
+                {
+                    MERROR("Governance transfer exceeds balance");
+                    return false;
+                }
+                m_governance.balance -= transfer.amount;
+                MINFO("Governance transfer: " << print_money(transfer.amount)
+                      << " — remaining balance: " << print_money(m_governance.balance));
+            }
+            else if (tag == TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER)
+            {
+                auto b = read_tagged_blob();
+                if (b.empty()) return false;
+                tx_extra_governance_add_signer action;
+                if (!::serialization::parse_binary(std::string(b.begin(), b.end()), action))
+                    return false;
+                m_governance.signers.push_back(action.new_signer_key);
+                MINFO("Governance add signer: new count=" << m_governance.signers.size());
+            }
+            else if (tag == TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER)
+            {
+                auto b = read_tagged_blob();
+                if (b.empty()) return false;
+                tx_extra_governance_remove_signer action;
+                if (!::serialization::parse_binary(std::string(b.begin(), b.end()), action))
+                    return false;
+                if (action.signer_index < m_governance.signers.size())
+                {
+                    m_governance.signers.erase(
+                        m_governance.signers.begin() + action.signer_index);
+                    MINFO("Governance remove signer: new count=" << m_governance.signers.size());
+                }
+            }
+            else if (tag == TX_EXTRA_TAG_NETWORK_FUND_TRANSFER)
+            {
+                auto b = read_tagged_blob();
+                if (b.empty()) return false;
+                tx_extra_network_fund_transfer transfer;
+                if (!::serialization::parse_binary(std::string(b.begin(), b.end()), transfer))
+                    return false;
+                if (transfer.amount > m_network_fund.balance)
+                {
+                    MERROR("Network fund transfer exceeds balance");
+                    return false;
+                }
+                m_network_fund.balance -= transfer.amount;
+                network_spend_event ev;
+                ev.height = height;
+                ev.amount = transfer.amount;
+                m_network_fund.recent_spends.push_back(ev);
+                MINFO("Network fund transfer: " << print_money(transfer.amount)
+                      << " — remaining: " << print_money(m_network_fund.balance));
+            }
+            else
+            {
+                // Skip unknown tagged field
+                if (i >= extra.size()) break;
+                uint64_t len = 0; int shift = 0;
+                while (i < extra.size()) {
+                    uint8_t b = extra[i++];
+                    len |= static_cast<uint64_t>(b & 0x7F) << shift;
+                    if (!(b & 0x80)) break;
+                    shift += 7;
+                    if (shift >= 63) break;
+                }
+                if (i + static_cast<size_t>(len) > extra.size()) break;
+                i += static_cast<size_t>(len);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool Blockchain::rebuild_premine_state()
+{
+    if (m_db->height() <= 1) // Only genesis
+        return true;
+
+    // Reset to genesis state
+    m_governance.signers = get_genesis_governance_signers();
+    m_governance.original_count = GOVERNANCE_ORIGINAL_SIGNERS;
+    m_governance.balance = TREASURY_ALLOCATION;
+    m_governance.threshold = GOVERNANCE_THRESHOLD;
+    m_network_fund.balance = NETWORK_FUND_ALLOCATION;
+    m_network_fund.recent_spends.clear();
+
+    // Scan all blocks from height 1 to tip
+    for (uint64_t h = 1; h < m_db->height(); ++h)
+    {
+        block blk = m_db->get_block_from_height(h);
+
+        // Process miner tx
+        if (!process_premine_actions(blk.miner_tx, h))
+        {
+            MERROR("Failed to process premine actions in block " << h << " miner tx");
+            return false;
+        }
+
+        // Process all other transactions in the block
+        for (const auto& tx_id : blk.tx_hashes)
+        {
+            transaction tx;
+            if (!m_db->get_tx(tx_id, tx))
+            {
+                MERROR("Failed to get tx " << tx_id << " at height " << h);
+                return false;
+            }
+            if (!process_premine_actions(tx, h))
+            {
+                MERROR("Failed to process premine actions in tx " << tx_id);
+                return false;
+            }
+        }
+    }
+
+    MINFO("Premine state rebuilt from " << m_db->height() << " blocks");
+    return true;
+}
+
 namespace cryptonote {
 template bool Blockchain::get_transactions(const std::vector<crypto::hash>&, std::vector<transaction>&, std::vector<crypto::hash>&, bool) const;
 template bool Blockchain::get_split_transactions_blobs(const std::vector<crypto::hash>&, std::vector<std::tuple<crypto::hash, cryptonote::blobdata, crypto::hash, cryptonote::blobdata>>&, std::vector<crypto::hash>&) const;
 }
+
 
 
 
