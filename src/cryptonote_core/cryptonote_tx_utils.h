@@ -39,7 +39,7 @@
 namespace cryptonote
 {
   //---------------------------------------------------------------
-  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1, uint64_t custom_unlock_window = 0);
+  bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce = blobdata(), size_t max_outs = 999, uint8_t hard_fork_version = 1, uint64_t custom_unlock_window = 0, uint64_t desy_additional_reward = 0);
   // [C2] snapshot_extra_bytes: blob 0xA2 da embeddare nel miner_tx (badge on-chain).
   // Passare pm->consume_pending_snapshot_extra(). Parametro opzionale per retrocompat.
   // NEW: total_block_reward (base_reward + fees), nettype per indirizzo pool deterministico.
@@ -55,7 +55,8 @@ namespace cryptonote
     size_t max_outs = 999, uint8_t hard_fork_version = 1,
     const std::vector<uint8_t>& snapshot_extra_bytes = {},
     uint64_t custom_unlock_window = 0,
-    network_type nettype = MAINNET);
+    network_type nettype = MAINNET,
+    uint64_t desy_additional_reward = 0);
 
 
   struct tx_source_entry

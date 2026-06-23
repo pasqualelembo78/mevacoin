@@ -59,6 +59,8 @@ namespace daemonize
     )
   {
     LOG_PRINT_L0("MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ") Daemonised");
+    LOG_PRINT_L0("DESY Memorial Day: 18 Dicembre – +10% reward block");
+    LOG_PRINT_L0("MevaTrust Layer:   Proof-of-Participation consensus");
     return t_daemon{vm, public_rpc_port};
   }
 
