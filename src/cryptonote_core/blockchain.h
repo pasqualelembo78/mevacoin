@@ -58,6 +58,9 @@
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "cryptonote_basic/difficulty.h"
 #include "cryptonote_tx_utils.h"
+#include "foundation_vesting.h"
+#include "governance.h"
+#include "network_fund.h"
 #include "tx_verification_utils.h"
 #include "cryptonote_basic/verification_context.h"
 #include "crypto/hash.h"
@@ -1254,6 +1257,19 @@ namespace cryptonote
     uint64_t m_btc_seed_height;
     bool m_btc_valid;
 
+
+    // ── Premine state ──────────────────────────────────────────────────
+    premine_output_keys m_premine_keys;
+    governance_state m_governance;
+    network_fund_state m_network_fund;
+    bool m_premine_initialized{false};
+
+    void init_premine_state();
+    bool check_premine_spend(const transaction& tx, uint64_t height, uint8_t hf_version) const;
+    // Process governance/network actions in a transaction
+    bool process_premine_actions(const transaction& tx, uint64_t height);
+    // Rebuild premine state from genesis by scanning all blocks
+    bool rebuild_premine_state();
 
     bool m_batch_success;
 

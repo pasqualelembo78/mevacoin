@@ -33,6 +33,8 @@ set(cryptonote_core_sources
   tx_sanity_check.cpp
   cryptonote_tx_utils.cpp
   tx_verification_utils.cpp
+  governance.cpp
+  network_fund.cpp
   mevatrust/node_registry.cpp
   mevatrust/circle_registry.cpp
   mevatrust/mevatrust_engine.cpp
