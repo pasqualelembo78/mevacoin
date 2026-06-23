@@ -39,6 +39,7 @@ using namespace epee;
 #include "common/apply_permutation.h"
 #include "cryptonote_tx_utils.h"
 #include "cryptonote_config.h"
+#include "desy.h"
 #include "blockchain.h"
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/tx_extra.h"
@@ -662,6 +663,34 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
     r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
+
+    // ── Foundation allocation ──────────────────────────────────────
+    // Add 1,000,000 MVC output to the foundation address via proper derivation
+    cryptonote::address_parse_info info;
+    if (cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, FOUNDATION_ADDRESS))
+    {
+      crypto::key_derivation derivation;
+      crypto::public_key out_eph_public_key;
+      keypair foundation_txkey = keypair::generate(hw::get_device("default"));
+      add_tx_pub_key_to_extra(bl.miner_tx, foundation_txkey.pub);
+
+      r = crypto::generate_key_derivation(info.address.m_view_public_key, foundation_txkey.sec, derivation);
+      CHECK_AND_ASSERT_MES(r, false, "genesis foundation: failed key derivation");
+
+      r = crypto::derive_public_key(derivation, bl.miner_tx.vout.size(), info.address.m_spend_public_key, out_eph_public_key);
+      CHECK_AND_ASSERT_MES(r, false, "genesis foundation: failed derive public key");
+
+      tx_out foundation_out;
+      set_tx_out(FOUNDATION_ALLOCATION, out_eph_public_key, false /*use_view_tags*/, crypto::view_tag{}, foundation_out);
+      bl.miner_tx.vout.push_back(foundation_out);
+      MINFO("Added genesis foundation allocation: " << FOUNDATION_ALLOCATION << " to " << FOUNDATION_ADDRESS);
+    }
+    else
+    {
+      MERROR("Failed to decode foundation address for genesis allocation");
+    }
+    // ────────────────────────────────────────────────────────────────
+
     bl.major_version = CURRENT_BLOCK_MAJOR_VERSION;
     bl.minor_version = CURRENT_BLOCK_MINOR_VERSION;
     bl.timestamp = 0;
