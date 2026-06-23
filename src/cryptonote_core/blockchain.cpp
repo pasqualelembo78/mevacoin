@@ -30,6 +30,7 @@
 
 #include "mevatrust/mevatrust_manager.h"
 #include "mevatrust/mevatrust_tx_parser.h"
+#include "desy.h"
 #include <algorithm>
 #include <cstdio>
 #include <boost/asio/dispatch.hpp>
@@ -1433,6 +1434,28 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
+
+  // ── DESY Memorial Day: +10% reward for qualifying blocks ──────
+  if (cryptonote::is_desy_memorial_day(b.timestamp)) {
+    crypto::hash block_hash = get_block_hash(b);
+    if (cryptonote::desy_qualifies_for_bonus(block_hash)) {
+      uint64_t bonus = base_reward * cryptonote::DESY_BONUS_PERCENT / 100;
+      MINFO("[DESY] Block " << block_hash << " qualifies for +"
+            << cryptonote::DESY_BONUS_PERCENT << "% reward bonus (+"
+            << print_money(bonus) << ")");
+      base_reward += bonus;
+    }
+  }
+  // ────────────────────────────────────────────────────────────────
+
+  // Genesis block: skip reward checks (foundation allocation)
+  if (already_generated_coins == 0) {
+    // Use actual money in coinbase as base_reward for accounting
+    base_reward = money_in_use - fee;
+    partial_block_reward = false;
+    return true;
+  }
+
   if(base_reward + fee < money_in_use)
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward + fee) << "(" << print_money(base_reward) << "+" << print_money(fee) << "), cumulative_block_weight " << cumulative_block_weight);
@@ -1783,6 +1806,16 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   if (!get_block_reward(median_weight, txs_weight, already_generated_coins, effective_miner_reward, hf_version))
     { LOG_PRINT_L0("Block reward calc failed"); return false; }
   effective_miner_reward += fee;
+
+  // ── DESY Memorial Day bonus ────────────────────────────────────
+  uint64_t desy_additional_reward = 0;
+  if (cryptonote::is_desy_memorial_day(b.timestamp)) {
+    uint64_t base_reward = effective_miner_reward - fee;
+    desy_additional_reward = base_reward * cryptonote::DESY_BONUS_PERCENT / 100;
+    MINFO("[DESY] Memorial Day! Adding +" << cryptonote::DESY_BONUS_PERCENT
+          << "% bonus: " << print_money(desy_additional_reward));
+  }
+  // ────────────────────────────────────────────────────────────────
   auto* pm = cryptonote::mevatrust::get_manager();
   std::vector<cryptonote::NodeCoinbaseReward> node_rewards;
   if (pm && pm->is_initialized() && hf_version >= HF_VERSION_MEVATRUST)
@@ -1857,12 +1890,12 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   // ma mai scritto nel miner_tx.extra — dati on-chain persi.
   if (node_rewards.empty() && combined_extra.empty())
     r = construct_miner_tx(height, median_weight, already_generated_coins,
-        txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window);
+        txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window, desy_additional_reward);
   else
     r = construct_miner_tx_with_mevatrust(height, median_weight,
         already_generated_coins, txs_weight, total_block_reward,
         miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version,
-        combined_extra, custom_unlock_window, m_nettype);
+        combined_extra, custom_unlock_window, m_nettype, desy_additional_reward);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   inject_state_root(b.miner_tx);
   cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
@@ -1874,9 +1907,9 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   {
     // [C2 FIX] stessa logica del primo tentativo: embeddare 0xA2 anche senza node_rewards
     if (node_rewards.empty() && combined_extra.empty())
-      r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window);
+      r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window, desy_additional_reward);
     else
-      r = construct_miner_tx_with_mevatrust(height, median_weight, already_generated_coins, cumulative_weight, total_block_reward, miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version, combined_extra, custom_unlock_window, m_nettype);
+      r = construct_miner_tx_with_mevatrust(height, median_weight, already_generated_coins, cumulative_weight, total_block_reward, miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version, combined_extra, custom_unlock_window, m_nettype, desy_additional_reward);
 
     inject_state_root(b.miner_tx);
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");

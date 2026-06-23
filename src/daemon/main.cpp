@@ -300,6 +300,21 @@ int main(int argc, char const * argv[])
 
     // logging is now set up
     MGINFO("MevaCoin '" << MEVACOIN_RELEASE_NAME << "' (v" << MEVACOIN_VERSION_FULL << ")");
+    // ── MevaCoin ASCII banner ──────────────────────────────────────
+    MGINFO(" ");
+    MGINFO("              ███╗   ███╗███████╗██╗   ██╗ █████╗ ");
+    MGINFO("              ████╗ ████║██╔════╝██║   ██║██╔══██╗");
+    MGINFO("              ██╔████╔██║█████╗  ██║   ██║███████║");
+    MGINFO("              ██║╚██╔╝██║██╔══╝  ╚██╗ ██╔╝██╔══██║");
+    MGINFO("              ██║ ╚═╝ ██║███████╗ ╚████╔╝ ██║  ██║");
+    MGINFO("              ╚═╝     ╚═╝╚══════╝  ╚═══╝  ╚═╝  ╚═╝");
+    MGINFO(" ");
+    MGINFO("  ～ Coin di Melissa e Vanessa in onore di Desy ～");
+    MGINFO("  ───────────────────────────────────────────────");
+    MGINFO("  DESY Memorial Day: 18 Dicembre – +10% reward");
+    MGINFO("  MevaTrust Layer:   Proof-of-Participation");
+    MGINFO("  ───────────────────────────────────────────────");
+    MGINFO(" ");
 
     // If there are positional options, we're running a daemon command
     {

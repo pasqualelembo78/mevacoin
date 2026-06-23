@@ -78,7 +78,7 @@ namespace cryptonote
     LOG_PRINT_L2("destinations include " << num_stdaddresses << " standard addresses and " << num_subaddresses << " subaddresses");
   }
   //---------------------------------------------------------------
-bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, uint64_t custom_unlock_window) {
+bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_generated_coins, size_t current_block_weight, uint64_t fee, const account_public_address &miner_address, transaction& tx, const blobdata& extra_nonce, size_t max_outs, uint8_t hard_fork_version, uint64_t custom_unlock_window, uint64_t desy_additional_reward) {
     tx.vin.clear();
     tx.vout.clear();
     tx.extra.clear();
@@ -103,9 +103,9 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
 
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
     LOG_PRINT_L1("Creating block template: reward " << block_reward <<
-      ", fee " << fee);
+      ", fee " << fee << ", desy_additional_reward " << desy_additional_reward);
 #endif
-    block_reward += fee;
+    block_reward += fee + desy_additional_reward;
 
     // from hard fork 2, we cut out the low significant digits. This makes the tx smaller, and
     // keeps the paid amount almost the same. The unpaid remainder gets pushed back to the
@@ -747,7 +747,8 @@ bool construct_miner_tx_with_mevatrust(
   size_t max_outs, uint8_t hard_fork_version,
   const std::vector<uint8_t>& snapshot_extra_bytes,
   uint64_t custom_unlock_window,
-  network_type nettype)
+  network_type nettype,
+  uint64_t desy_additional_reward)
 {
   tx.vin.clear(); tx.vout.clear(); tx.extra.clear();
   keypair txkey = keypair::generate(hw::get_device("default"));
@@ -756,9 +757,11 @@ bool construct_miner_tx_with_mevatrust(
   if (!sort_tx_extra(tx.extra, tx.extra)) return false;
   txin_gen in; in.height = height;
 
+  uint64_t desy_total = total_block_reward + desy_additional_reward;
+
   // Pool gets 3% of total block reward (deterministic, every block)
-  uint64_t pool_amount = total_block_reward * MEVATRUST_POOL_FRACTION_PERCENT / 100;
-  uint64_t miner_reward = total_block_reward - pool_amount;
+  uint64_t pool_amount = desy_total * MEVATRUST_POOL_FRACTION_PERCENT / 100;
+  uint64_t miner_reward = desy_total - pool_amount;
 
   if (hard_fork_version >= 2 && hard_fork_version < 4)
     miner_reward = miner_reward - miner_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
@@ -812,7 +815,7 @@ bool construct_miner_tx_with_mevatrust(
     tx.vout.push_back(out); out_index++;
   }
 
-  uint64_t expected = miner_reward + pool_amount;
+  uint64_t expected = desy_total;
   for (const auto& n : node_rewards) expected += n.amount;
   CHECK_AND_ASSERT_MES(summary == expected, false, "miner_tx sum mismatch " << summary << " != " << expected);
   
