@@ -1,192 +1,392 @@
-# MevaCoin Premine — Sistema di Vesting, Governance e Network Fund
+# Guida Spesa Premine — MevaCoin
 
-## Panoramica
+## Cosa c'e' nel premine
 
-Premine totale: **1.000.000 MVC**
+Al genesis sono stati creati 3 output (1M MVC total):
 
-Suddivisione:
-
-| Categoria | Quantità | Meccanismo |
-|-----------|----------|------------|
-| Team Lock | 200.000 MVC | Bloccato 24 mesi on‑chain, poi spendibile liberamente |
-| Treasury Governance | 400.000 MVC | Multisig 2‑di‑X con evoluzione firmatari |
-| Network Fund | 400.000 MVC | Rate‑limit 10.000 MVC / 30 giorni |
+| Fondo          | MVC    | Atomic units         | Indirizzo (deterministico, nessuno ha la chiave) | Come si spende                          |
+|----------------|--------|----------------------|--------------------------------------------------|-----------------------------------------|
+| **Team Lock**  | 200.000 | 200000000000000      | Derivato da `mevacoin_team_lock`                 | Chiave privata del wallet fondatore. Bloccato 24 mesi (518.400 blocchi). |
+| **Treasury**   | 400.000 | 400000000000000      | Derivato da `mevacoin_governance`                | 2 firme su 3 signer governance in tx_extra. |
+| **Network**    | 400.000 | 400000000000000      | Derivato da `mevacoin_network_fund`              | Nessuna firma. Rate-limited: 10.000 MVC / 30gg. |
 
 ---
 
-## 1. Team Lock (200.000 MVC)
+## Wallet & Chiavi
 
-### Meccanismo
-- UTXO creato nel genesis block verso `FOUNDATION_ADDRESS`
-- Il codice tiene traccia della **chiave pubblica one‑time** di questo output
-- In fase di validazione (`check_premine_spend` in `blockchain.cpp`):
-  - se un input spende l'UTXO team → verificare `height >= TEAM_LOCK_BLOCKS` (518.400)
-- `TEAM_LOCK_BLOCKS` = 518.400 (24 mesi × 30 gg × 720 blocchi/giorno)
+### Wallet Signer Governance (3 firmatari)
 
-### Dopo lo sblocco
-- UTXO utilizzabile normalmente (ring signature, RingCT, qualsiasi destinazione)
+Servono per firmare transazioni Treasury. Ci vogliono **2 firme su 3** per autorizzare.
 
----
+|               | Signer 0                                      | Signer 1                                      | Signer 2                                      |
+|---------------|-----------------------------------------------|-----------------------------------------------|-----------------------------------------------|
+| **Password**  | `pass_signer_0`                               | `pass_signer_1`                               | `pass_signer_2`                               |
+| **Indirizzo** | `MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc` | `MDdsyRtQeukfbfJouCU1sNEpX8fm9qjuDYfi1M7WNsUt8ASsWwzibAef9RVoCwuG4McMaChrjbdthLJN3zeSV8snPjXWHaE` | `M5hfHudn48aTGTAdqQ3AXfhoERnZ7wKNpDKy7G5yYXN2W8vyEqqEooAEy93mMLunAAjmmKpqgHVgEJCXjr5wRZP3SiciU2c` |
+| **Priv spend** | `6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402` | `a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c` | `90137ff7a5ea576d2fc39332e792d292823fc0c1f93f18bc549c4ced11be6c03` |
+| **Priv view**  | `7d33dacb480e6ccbbcb7e36a8aad170c71563af24335ff7b5b4bc914ed291601` | `018d92d7442dfc1058829c2d7948dc6ad9210368e22ebb848b20180dc567720d` | `1b9d06e6bf9bf51f748976c5035d698c6d90d75b85784791e5cb763c0e8cd00f` |
+| **Pub spend**  | `d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb` | `dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a` | `0e88576abcefeb9d095a9e4db59376f3e8eed036eae68949b2ce4253444493ae` |
+| **Pub view**   | `0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999` | `d2ef03909ecaefe40e29f668822abed35f36750f49c8d6736222bec5bfbecdc9` | `327811a721183553823883298d1e37ffb742f3b014158366d32a3e7c81c05ee3` |
+| **File wallet** | `test_wallets/signer_0`                      | `test_wallets/signer_1`                      | `test_wallets/signer_2`                      |
+| **File .keys**  | `test_wallets/signer_0.keys`                  | `test_wallets/signer_1.keys`                  | `test_wallets/signer_2.keys`                  |
 
-## 2. Treasury Governance (400.000 MVC)
+### Wallet Fondatore (Team Lock)
 
-### Architettura
-- Tre firmatari originali decisi nel genesis (hardcodati in `foundation_vesting.h`)
-- Indirizzo deterministico del treasury = `H("mevacoin_governance" || nettype)` (nessuna private key)
-- Il saldo è un UTXO bloccato con chiave pubblica nota, MA:
-  - non c'è una private key → non spendibile via wallet normale
-  - si spende solo tramite **transazione di governance** validata dal protocollo
+Per spendere il Team Lock servono la chiave privata del wallet che ha creato la genesis transaction e il wallet deve essere aperto con `mevacoin-wallet-rpc`.
 
-### Regole validazione (`check_premine_spend`)
-Quando un UTXO del treasury viene speso (rilevato dalla chiave pubblica one‑time):
-1. Deve contenere un tag `0xB0` (GOVERNANCE_TRANSFER) in `tx_extra`
-2. Il tag contiene la lista firme dei signatories
-3. Servono almeno **2 firme valide** su X signatories attuali
-4. L'ammontare non può superare il saldo residuo del treasury
+### Indirizzi Treasury / Network Fund (NESSUNO ha la chiave privata)
 
-### Evoluzione firmatari
-- **Aggiunta** (tag `0xB1`): 2‑di‑X approvano l'aggiunta → `X++`, threshold resta 2
-- **Rimozione** (tag `0xB2`): 2‑di‑X rimuovono un signer, **mai** i 3 genesis (indici 0‑2) → `X--`
+Questi indirizzi sono calcolati deterministicamente. I fondi si muovono SOLO attraverso il meccanismo di governance (tx_extra con tag 0xB0 / 0xC0).
 
-### Stato governance (in memoria con `m_properties` callback)
-- `signers` — `vector<crypto::public_key>` (firmatari attuali)
-- `balance` — `uint64_t` (saldo residuo)
-- I genesis signers (indici 0..GOVERNANCE_ORIGINAL_SIGNERS-1) non sono rimovibili
-
-### Formato tx_extra
-
-Tag `0xB0` — Governance Transfer:
 ```
-struct tx_extra_governance_transfer {
-    uint64_t              amount;
-    crypto::public_key    recipient_spend;
-    crypto::public_key    recipient_view;
-    std::vector<governance_signature> signatures;  // ≥2
-};
-```
-
-Tag `0xB1` — Add Signer:
-```
-struct tx_extra_governance_add_signer {
-    crypto::public_key new_signer_key;
-    std::vector<governance_signature> signatures;  // ≥2
-};
-```
-
-Tag `0xB2` — Remove Signer:
-```
-struct tx_extra_governance_remove_signer {
-    uint64_t signer_index;  // index nel vettore signers
-    std::vector<governance_signature> signatures;  // ≥2
-};
-```
-
-Ogni `governance_signature`:
-```
-struct governance_signature {
-    crypto::public_key signer_key;
-    crypto::signature  sig;  // sign(tx_prefix_hash) con private key del signer
-};
+Treasury address (mainnet):  (spend = view = hash("mevacoin_governance" + nettype))
+Network fund address (mainnet): (spend = view = hash("mevacoin_network_fund" + nettype))
 ```
 
 ---
 
-## 3. Network Fund (400.000 MVC)
+## Tool creati
 
-### Meccanismo
-- UTXO creato nel genesis verso indirizzo deterministico `H("mevacoin_network_fund" || nettype)`
-- Nessuna private key → spendibile solo via protocollo
-- Rate limit: **max 10.000 MVC spesi in qualsiasi finestra rolling di 30 giorni**
+| Tool | Path | Descrizione |
+|------|------|-------------|
+| `gov_crypto` | `tools/governance_spend/gov_crypto` | C++ binario per crittografia Ed25519 (firme, chiavi, decode indirizzi) |
+| `gov_spend.py` | `tools/governance_spend/gov_spend.py` | Script Python che orchestra gov_crypto |
 
-### Validazione (`check_premine_spend`)
-Quando un UTXO del network fund viene speso:
-1. Deve contenere tag `0xC0` (NETWORK_FUND_TRANSFER) in `tx_extra`
-2. Il tag contiene destinazione (chiavi pubblica spend/view) e amount
-3. Validazione verifica il rolling window:
-   - Somma amount di tutti gli spend events negli ultimi `NETWORK_FUND_WINDOW_BLOCKS` (21.600)
-   - Se + nuovo amount ≤ 10.000 MVC → ok, registra nuovo spend event
-   - Altrimenti → rifiutato
+### Compilazione gov_crypto
 
-### Stato network fund (in memoria)
-- `balance` — `uint64_t`
-- `recent_spends` — `vector<network_spend_event>` dove ogni evento è `{height, amount}`
-- All'aggiunta di un nuovo blocco, gli eventi precedenti alla finestra vengono potati
-
----
-
-## 4. Genesis Block — Output Schema
-
-Il genesis block (`generate_genesis_block()`) produce 3 output aggiuntivi dopo quelli standard:
-
-```
-Output n-3: Team Lock          200.000 MVC → FOUNDATION_ADDRESS
-Output n-2: Treasury           400.000 MVC → governance_address (deterministico)
-Output n-1: Network Fund       400.000 MVC → network_address (deterministico)
+```bash
+# Dopo aver fatto make del progetto principale:
+cd /root/mevacoin
+g++ -std=c++17 -o tools/governance_spend/gov_crypto \
+  tools/governance_spend/gov_crypto.cpp \
+  -I src -I build/Linux/mevacoin/release/generated \
+  -I contrib/epee/include -I external/easylogging++ \
+  -I build/Linux/mevacoin/release/translations \
+  -I build/Linux/mevacoin/release/external/easylogging++ \
+  build/Linux/mevacoin/release/src/crypto/libcncrypto.a \
+  build/Linux/mevacoin/release/src/common/libcommon.a \
+  build/Linux/mevacoin/release/contrib/epee/src/libepee.a \
+  build/Linux/mevacoin/release/external/easylogging++/libeasylogging.a \
+  -lssl -lcrypto -lpthread -lboost_system -ldl \
+  -lboost_filesystem -lboost_thread -lboost_regex \
+  -lboost_chrono -lboost_date_time -lunbound
 ```
 
-Tutti e tre usano `tx_secret_key = H(FOUNDATION_ADDRESS)`, con indici di derivazione diversi.
-Le chiavi pubbliche one‑time sono pre‑calcolate dal codice e registrate in `premine_output_keys` per le validazioni successive.
+### Comandi gov_spend.py
+
+```bash
+cd /root/mevacoin/tools/governance_spend
+
+# Generare una nuova coppia di chiavi
+./gov_spend.py genkey
+
+# Ottenere la chiave pubblica da una privata
+./gov_spend.py pubkey <privkey_hex>
+
+# Decodificare un indirizzo MevaCoin in chiavi pubbliche
+./gov_spend.py decode <indirizzo>
+
+# Transazione Network Fund (SENZA firme)
+./gov_spend.py network <amount_atomic> <indirizzo_destinazione>
+
+# Transazione Treasury - FASE 1: blob con firme zero
+./gov_spend.py treasury-zero <amount> <indirizzo> <pub_signer0> [pub_signer1 ...]
+
+# Transazione Treasury - FASE 2: firmare l'hash
+./gov_spend.py sign <tx_prefix_hash_hex> <priv_signer0> [priv_signer1 ...]
+
+# Transazione Treasury - FASE 3: costruire blob finale con firme reali
+./gov_spend.py treasury-build <amount> <indirizzo> <pub_signer0> '<sigs_json>'
+
+# Verificare le firme in un blob governance
+./gov_spend.py verify <tx_extra_hex> <tx_prefix_hash_hex>
+```
 
 ---
 
-## 5. Supply Accounting
+## ESEMPIO 1: Transazione Treasury Governance
 
-- `already_generated_coins` parte da 1.000.000 × 10¹² (dopo genesis)
-- I 3 output sono UTXO regolari → contabilizzati nell'emissione normalmente
-- `get_block_reward()` calcola la ricompensa in base alla supply totale
+Obiettivo: inviare 50.000 MVC dal Treasury all'indirizzo del Signer 0.
+
+Il treasury ha 400.000 MVC. Ci vogliono 2 firme su 3 signer.
+
+### Step 1: Decodificare l'indirizzo di destinazione
+
+```bash
+cd /root/mevacoin/tools/governance_spend
+./gov_spend.py decode "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc"
+# Output:
+#   Spend key: d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb
+#   View key:  0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999
+```
+
+### Step 2: Creare il tx_extra con firme zero
+
+```bash
+./gov_spend.py treasury-zero \
+  50000000000000 \
+  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc" \
+  "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb" \
+  "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a"
+```
+
+**Spiegazione parametri:**
+- `50000000000000` = 50.000 MVC (moltiplicare MVC * 10^9 per atomic units)
+- Indirizzo destinazione MD5VJc...
+- `d12e99...` = chiave pubblica signer 0 (quella che firmera')
+- `dfeb3f...` = chiave pubblica signer 1 (seconda firma)
+
+**Output:**
+```
+b0... (hex blob lungo ~200 byte)
+```
+
+Questo blob ha le firme impostate a ZERO (64 byte di zeri per ogni signer).
+
+### Step 3: Costruire la transazione
+
+Il blob hex va copiato nel campo `extra` della transazione. Ci sono 2 modi:
+
+**Opzione A: con mevacoin-wallet-rpc**
+```bash
+# Creare una transazione normale verso l'indirizzo treasury primo
+# Poi modificare manualmente il campo extra della transazione firmata
+# Rimpiazzando il tx_extra con il blob governance
+# (richiede accesso raw al transaction blob)
+
+# Al momento non c'e' supporto diretto nel wallet RPC per governance.
+```
+
+**Opzione B: costruire la raw transaction manualmente**
+Usando i tool RPC `create_transaction` o costruendo il blob binario direttamente. Il campo `extra` della transaction_prefix deve contenere il blob hex prodotto sopra.
+
+### Step 4: Calcolare tx_prefix_hash
+
+Una volta costruita la transazione (non firmata), calcolare l'hash del prefix:
+
+```cpp
+crypto::hash h = get_transaction_prefix_hash(tx);
+```
+
+Oppure, via RPC, il wallet puo' esportare la transazione non firmata e calcolare l'hash con un piccolo tool.
+
+NOTA: Questo hash SARA' DIVERSO dal nostro test perche' la transazione reale ha input, output, ecc.
+
+**Per il test**, usiamo un hash fittizio:
+```
+HASH=ab000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e
+```
+
+### Step 5: Firmare l'hash con 2 signer
+
+```bash
+cd /root/mevacoin/tools/governance_spend
+
+HASH="ab000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e"
+
+./gov_spend.py sign "$HASH" \
+  "6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402" \
+  "a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c"
+```
+
+**Spiegazione:**
+- `$HASH` = il tx_prefix_hash della transazione
+- Prima chiave privata = signer 0
+- Seconda chiave privata = signer 1
+
+**Output** (JSON con le firme):
+```json
+[
+  {
+    "signer_key": "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb",
+    "sig": "9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06"
+  },
+  {
+    "signer_key": "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a",
+    "sig": "bafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e"
+  }
+]
+```
+
+### Step 6: Costruire il blob finale con firme reali
+
+```bash
+cd /root/mevacoin/tools/governance_spend
+
+SIGS='[
+  {
+    "signer_key": "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb",
+    "sig": "9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06"
+  },
+  {
+    "signer_key": "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a",
+    "sig": "bafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e"
+  }
+]'
+
+./gov_spend.py treasury-build \
+  50000000000000 \
+  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc" \
+  "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb" \
+  "$SIGS"
+```
+
+**Output:** hex blob ~200 byte con le firme REALI.
+
+### Step 7: Verificare le firme
+
+```bash
+./gov_spend.py verify \
+  "b080a0e5b9c29101d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e399902d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312abafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e" \
+  "$HASH"
+
+# Output:
+#   Tag:      0xB0
+#   Amount:   50000000000000
+#   To:       spend=d12e990816a51475...
+#             view=0aca48dbce5a0d3a...
+#   Signers:  2
+#     #0: key=d12e990816a51475... VALID
+#     #1: key=dfeb3f3ce8c3efe6... VALID
+```
+
+Entrambe le firme sono VALIDE.
+
+### Step 8: Inserire il blob nella transazione
+
+Rimpiazzare il campo `extra` della transazione con il blob finale (firme reali). Poi firmare la transazione con la chiave del wallet mittente e trasmettere.
 
 ---
 
-## 6. File Implementati
+## ESEMPIO 2: Transazione Network Fund
 
-### Nuovi file
+Obiettivo: inviare 5.000 MVC dal Network Fund al Signer 0.
+
+Il Network Fund ha 400.000 MVC. NON servono firme. Rate limit: max 10.000 MVC in 30 giorni.
+
+### Comando singolo
+
+```bash
+cd /root/mevacoin/tools/governance_spend
+
+./gov_spend.py network \
+  5000000000000 \
+  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc"
+```
+
+**Spiegazione:**
+- `5000000000000` = 5.000 MVC (= 5.000 * 10^9 atomic units)
+- Indirizzo di destinazione
+
+**Output:**
+```
+c080a094a58d1dd12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999
+```
+
+Questo hex va copiato nel campo `extra` della transazione.
+
+Il blob si decompone cosi':
+- `c0` = tag 0xC0 (Network Fund Transfer)
+- `80a094a58d1d` = 5.000 MVC in varint
+- `d12e99...` = recipient spend key (32 byte)
+- `0aca48...` = recipient view key (32 byte)
+
+### Cosa controlla il nodo quando arriva la transazione
+
+1. L'output speso DEVE essere l'indirizzo deterministico del Network Fund
+2. Il tag 0xC0 DEVE essere presente in tx_extra
+3. L'importo NON deve superare il limite mensile (10.000 MVC / 30gg)
+4. Il saldo del Network Fund NON deve andare sotto zero
+
+---
+
+## ESEMPIO 3: Spesa Team Lock
+
+Obiettivo: spostare il Team Lock (200.000 MVC) dopo 24 mesi.
+
+Il Team Lock e' l'unico output del premine che HA UNA CHIAVE PRIVATA. Chi ha generato la genesis transaction ha la chiave privata che controlla l'output.
+
+### Quando si puo' spendere
+
+```
+TEAM_LOCK_BLOCKS = 518.400 blocchi ≈ 24 mesi (a 120 sec/blocco)
+```
+
+Prima di questo altezza, qualsiasi tentativo di spendere viene rifiutato da `check_premine_spend()`.
+
+### Come costruire la transazione
+
+1. Aprire il wallet fondatore con `mevacoin-wallet-rpc`
+2. Creare una transazione normale verso l'indirizzo desiderato
+3. Il wallet selezionera' automaticamente l'output del team lock come input
+4. Firmare la transazione con la chiave privata del wallet
+5. Broadcast
+
+Niente tx_extra speciale, niente governance. E' una transazione Monero standard.
+
+### Se si vuole forzare manualmente
+
+```bash
+# 1. Trovare l'output del team lock
+#    (il nodo lo calcola come compute_premine_output_key(...) usando
+#     la tx_secret_key della genesis transaction)
+
+# 2. Costruire una transazione che spende QUEL preciso output
+# 3. Firmare con la chiave privata che controlla l'output
+#    (la stessa usata per generare la genesis tx)
+# 4. Broadcast
+```
+
+---
+
+## Riepilogo: differenze tra i 3 metodi
+
+| Aspetto | Team Lock | Treasury | Network Fund |
+|---------|-----------|----------|--------------|
+| **Chiave privata** | Si (wallet fondatore) | NO (indirizzo deterministico) | NO (indirizzo deterministico) |
+| **Firme governance** | No | Si, 2/3 signer | No |
+| **tx_extra speciale** | No | Tag 0xB0 + amount + destinazione + firme | Tag 0xC0 + amount + destinazione |
+| **Limite** | Bloccato 24 mesi | Fino a 400.000 MVC totali | 10.000 MVC / 30gg |
+| **Strumento** | mevacoin-wallet-rpc normale | `gov_spend.py` | `gov_spend.py` |
+
+---
+
+## Test Wallets (solo sviluppo!)
+
+Tutti i file wallet sono in `/root/mevacoin/test_wallets/`:
+
 | File | Descrizione |
 |------|-------------|
-| `src/cryptonote_core/foundation_vesting.h` | Costanti vesting / address derivation / premine_output_keys / compute_premine_output_key |
-| `src/cryptonote_core/governance.h` | governance_state struct / verify_governance_signatures / validate_governance_transfer dichiarazioni |
-| `src/cryptonote_core/governance.cpp` | Implementazione verify_governance_signatures e validate_governance_transfer |
-| `src/cryptonote_core/network_fund.h` | network_fund_state / network_spend_event / validate_network_fund_spend dichiarazione |
-| `src/cryptonote_core/network_fund.cpp` | Implementazione validate_network_fund_spend e potatura rolling window |
+| `signer_0` / `signer_0.keys` | Wallet signer 0 |
+| `signer_1` / `signer_1.keys` | Wallet signer 1 |
+| `signer_2` / `signer_2.keys` | Wallet signer 2 |
+| `signer_0.json` | JSON per generare il wallet (mevacoin-wallet-rpc --generate-from-json) |
+| `signer_1.json` | ... |
+| `signer_2.json` | ... |
+| `wallet-keys.txt` | Tabella completa con tutte le chiavi |
+| `wallet.txt` | Copia di wallet-keys.txt |
 
-### File modificati
-| File | Cosa |
-|------|------|
-| `src/cryptonote_basic/tx_extra.h` | Aggiunti tag 0xB0‑0xB2, 0xC0 + struct governance e network fund |
-| `src/cryptonote_core/desy.h` | FOUNDATION_ALLOCATION ora = PREMINE_TOTAL; inclusione foundation_vesting.h |
-| `src/cryptonote_core/cryptonote_tx_utils.cpp` | Genesis: 3 output (team/treasury/network) invece di foundation singolo |
-| `src/cryptonote_core/blockchain.h` | Aggiunti m_premine_keys, m_governance, m_network_fund, m_premine_initialized + metodi init/check/process/rebuild |
-| `src/cryptonote_core/blockchain.cpp` | init_premine_state() in init(); check_premine_spend() in check_tx_inputs(); process_premine_actions() in handle_block_to_main_chain(); rebuild_premine_state() per startup |
-| `src/cryptonote_core/CMakeLists.txt` | Aggiunti governance.cpp e network_fund.cpp |
+### Aprire un wallet con mevacoin-wallet-rpc
 
-### Compilazione
-Tutti i file compilano correttamente (verificato con g++).
-
----
-
-## 7. Cosa Resta da Fare
-
-### Bloccanti
-1. **Generare 3 wallet reali** e sostituire le placeholder keys in `foundation_vesting.h::get_genesis_governance_signers()`
-2. **Full build e test** — compilare `mevacoind` completamente e testare su testnet privata
-3. **Test genesis** — verificare che il genesis block produca 3 output con le chiavi attese
-4. **Test team lock** — spendere UTXO team prima/dopo block 518.400
-5. **Test governance** — 2-of-3 signature verification, transfer, add/remove signer
-6. **Test network fund** — rate limit con rolling window
-
-### Miglioramenti futuri
-- **Persistenza LMDB** — salvare governance state e network fund events in LMDB anziché solo in memoria (attualmente usa `m_properties` callback, ma non ancora implementato)
-- **Ricostruzione robusta** — `rebuild_premine_state()` attualmente riproduce tutti i blocchi da genesis; potrebbe essere ottimizzata con checkpoint periodici
-- **RPC** — endpoint per leggere governance state e network fund balance
-- **Wallet integration** — supporto per creare governance transactions dal wallet CLI
+```bash
+/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoin-wallet-rpc \
+  --wallet-file /root/mevacoin/test_wallets/signer_0 \
+  --password pass_signer_0 \
+  --rpc-bind-port 12345 \
+  --daemon-address 127.0.0.1:18081
+```
 
 ---
 
-## 8. Note Implementative
+## Codice rilevante
 
-- Governance signatures usano `crypto::check_signature()` (Ed25519 standard)
-- I wallet dei 3 signatories sono generati dall'utente prima del genesis
-- Deterministic addresses: derivati come `H(domain || nettype)` → `hash_to_scalar()` → `secret_key_to_public_key()`
-- `FOUNDATION_ADDRESS` è l'indirizzo monero esistente; `tx_secret_key = hash_to_scalar(FOUNDATION_ADDRESS)`
-- `COIN = 1000000000000` (10¹² unità atomiche per MVC)
-- `NETWORK_FUND_WINDOW_BLOCKS = 21600` (~30gg a 720 blocchi/giorno)
-- Genesis block ha 3 output in più alla fine del vout, dopo gli output standard coinbase
+| File | Cosa contiene |
+|------|---------------|
+| `src/cryptonote_core/foundation_vesting.h` | Allocazioni, indirizzi deterministici, chiavi pubbliche signer |
+| `src/cryptonote_core/blockchain.cpp:5978` | `check_premine_spend()` - validazione premine |
+| `src/cryptonote_core/blockchain.cpp:6087` | `process_premine_actions()` - aggiornamento stato |
+| `src/cryptonote_core/governance.cpp` | `verify_governance_signatures()`, `validate_governance_transfer()` |
+| `src/cryptonote_core/governance.h` | Struct `governance_state` |
+| `src/cryptonote_core/network_fund.h` | Struct `network_fund_state` |
+| `src/cryptonote_basic/tx_extra.h` | Tag 0xB0, 0xB1, 0xB2, 0xC0 |
+| `tools/governance_spend/gov_crypto.cpp` | Tool crittografico C++ |
+| `tools/governance_spend/gov_spend.py` | Script Python orchestrazione |

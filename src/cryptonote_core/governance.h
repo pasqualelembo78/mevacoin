@@ -21,7 +21,7 @@ struct governance_state
   // Remaining treasury balance
   uint64_t balance{TREASURY_ALLOCATION};
   // Always 2 (threshold never changes)
-  unsigned int threshold{GOVERNANCE_THRESHOLD};
+  uint32_t threshold{GOVERNANCE_THRESHOLD};
 };
 
 // ── Save/load governance state from LMDB properties ─────────────────────

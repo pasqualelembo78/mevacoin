@@ -415,6 +415,9 @@ private:
 
   bool is_read_only() const override;
 
+  bool get_property(const std::string& key, std::string& value) const override;
+  bool set_property(const std::string& key, const std::string& value) override;
+
   uint64_t get_database_size() const override;
 
   std::vector<uint64_t> get_block_info_64bit_fields(uint64_t start_height, size_t count, off_t offset) const;
