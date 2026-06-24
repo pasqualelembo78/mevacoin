@@ -1,0 +1,34 @@
+======================================================================
+  MEVACOIN - VALIDATOR WALLET (FOUNDER / TEAM LOCK)
+  Generated: 2026-06-24
+======================================================================
+
+  Questo wallet controlla il Team Lock (200.000 MVC) del genesis.
+  I fondi sono bloccati per 24 mesi (518.400 blocchi).
+
+  Treasury (400.000 MVC) e Network Fund (400.000 MVC) restano
+  su indirizzi deterministici (nessuno ha le chiavi).
+
+----------------------------------------------------------------------
+  VALIDATOR / FOUNDER
+----------------------------------------------------------------------
+  Password      : pass_validator
+
+  Address       : MDZy9bSnW2UVhjZL7w3NBUNX3fYf5HeTFZ1Po2M8cvk8ifE5E7Bb8NH3koFByJWDdKB5jkm3ZDUpQLbpJBzrsfEWDypTjoH
+
+  Private keys:
+    Spend key   : d3ecad136a798d797911381f446fe88b6fb042884545aadbb76941ed8d2ad301
+    View key    : d226c3e179f92be67e571256bb97983318839da401638aa227b25aeded7f4702
+
+  Public keys:
+    Spend key   : de23bfba22a241ab9991731efc5e8380a5dddb404a2b66bf5b236b202300e1f9
+    View key    : 103057262bc6be1078c96cc345bb023c463ed495452529752ead9e7690a2e773
+
+  Wallet files  : /root/mevacoin/test_wallets/validator
+                  /root/mevacoin/test_wallets/validator.keys
+
+----------------------------------------------------------------------
+  CODICE
+----------------------------------------------------------------------
+  FOUNDATION_ADDRESS in: src/cryptonote_core/desy.h
+======================================================================
