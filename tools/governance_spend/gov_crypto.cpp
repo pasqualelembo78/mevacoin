@@ -9,6 +9,7 @@
 #include "crypto/hash.h"
 #include "string_tools.h"
 #include "common/base58.h"
+#include "cryptonote_config.h"
 
 static std::string hex(const void* data, size_t len)
 {
@@ -40,9 +41,23 @@ static bool decode_address(const std::string& addr, crypto::public_key& spend, c
     return true;
 }
 
+static void print_usage(const char* prog)
+{
+    std::cerr << "Usage: " << prog << " <command> [args]\n\n"
+              << "Commands:\n"
+              << "  genkey                                          Generate random key pair\n"
+              << "  pubkey <privkey_hex>                            Derive public key from private\n"
+              << "  decode <address>                                Decode address to spend+view keys\n"
+              << "  sign <privkey_hex> <hash_hex>                   Sign hash with private key\n"
+              << "  verify <pubkey_hex> <sig_hex> <hash_hex>        Verify signature\n"
+              << "  derive-wallet <domain> <nettype>                Derive deterministic wallet keys\n"
+              << "    domain: \"mevacoin_governance\" or \"mevacoin_network_fund\"\n"
+              << "    nettype: 0=mainnet 1=testnet 2=stagenet\n";
+}
+
 int main(int argc, char* argv[])
 {
-    if (argc < 2) { std::cerr << "Usage: gov_crypto sign|genkey|verify|decode\n"; return 1; }
+    if (argc < 2) { print_usage(argv[0]); return 1; }
 
     std::string cmd = argv[1];
 
@@ -113,6 +128,56 @@ int main(int argc, char* argv[])
         }
         std::cout << "spend: " << epee::string_tools::pod_to_hex(spend) << "\n";
         std::cout << "view:  " << epee::string_tools::pod_to_hex(view) << "\n";
+        return 0;
+    }
+
+    if (cmd == "derive-wallet")
+    {
+        if (argc < 4)
+        {
+            std::cerr << "Usage: gov_crypto derive-wallet <domain> <nettype>\n";
+            return 1;
+        }
+
+        std::string domain = argv[2];
+        int nettype = atoi(argv[3]);
+
+        // Get address prefix for this network type
+        uint64_t addr_prefix;
+        switch (nettype)
+        {
+            case 0: addr_prefix = ::config::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 1: addr_prefix = ::config::testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 2: addr_prefix = ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            default:
+                std::cerr << "Invalid nettype (0=mainnet, 1=testnet, 2=stagenet)\n";
+                return 1;
+        }
+
+        // Derive keys: spend = view = hash_to_scalar(cn_fast_hash(domain + nettype_byte))
+        std::string data = domain;
+        data.push_back(static_cast<char>(nettype));
+
+        crypto::hash h = crypto::cn_fast_hash(data.data(), data.size());
+
+        crypto::secret_key sk;
+        crypto::hash_to_scalar(h.data, sizeof(h.data), sk);
+
+        crypto::public_key pk;
+        crypto::secret_key_to_public_key(sk, pk);
+
+        // Build address: base58(prefix + spend_pub + view_pub)
+        std::string addr_bin;
+        addr_bin.append((const char*)pk.data, sizeof(pk.data));
+        addr_bin.append((const char*)pk.data, sizeof(pk.data)); // view = spend
+
+        std::string address = tools::base58::encode_addr(addr_prefix, addr_bin);
+
+        std::cout << "spend_sec: " << hex(sk.data, 32) << std::endl;
+        std::cout << "view_sec:  " << hex(sk.data, 32) << std::endl;
+        std::cout << "spend_pub: " << hex(pk.data, 32) << std::endl;
+        std::cout << "view_pub:  " << hex(pk.data, 32) << std::endl;
+        std::cout << "address:   " << address << std::endl;
         return 0;
     }
 

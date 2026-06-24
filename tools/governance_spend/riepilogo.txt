@@ -1,0 +1,56 @@
+RIEPILOGO LAVORO SVOLTO
+========================
+
+1. REVISIONE E DEBUG DI governance_spend_auto.py
+-----------------------------------------------
+Letto e analizzato l'intero script (688 righe). Identificati e corretti i
+seguenti bug:
+
+  a) ensure_wallet() — la gestione dell'eccezione nel ramo "already exists"
+     aveva un try/except annidato che chiamava open_wallet due volte (la
+     seconda identica alla prima, chiaramente un errore di copia/incolla).
+     Riscritta per: chiudere prima il wallet aperto → provare
+     generate_from_keys → se fallisce con "already exists", aprire il wallet
+     esistente.
+
+  b) compute_tx_prefix_hash_with_zeroed_sigs() — il loop di dispatch dei tag
+     dell'extra aveva codice morto (elif tag == 0xB0 dentro if tag != 0xB0,
+     una condizione logicamente impossibile). Semplificato il loop con
+     if/elif diretti per ogni tag (0x01 pubkey, 0x02 nonce, 0x03 additional
+     pubkeys, 0x04 padding, 0xB0 governance, 0xC0 network fund).
+
+  c) Selezione signer — il controllo "i in selected" confrontava un int con
+     una lista di dict, risultando sempre falso. Creata una variabile
+     sel_indices = {s["index"] for s in selected} per il controllo corretto.
+
+  d) Rimosso import struct inutilizzato e variabili fees inutilizzate.
+
+2. ANALISI DELLA LOGICA DI SOSTITUZIONE EXTRA (tesoreria)
+----------------------------------------------------------
+Verificata la correttezza dell'approccio per lo spend della tesoreria:
+  - Il wallet RPC crea una tx con do_not_relay=True e extra a firme zero
+  - La tx ha rv.message (nei rctSig) calcolato col prefisso a firme zero
+  - Lo script trova il campo extra nel blob serializzato, localizza il tag
+    0xB0, e sostituisce le firme zero con firme reali (stessa lunghezza)
+  - Il blob modificato mantiene rv.message intatto → CLSAG verifica OK
+  - Il nodo in check_premine_spend() ricalcola il tx_prefix_hash azzerando
+    le firme di governance, matchando l'originale
+
+3. VERIFICA SINTASSI
+---------------------
+python3 -c "py_compile.compile('governance_spend_auto.py', doraise=True)"
+→ Syntax OK
+
+4. FILE CREATI/AGGIORNATI
+-------------------------
+  - tools/governance_spend/governance_spend_auto.py  (eseguibile)
+  - tools/governance_spend/AGENTS.md                 (workflow finale)
+  - tools/governance_spend/riepilogo.txt             (questo file)
+
+5. NEXT STEPS CONSIGLIATI
+--------------------------
+  - Test su rete reale: mevacoind + mevacoin-wallet-rpc
+  - Correggere la security gap nota: check_premine_spend() non rigetta spese
+    di output premine prive del tag extra richiesto
+  - Aggiungere supporto governance add/remove signer a gov_spend.py
+  - Test di integrazione automatizzati
