@@ -1,0 +1,116 @@
+======================================================================
+  MEVACOIN - PREMINE ADDRESSES
+  Generated: 2026-06-24
+======================================================================
+
+Il genesis crea 3 output per un totale di 1.000.000 MVC:
+
+  1. Team Lock  (200.000 MVC)  → FOUNDATION_ADDRESS (chiave privata nota)
+  2. Treasury   (400.000 MVC)  → Indirizzo deterministico governance
+  3. Network    (400.000 MVC)  → Indirizzo deterministico network fund
+
+======================================================================
+  1. FOUNDER WALLET (Team Lock - 200.000 MVC)
+======================================================================
+  Bloccato 24 mesi (518.400 blocchi). Dopo lo sblocco, il wallet
+  puo' spendere i fondi come una transazione Monero normale.
+
+  Password      : pass_validator
+
+  Address       : MDZy9bSnW2UVhjZL7w3NBUNX3fYf5HeTFZ1Po2M8cvk8ifE5E7Bb8NH3koFByJWDdKB5jkm3ZDUpQLbpJBzrsfEWDypTjoH
+
+  Private keys:
+    Spend key   : d3ecad136a798d797911381f446fe88b6fb042884545aadbb76941ed8d2ad301
+    View key    : d226c3e179f92be67e571256bb97983318839da401638aa227b25aeded7f4702
+
+  Public keys:
+    Spend key   : de23bfba22a241ab9991731efc5e8380a5dddb404a2b66bf5b236b202300e1f9
+    View key    : 103057262bc6be1078c96cc345bb023c463ed495452529752ead9e7690a2e773
+
+  Wallet files:
+    /root/mevacoin/test_wallets/validator
+    /root/mevacoin/test_wallets/validator.keys
+    /root/mevacoin/test_wallets/validator.json
+
+======================================================================
+  2. TREASURY (400.000 MVC - Indirizzo deterministico)
+======================================================================
+  Nessuno ha la chiave privata. I fondi si muovono SOLO via
+  governance tx_extra (tag 0xB0) con 2 firme su 3 signer.
+  Usa gov_spend.py treasury-zero / sign / treasury-build.
+
+  Address       : M5jE3qX4RXzjMJRJidtecGYXqGMA4nP9AK3Qwnd6B5KwQbTMLniRC9rjMJRJidtecGYXqGMA4nP9AK3Qwnd6B5KwGw2CpVx
+  Spend pub     : 0f3e988eea9dbdfd31b33465415849bc83da7397a458496bdd1a4f74908d7a8d
+  View pub      : 0f3e988eea9dbdfd31b33465415849bc83da7397a458496bdd1a4f74908d7a8d
+  (spend = view: chiavi calcolate da hash("mevacoin_governance" + nettype))
+
+======================================================================
+  3. NETWORK FUND (400.000 MVC - Indirizzo deterministico)
+======================================================================
+  Nessuno ha la chiave privata. I fondi si muovono SOLO via
+  tx_extra (tag 0xC0) senza firme. Rate limit: 10.000 MVC / 30gg.
+  Usa gov_spend.py network.
+
+  Address       : M7LQJcfcxgVYgprnpE9j6QAj5t5wDwS5NAdbW8uiWMu3WUc55pXF1fTYgprnpE9j6QAj5t5wDwS5NAdbW8uiWMu3LvuZB2S
+  Spend pub     : 39a326514a8f26bd7129e406e1f9513a253f40f41556f1399464dc508faf72b0
+  View pub      : 39a326514a8f26bd7129e406e1f9513a253f40f41556f1399464dc508faf72b0
+  (spend = view: chiavi calcolate da hash("mevacoin_network_fund" + nettype))
+
+======================================================================
+  GOVERNANCE SIGNERS (per firmare transazioni Treasury)
+======================================================================
+  3 signer, servono 2 firme per autorizzare.
+
+  Signer 0:
+    Address   : MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc
+    Priv spend: 6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402
+    Priv view : 7d33dacb480e6ccbbcb7e36a8aad170c71563af24335ff7b5b4bc914ed291601
+    Pub spend : d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb
+    Pub view  : 0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999
+
+  Signer 1:
+    Address   : MDdsyRtQeukfbfJouCU1sNEpX8fm9qjuDYfi1M7WNsUt8ASsWwzibAef9RVoCwuG4McMaChrjbdthLJN3zeSV8snPjXWHaE
+    Priv spend: a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c
+    Priv view : 018d92d7442dfc1058829c2d7948dc6ad9210368e22ebb848b20180dc567720d
+    Pub spend : dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a
+    Pub view  : d2ef03909ecaefe40e29f668822abed35f36750f49c8d6736222bec5bfbecdc9
+
+  Signer 2:
+    Address   : M5hfHudn48aTGTAdqQ3AXfhoERnZ7wKNpDKy7G5yYXN2W8vyEqqEooAEy93mMLunAAjmmKpqgHVgEJCXjr5wRZP3SiciU2c
+    Priv spend: 90137ff7a5ea576d2fc39332e792d292823fc0c1f93f18bc549c4ced11be6c03
+    Priv view : 1b9d06e6bf9bf51f748976c5035d698c6d90d75b85784791e5cb763c0e8cd00f
+    Pub spend : 0e88576abcefeb9d095a9e4db59376f3e8eed036eae68949b2ce4253444493ae
+    Pub view  : 327811a721183553823883298d1e37ffb742f3b014158366d32a3e7c81c05ee3
+
+======================================================================
+  COMANDI
+======================================================================
+
+  Inviare MVC dal premine (AUTOMATICO):
+    cd /root/mevacoin/tools/governance_spend
+    ./governance_spend_auto.py
+    → Sceglie modalita', amount, destinatario. Fa tutto da solo.
+    → NOTA: Richiede mevacoind + mevacoin-wallet-rpc in esecuzione.
+
+  Inviare dal Team Lock (fondatore, dopo 24 mesi):
+    Aprire wallet: mevacoin-wallet-rpc --wallet-file test_wallets/validator
+    Poi via RPC:   transfer <address> <amount>
+
+  Inviare dal Network Fund:
+    gov_spend.py network <amount> <address>
+    → Poi inserire il blob hex nel campo extra della tx
+    (oppure usa governance_spend_auto.py che fa tutto)
+
+  Inviare dal Treasury (2/3 firme):
+    gov_spend.py treasury-zero <amount> <dest> <pub_signer0> ...
+    gov_spend.py sign <hash> <priv_signer0> ...
+    gov_spend.py treasury-build <amount> <dest> <pub0> '<sigs>'
+    (oppure usa governance_spend_auto.py che fa tutto)
+
+======================================================================
+  CODICE
+======================================================================
+  FOUNDATION_ADDRESS in: src/cryptonote_core/desy.h (riga 29)
+  Governance signers in: src/cryptonote_core/foundation_vesting.h (riga 70)
+  Premine allocazioni in: src/cryptonote_core/foundation_vesting.h
+======================================================================

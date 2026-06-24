@@ -26,7 +26,7 @@ constexpr int DESY_VISUAL_EVENTS_MAX = 5;   // max visual events per day
 constexpr uint64_t FOUNDATION_ALLOCATION = PREMINE_TOTAL;
 
 // Team lock address (the original foundation address)
-constexpr const char* FOUNDATION_ADDRESS = "M7gdpji4uBH2gRwEpmTyM6icFjLq3nrw6iyJUHEBGmdmRrcqw5nCPykZqLohifeJJpcR3K7ME94e9WRYhiJXY5brR3c3Gua";
+constexpr const char* FOUNDATION_ADDRESS = "MDZy9bSnW2UVhjZL7w3NBUNX3fYf5HeTFZ1Po2M8cvk8ifE5E7Bb8NH3koFByJWDdKB5jkm3ZDUpQLbpJBzrsfEWDypTjoH";
 
 // ── Functions ──────────────────────────────────────────────────────
 
