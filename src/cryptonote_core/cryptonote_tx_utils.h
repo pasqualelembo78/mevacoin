@@ -161,6 +161,7 @@ namespace cryptonote
       block& bl
     , std::string const & genesis_tx
     , uint32_t nonce
+    , network_type nettype = MAINNET
     );
 
   class Blockchain;

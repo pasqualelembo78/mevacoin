@@ -1820,6 +1820,31 @@ public:
   virtual bool is_read_only() const = 0;
 
   /**
+   * @brief get a property value by key from the backing store
+   *
+   * Properties are arbitrary key/value metadata (e.g. governance state,
+   * network fund events) stored alongside the blockchain data.
+   *
+   * @param key the property key
+   * @param value[out] the property value, unchanged if key not found
+   *
+   * @return true if the key was found, false otherwise
+   */
+  virtual bool get_property(const std::string& key, std::string& value) const = 0;
+
+  /**
+   * @brief set a property value by key in the backing store
+   *
+   * If the key already exists it is overwritten.
+   *
+   * @param key the property key
+   * @param value the property value
+   *
+   * @return true on success, false on failure
+   */
+  virtual bool set_property(const std::string& key, const std::string& value) = 0;
+
+  /**
    * @brief get disk space requirements
    *
    * @return the size required

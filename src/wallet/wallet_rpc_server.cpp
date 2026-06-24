@@ -1264,6 +1264,19 @@ namespace tools
       return false;
     }
 
+    // Append any custom tx_extra from the request (e.g. governance/network fund tags)
+    if (!req.extra.empty())
+    {
+      std::string custom_extra_bin;
+      if (!epee::string_tools::parse_hexstr_to_binbuff(req.extra, custom_extra_bin))
+      {
+        er.code = WALLET_RPC_ERROR_CODE_WRONG_PARAM;
+        er.message = "Invalid hex in extra parameter";
+        return false;
+      }
+      extra.insert(extra.end(), custom_extra_bin.begin(), custom_extra_bin.end());
+    }
+
     try
     {
       uint64_t mixin = m_wallet->adjust_mixin(req.ring_size ? req.ring_size - 1 : 0);
@@ -1328,6 +1341,19 @@ namespace tools
     if (!validate_transfer(req.destinations, req.payment_id, dsts, extra, true, er))
     {
       return false;
+    }
+
+    // Append any custom tx_extra from the request (e.g. governance/network fund tags)
+    if (!req.extra.empty())
+    {
+      std::string custom_extra_bin;
+      if (!epee::string_tools::parse_hexstr_to_binbuff(req.extra, custom_extra_bin))
+      {
+        er.code = WALLET_RPC_ERROR_CODE_WRONG_PARAM;
+        er.message = "Invalid hex in extra parameter";
+        return false;
+      }
+      extra.insert(extra.end(), custom_extra_bin.begin(), custom_extra_bin.end());
     }
 
     try

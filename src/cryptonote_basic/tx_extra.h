@@ -620,12 +620,12 @@ struct tx_extra_network_fund_transfer
   END_SERIALIZE()
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
+  // ─────────────────────────────────────────────────────────────────────────────
+  // tx_extra_field format, except tx_extra_padding and tx_extra_pub_key:
   //   varint tag;
   //   varint size;
   //   varint data[];
-  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_mysterious_minergate> tx_extra_field;
+  typedef boost::variant<tx_extra_padding, tx_extra_pub_key, tx_extra_nonce, tx_extra_merge_mining_tag, tx_extra_additional_pub_keys, tx_extra_mysterious_minergate, tx_extra_governance_transfer, tx_extra_governance_add_signer, tx_extra_governance_remove_signer, tx_extra_network_fund_transfer> tx_extra_field;
 }
 
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_padding, TX_EXTRA_TAG_PADDING);
@@ -636,5 +636,9 @@ VARIANT_TAG(binary_archive, cryptonote::tx_extra_additional_pub_keys, TX_EXTRA_T
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mysterious_minergate, TX_EXTRA_MYSTERIOUS_MINERGATE_TAG);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mevatrust_pool_distribution, TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION);
 VARIANT_TAG(binary_archive, cryptonote::tx_extra_mevatrust_validator, TX_EXTRA_TAG_MEVATRUST_VALIDATOR);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_governance_transfer, TX_EXTRA_TAG_GOVERNANCE_TRANSFER);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_governance_add_signer, TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_governance_remove_signer, TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER);
+VARIANT_TAG(binary_archive, cryptonote::tx_extra_network_fund_transfer, TX_EXTRA_TAG_NETWORK_FUND_TRANSFER);
 
 

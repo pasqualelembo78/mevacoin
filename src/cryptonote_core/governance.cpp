@@ -29,7 +29,7 @@ static bool serialize_state(const governance_state& state, std::string& out)
 
 static bool deserialize_state(const std::string& in, governance_state& state)
 {
-    if (in.size() < sizeof(uint32_t) * 2 + sizeof(uint64_t) + sizeof(unsigned int))
+    if (in.size() < sizeof(uint32_t) * 2 + sizeof(uint64_t) + sizeof(uint32_t))
         return false;
     std::istringstream iss(in);
     uint32_t count = 0, orig = 0;
@@ -52,6 +52,7 @@ bool load_governance_state(governance_state& state, const std::function<bool(con
     if (!db_get("governance_state", blob))
     {
         // No governance state yet — initialize genesis state
+        state.signers = get_genesis_governance_signers();
         state.original_count = GOVERNANCE_ORIGINAL_SIGNERS;
         state.balance = TREASURY_ALLOCATION;
         state.threshold = GOVERNANCE_THRESHOLD;

@@ -1661,6 +1661,57 @@ void BlockchainLMDB::safesyncmode(const bool onoff)
   mdb_env_set_flags(m_env, MDB_NOSYNC|MDB_MAPASYNC, !onoff);
 }
 
+bool BlockchainLMDB::get_property(const std::string& key, std::string& value) const
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  mdb_txn_safe txn;
+  auto result = mdb_txn_begin(m_env, NULL, MDB_RDONLY, txn);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+  MDB_val_str(k, key.c_str());
+  MDB_val v;
+  result = mdb_get(txn, m_properties, &k, &v);
+  txn.commit();
+  txn.abort(); // marks txn as done
+
+  if (result == MDB_NOTFOUND)
+    return false;
+  if (result != MDB_SUCCESS)
+    throw0(DB_ERROR(lmdb_error("Failed to get property '" + key + "': ", result).c_str()));
+
+  value.assign(static_cast<const char*>(v.mv_data), v.mv_size);
+  return true;
+}
+
+bool BlockchainLMDB::set_property(const std::string& key, const std::string& value)
+{
+  LOG_PRINT_L3("BlockchainLMDB::" << __func__);
+  check_open();
+
+  if (is_read_only())
+    return false;
+
+  mdb_txn_safe txn;
+  auto result = mdb_txn_begin(m_env, NULL, 0, txn);
+  if (result)
+    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+
+  MDB_val_str(k, key.c_str());
+  MDB_val_sized(v, value);
+  result = mdb_put(txn, m_properties, &k, &v, 0);
+  if (result)
+  {
+    txn.abort();
+    throw0(DB_ERROR(lmdb_error("Failed to set property '" + key + "': ", result).c_str()));
+  }
+
+  txn.commit();
+  return true;
+}
+
 void BlockchainLMDB::reset()
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);

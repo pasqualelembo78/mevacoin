@@ -1264,7 +1264,7 @@ namespace cryptonote
     network_fund_state m_network_fund;
     bool m_premine_initialized{false};
 
-    void init_premine_state();
+    bool init_premine_state();
     bool check_premine_spend(const transaction& tx, uint64_t height, uint8_t hf_version) const;
     // Process governance/network actions in a transaction
     bool process_premine_actions(const transaction& tx, uint64_t height);

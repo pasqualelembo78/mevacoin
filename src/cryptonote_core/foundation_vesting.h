@@ -57,24 +57,25 @@ inline account_public_address get_network_fund_address(network_type nettype)
     return account_public_address{spend_key, spend_key};
 }
 
-// ── Governance signer keys (placeholder — REPLACE with real keys before deploy) ──
+// ── Governance signer keys ──────────────────────────────────────────────
+// ███████████████████████████████████████████████████████████████████████
+// WARNING: Replace with real wallet public keys before mainnet deploy!
+// Generate 3 wallets and copy their public spend keys here.
+// Each crypto::public_key is 32 bytes.
+// ███████████████████████████████████████████████████████████████████████
+// Test private keys (for signing test governance txs):
+//   Signer 0: 6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402
+//   Signer 1: a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c
+//   Signer 2: 90137ff7a5ea576d2fc39332e792d292823fc0c1f93f18bc549c4ced11be6c03
 inline std::vector<crypto::public_key> get_genesis_governance_signers()
 {
-    // ███████████████████████████████████████████████████████████████████████
-    // WARNING: Replace these 3 placeholder keys with real wallet public keys.
-    // Generate 3 wallets and copy their public spend keys here.
-    // Each crypto::public_key is 32 bytes.
-    // ███████████████████████████████████████████████████████████████████████
     std::vector<crypto::public_key> keys(GOVERNANCE_ORIGINAL_SIGNERS);
-    // Signer 0
-    memset(keys[0].data, 0, sizeof(keys[0].data));
-    keys[0].data[31] = 0xAA;
-    // Signer 1
-    memset(keys[1].data, 0, sizeof(keys[1].data));
-    keys[1].data[31] = 0xBB;
-    // Signer 2
-    memset(keys[2].data, 0, sizeof(keys[2].data));
-    keys[2].data[31] = 0xCC;
+    static const unsigned char signer0[32] = {0xd1, 0x2e, 0x99, 0x08, 0x16, 0xa5, 0x14, 0x75, 0xc1, 0x15, 0x1f, 0xf0, 0x4a, 0x4d, 0xc3, 0x1b, 0x62, 0x69, 0x3f, 0xbf, 0x2b, 0xf2, 0xd2, 0x80, 0x76, 0xcd, 0xa4, 0x4e, 0x78, 0x46, 0x99, 0xbb};
+    static const unsigned char signer1[32] = {0xdf, 0xeb, 0x3f, 0x3c, 0xe8, 0xc3, 0xef, 0xe6, 0xc2, 0x8b, 0x56, 0x70, 0xd3, 0x65, 0xd1, 0x52, 0x9e, 0xc6, 0x03, 0x2d, 0xd2, 0xaa, 0x3c, 0xbd, 0x53, 0xa8, 0x59, 0x5b, 0xe9, 0xb7, 0x31, 0x2a};
+    static const unsigned char signer2[32] = {0x0e, 0x88, 0x57, 0x6a, 0xbc, 0xef, 0xeb, 0x9d, 0x09, 0x5a, 0x9e, 0x4d, 0xb5, 0x93, 0x76, 0xf3, 0xe8, 0xee, 0xd0, 0x36, 0xea, 0xe6, 0x89, 0x49, 0xb2, 0xce, 0x42, 0x53, 0x44, 0x44, 0x93, 0xae};
+    memcpy(keys[0].data, signer0, sizeof(keys[0].data));
+    memcpy(keys[1].data, signer1, sizeof(keys[1].data));
+    memcpy(keys[2].data, signer2, sizeof(keys[2].data));
     return keys;
 }
 

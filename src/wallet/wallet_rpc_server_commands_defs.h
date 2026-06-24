@@ -609,6 +609,7 @@ namespace wallet_rpc
       bool do_not_relay;
       bool get_tx_hex;
       bool get_tx_metadata;
+      std::string extra;  // Custom tx_extra hex blob (optional, appended to auto-generated extra)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(destinations)
@@ -623,6 +624,7 @@ namespace wallet_rpc
         KV_SERIALIZE_OPT(do_not_relay, false)
         KV_SERIALIZE_OPT(get_tx_hex, false)
         KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE_OPT(extra, std::string())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -675,6 +677,7 @@ namespace wallet_rpc
       bool do_not_relay;
       bool get_tx_hex;
       bool get_tx_metadata;
+      std::string extra;  // Custom tx_extra hex blob (optional, appended to auto-generated extra)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(destinations)
@@ -688,6 +691,7 @@ namespace wallet_rpc
         KV_SERIALIZE_OPT(do_not_relay, false)
         KV_SERIALIZE_OPT(get_tx_hex, false)
         KV_SERIALIZE_OPT(get_tx_metadata, false)
+        KV_SERIALIZE_OPT(extra, std::string())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

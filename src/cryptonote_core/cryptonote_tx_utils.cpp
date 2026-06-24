@@ -653,6 +653,7 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
       block& bl
     , std::string const & genesis_tx
     , uint32_t nonce
+    , network_type nettype
     )
   {
     //genesis block
@@ -671,6 +672,8 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
     crypto::public_key foundation_pub;
     crypto::secret_key_to_public_key(foundation_sec, foundation_pub);
     keypair foundation_txkey{foundation_pub, foundation_sec};
+    // Remove the default pub key from the hardcoded genesis blob, then set ours
+    remove_field_from_tx_extra(bl.miner_tx.extra, typeid(tx_extra_pub_key));
     add_tx_pub_key_to_extra(bl.miner_tx, foundation_txkey.pub);
 
     // Helper lambda to create a genesis output for a given address + amount
@@ -701,16 +704,16 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
 
     // Output 2: Treasury governance (400k MVC) — multisig controlled
     {
-      account_public_address gov_addr = get_governance_address(cryptonote::MAINNET);
-      std::string gov_addr_str = cryptonote::get_account_address_as_str(cryptonote::MAINNET, false, gov_addr);
+      account_public_address gov_addr = get_governance_address(nettype);
+      std::string gov_addr_str = cryptonote::get_account_address_as_str(nettype, false, gov_addr);
       if (!add_genesis_output(gov_addr_str, TREASURY_ALLOCATION, "treasury (400k MVC)"))
         return false;
     }
 
     // Output 3: Network fund (400k MVC) — rate-limited to 10k/month
     {
-      account_public_address net_addr = get_network_fund_address(cryptonote::MAINNET);
-      std::string net_addr_str = cryptonote::get_account_address_as_str(cryptonote::MAINNET, false, net_addr);
+      account_public_address net_addr = get_network_fund_address(nettype);
+      std::string net_addr_str = cryptonote::get_account_address_as_str(nettype, false, net_addr);
       if (!add_genesis_output(net_addr_str, NETWORK_FUND_ALLOCATION, "network_fund (400k MVC)"))
         return false;
     }
