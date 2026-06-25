@@ -44,7 +44,7 @@ WALLET_RPC_BIN = os.environ.get("WALLET_RPC_BIN", os.path.join(
 WALLET_RPC_DIR = os.environ.get("WALLET_RPC_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "wallet_rpc_data"))
 
-COIN = 10**9  # 1 MVC = 10^9 atomic units
+COIN = 10**12  # 1 MVC = 10^12 atomic units (matches C++ COIN)
 
 # Known deterministic address domains
 DOMAIN_TREASURY = "mevacoin_governance"
