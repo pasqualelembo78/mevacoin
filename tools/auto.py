@@ -6,7 +6,7 @@ Usage:
   ./governance_spend_auto.py
 
 Connects to running mevacoind (http://127.0.0.1:18081) and
-mevacoin-wallet-rpc (http://127.0.0.1:12345) to automate premine spends.
+auto-starts mevacoin-wallet-rpc (http://127.0.0.1:18083) if needed.
 
 Fund types:
   team-lock  — Spend from Team Lock (200k MVC, 24mo lock).
@@ -21,12 +21,15 @@ import sys
 import os
 import json
 import subprocess
+import signal
+import atexit
+import time
 
 import requests
 
 # ── Configuration ─────────────────────────────────────────────────────────
 DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://127.0.0.1:18081")
-WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:12345")
+WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:18083")
 GOV_CRYPTO = os.environ.get("GOV_CRYPTO_BIN", os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "gov_crypto"
 ))
@@ -34,17 +37,29 @@ CN_HASH_CLI = os.environ.get("CN_HASH_CLI", os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "cn_fast_hash_cli"
 ))
 GOV_SPEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gov_spend.py")
+WALLET_RPC_BIN = os.environ.get("WALLET_RPC_BIN", os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "build", "Linux", "mevacoin", "release", "bin", "mevacoin-wallet-rpc"
+))
+WALLET_RPC_DIR = os.environ.get("WALLET_RPC_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "wallet_rpc_data"))
 
 COIN = 10**9  # 1 MVC = 10^9 atomic units
 
 # Known deterministic address domains
 DOMAIN_TREASURY = "mevacoin_governance"
 DOMAIN_NETWORK = "mevacoin_network_fund"
-DOMAIN_TEAM = None  # team lock uses the founder's wallet directly
+
+# Founder wallet credentials (Team Lock)
+FOUNDER_ADDRESS = "M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2"
+FOUNDER_SPENDKEY = "3b50617a4a09555056872d35dd0ce5ee800942eefb5f4987c62ea6d4c2661b01"
+FOUNDER_VIEWKEY = "28c5124b5c316f986e4c6ed35d35059ceeddfa44fd14416367d60e30d5902407"
+FOUNDER_PASSWORD = "pass_new_founder"
 
 # ── RPC helpers ───────────────────────────────────────────────────────────
 
 def daemon_rpc(method, params=None):
+    """JSON-RPC calls: /json_rpc"""
     url = DAEMON_URL + "/json_rpc"
     payload = {"jsonrpc": "2.0", "id": "0", "method": method}
     if params is not None:
@@ -54,6 +69,15 @@ def daemon_rpc(method, params=None):
     if "error" in data:
         raise RuntimeError(f"Daemon RPC error: {data['error']}")
     return data.get("result")
+
+def daemon_rest(path, payload=None):
+    """REST-style calls: GET /path or POST /path with JSON body."""
+    url = DAEMON_URL + path
+    if payload is not None:
+        resp = requests.post(url, json=payload, timeout=30)
+    else:
+        resp = requests.get(url, timeout=30)
+    return resp.json()
 
 def wallet_rpc(method, params=None):
     url = WALLET_URL + "/json_rpc"
@@ -65,6 +89,65 @@ def wallet_rpc(method, params=None):
     if "error" in data:
         raise RuntimeError(f"Wallet RPC error: {data['error']}")
     return data.get("result")
+
+# ── Wallet RPC process management ────────────────────────────────────────
+
+_wallet_rpc_proc = None
+
+def start_wallet_rpc():
+    """Launch mevacoin-wallet-rpc as a subprocess if not already running."""
+    global _wallet_rpc_proc
+    if _wallet_rpc_proc is not None:
+        return
+
+    # Parse port from WALLET_URL
+    port = WALLET_URL.rsplit(":", 1)[-1]
+    host = WALLET_URL.replace("http://", "").rsplit(":", 1)[0]
+
+    # Parse daemon address from DAEMON_URL
+    daemon_addr = DAEMON_URL.replace("http://", "")
+
+    os.makedirs(WALLET_RPC_DIR, exist_ok=True)
+
+    print(f"  Starting mevacoin-wallet-rpc on {host}:{port}...")
+    _wallet_rpc_proc = subprocess.Popen(
+        [
+            WALLET_RPC_BIN,
+            "--rpc-bind-ip", host,
+            "--rpc-bind-port", port,
+            "--wallet-dir", WALLET_RPC_DIR,
+            "--daemon-address", daemon_addr,
+            "--trusted-daemon",
+            "--disable-rpc-login",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Wait for it to be ready
+    for i in range(30):
+        try:
+            wallet_rpc("get_version")
+            print(f"  ✓ Wallet RPC ready (pid={_wallet_rpc_proc.pid})")
+            return
+        except Exception:
+            time.sleep(0.5)
+
+    raise RuntimeError("Wallet RPC did not become ready within 15 seconds")
+
+def stop_wallet_rpc():
+    """Terminate the wallet RPC subprocess."""
+    global _wallet_rpc_proc
+    if _wallet_rpc_proc is None:
+        return
+    print("  Stopping wallet RPC...")
+    _wallet_rpc_proc.terminate()
+    try:
+        _wallet_rpc_proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        _wallet_rpc_proc.kill()
+        _wallet_rpc_proc.wait()
+    _wallet_rpc_proc = None
 
 # ── Crypto helpers ────────────────────────────────────────────────────────
 
@@ -82,7 +165,7 @@ def derive_wallet(domain, nettype=0):
     info = {}
     for line in lines:
         k, v = line.split(": ", 1)
-        info[k] = v
+        info[k] = v.strip()
     return info
 
 def cn_fast_hash(data_hex):
@@ -289,12 +372,16 @@ def refresh_wallet():
 # ── Fund type operations ─────────────────────────────────────────────────
 
 def do_team_lock(amount, dest_addr):
-    """Spend from Team Lock using the founder's wallet already loaded."""
+    """Spend from Team Lock using the founder's wallet (auto-opened)."""
     print(f"\n{'='*60}")
     print(f"TEAM LOCK SPEND")
     print(f"  Amount:     {amount / COIN:.4f} MVC ({amount} atomic)")
     print(f"  Recipient:  {dest_addr}")
     print(f"{'='*60}")
+
+    # Auto-create/open the founder wallet
+    ensure_wallet("founder", FOUNDER_ADDRESS, FOUNDER_SPENDKEY, FOUNDER_VIEWKEY, FOUNDER_PASSWORD)
+    refresh_wallet()
 
     result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
@@ -383,48 +470,34 @@ def do_treasury(amount, dest_addr):
     if recv_result.returncode != 0:
         raise RuntimeError(f"Failed to decode recipient address: {recv_result.stderr}")
     recv_lines = recv_result.stdout.strip().split("\n")
-    recv_spend = recv_lines[0].split(": ")[1]
-    recv_view = recv_lines[1].split(":  ")[1]
+    recv_spend = recv_lines[0].split(": ", 1)[1].strip()
+    recv_view = recv_lines[1].split(": ", 1)[1].strip()
 
-    # Get signer public keys from foundation_vesting.h
+    # Get signer public keys (hardcoded in foundation_vesting.h — public info)
     signer_pubs = [
         "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb",
         "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a",
         "0e88576abcefeb9d095a9e4db59376f3e8eed036eae68949b2ce4253444493ae",
     ]
     signer_names = ["Signer 0 (MD5VJc...)", "Signer 1 (MDdsyR...)", "Signer 2 (M5hfHu...)"]
-    signer_privs = [
-        "6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402",
-        "a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c",
-        "90137ff7a5ea576d2fc39332e792d292823fc0c1f93f18bc549c4ced11be6c03",
-    ]
 
     # Ask which signers to use (need at least 2)
-    print("\n  Available governance signers:")
+    print("\n  Available governance signers (public keys only):")
     selected = []
     while len(selected) < 2:
         print(f"\n  Need {2 - len(selected)} more signer(s).")
         sel_indices = {s["index"] for s in selected}
         for i, (name, pub) in enumerate(zip(signer_names, signer_pubs)):
             status = "✓" if i in sel_indices else " "
-            print(f"    [{status}] {i+1}. {name}")
-        print(f"    [ ] {len(signer_pubs)+1}. Custom signer privkey")
+            print(f"    [{status}] {i+1}. {name}  pub={pub[:16]}...")
+        print(f"    [ ] {len(signer_pubs)+1}. Custom signer (manually enter pubkey)")
         choice = input(f"  Select signer #{len(selected)+1}: ").strip()
         try:
             idx = int(choice) - 1
             if idx == len(signer_pubs):
-                priv = input("  Enter signer private key hex: ").strip()
-                pub_res = subprocess.run(
-                    [GOV_CRYPTO, "pubkey", priv],
-                    capture_output=True, text=True
-                )
-                if pub_res.returncode != 0:
-                    print("    Invalid private key")
-                    continue
-                pub = pub_res.stdout.strip()
+                pub = input("  Enter signer public key hex: ").strip()
                 selected.append({
                     "index": len(signer_pubs),
-                    "priv": priv,
                     "pub": pub,
                     "name": f"Custom ({pub[:16]}...)"
                 })
@@ -432,7 +505,6 @@ def do_treasury(amount, dest_addr):
                 if idx not in sel_indices:
                     selected.append({
                         "index": idx,
-                        "priv": signer_privs[idx],
                         "pub": signer_pubs[idx],
                         "name": signer_names[idx]
                     })
@@ -486,19 +558,34 @@ def do_treasury(amount, dest_addr):
     tx_prefix_hash = compute_tx_prefix_hash_with_zeroed_sigs(tx_blob_hex)
     print(f"    tx_prefix_hash: {tx_prefix_hash}")
 
-    # ── Step 4: Sign with governance keys ───────────────────────────
-    print("  [4/7] Signing with governance keys...")
+    # ── Step 4: Collect signatures from signers ─────────────────────
+    print("  [4/7] Collecting signatures...")
+    print(f"\n  ═══ GIVE THIS HASH TO EACH SIGNER ═══")
+    print(f"  Hash: {tx_prefix_hash}")
+    print(f"  Each signer runs:  gov_crypto sign <their_privkey> {tx_prefix_hash}")
+    print(f"  ═══ ═══ ═══ ═══ ═══ ═══ ═══ ═══ ═══ ═══")
     sigs = []
     for s in selected:
-        sig_out = subprocess.run(
-            [GOV_CRYPTO, "sign", s["priv"], tx_prefix_hash],
-            capture_output=True, text=True
-        )
-        if sig_out.returncode != 0:
-            raise RuntimeError(f"Signing failed: {sig_out.stderr}")
-        sig_hex = sig_out.stdout.strip()
+        print(f"\n  Signer: {s['name']}  pub={s['pub']}")
+        ans = input("  Paste signature hex (or press Enter to sign locally with privkey): ").strip()
+        if ans:
+            sig_hex = ans
+        else:
+            privkey = input("  Enter private key for local signing: ").strip()
+            sig_out = subprocess.run(
+                [GOV_CRYPTO, "sign", privkey, tx_prefix_hash],
+                capture_output=True, text=True
+            )
+            if sig_out.returncode != 0:
+                print(f"    Invalid private key, try pasting signature instead.")
+                ans2 = input("  Paste signature hex: ").strip()
+                if not ans2:
+                    raise RuntimeError(f"Missing signature for {s['name']}")
+                sig_hex = ans2
+            else:
+                sig_hex = sig_out.stdout.strip()
         sigs.append({"signer_key": s["pub"], "sig": sig_hex})
-        print(f"    Signed: {s['name']}")
+        print(f"    ✓ Signature collected ({len(bytes.fromhex(sig_hex))} bytes)")
 
     # ── Step 5: Build real-sig tx_extra ─────────────────────────────
     print("  [5/7] Building real-sig tx_extra...")
@@ -584,7 +671,7 @@ def do_treasury(amount, dest_addr):
 
     # ── Step 7: Broadcast ───────────────────────────────────────────
     print("  [7/7] Broadcasting transaction...")
-    send_result = daemon_rpc("send_raw_transaction", {
+    send_result = daemon_rest("/send_raw_transaction", {
         "tx_as_hex": modified_blob_hex,
         "do_not_relay": False,
         "do_sanity_checks": True,
@@ -612,7 +699,7 @@ def main():
 
     # Check connectivity
     try:
-        height_info = daemon_rpc("get_height")
+        height_info = daemon_rest("/get_height")
         print(f"  ✓ Daemon connected (height: {height_info['height']})")
     except Exception as e:
         print(f"  ✗ Cannot connect to daemon at {DAEMON_URL}")
@@ -623,11 +710,15 @@ def main():
     try:
         wallet_info = wallet_rpc("get_address")
         print(f"  ✓ Wallet connected ({wallet_info['address'][:20]}...)")
-    except Exception as e:
-        print(f"  ✗ Cannot connect to wallet RPC at {WALLET_URL}")
-        print(f"    Error: {e}")
-        print("    Start mevacoin-wallet-rpc with --rpc-bind-port 12345")
-        sys.exit(1)
+    except Exception:
+        print(f"  Wallet RPC not reachable at {WALLET_URL}, attempting to start it...")
+        try:
+            start_wallet_rpc()
+            atexit.register(stop_wallet_rpc)
+        except Exception as e2:
+            print(f"  ✗ Failed to start wallet RPC: {e2}")
+            print(f"    Start it manually: mevacoin-wallet-rpc --rpc-bind-port {WALLET_URL.rsplit(':', 1)[-1]}")
+            sys.exit(1)
 
     print()
 

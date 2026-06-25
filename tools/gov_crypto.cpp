@@ -10,6 +10,9 @@
 #include "string_tools.h"
 #include "common/base58.h"
 #include "cryptonote_config.h"
+extern "C" {
+#include "crypto/keccak.h"
+}
 
 static std::string hex(const void* data, size_t len)
 {
@@ -46,7 +49,10 @@ static void print_usage(const char* prog)
     std::cerr << "Usage: " << prog << " <command> [args]\n\n"
               << "Commands:\n"
               << "  genkey                                          Generate random key pair\n"
+              << "  genwallet [nettype]                             Generate full wallet (keys+address)\n"
+              << "    nettype: 0=mainnet 1=testnet 2=stagenet (default 0)\n"
               << "  pubkey <privkey_hex>                            Derive public key from private\n"
+              << "  viewkey <spend_priv_hex>                        Derive view private key from spend private\n"
               << "  decode <address>                                Decode address to spend+view keys\n"
               << "  sign <privkey_hex> <hash_hex>                   Sign hash with private key\n"
               << "  verify <pubkey_hex> <sig_hex> <hash_hex>        Verify signature\n"
@@ -89,6 +95,47 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    if (cmd == "genwallet")
+    {
+        int nettype = 0;
+        if (argc >= 3) nettype = atoi(argv[2]);
+
+        uint64_t addr_prefix;
+        switch (nettype)
+        {
+            case 0: addr_prefix = ::config::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 1: addr_prefix = ::config::testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 2: addr_prefix = ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            default: std::cerr << "Invalid nettype (0=mainnet, 1=testnet, 2=stagenet)\n"; return 1;
+        }
+
+        // Generate random spend key pair
+        crypto::public_key spend_pub;
+        crypto::secret_key spend_sec;
+        crypto::generate_keys(spend_pub, spend_sec);
+
+        // Derive view private key from spend private key (matching wallet2 derivation)
+        crypto::secret_key view_sec;
+        keccak((const uint8_t*)spend_sec.data, 32, (uint8_t*)view_sec.data, 32);
+
+        // Compute view public key
+        crypto::public_key view_pub;
+        crypto::secret_key_to_public_key(view_sec, view_pub);
+
+        // Build address: base58(prefix + spend_pub + view_pub)
+        std::string addr_bin;
+        addr_bin.append((const char*)spend_pub.data, sizeof(spend_pub));
+        addr_bin.append((const char*)view_pub.data, sizeof(view_pub));
+        std::string address = tools::base58::encode_addr(addr_prefix, addr_bin);
+
+        std::cout << "address:    " << address << std::endl;
+        std::cout << "spend_sec:  " << hex(spend_sec.data, 32) << std::endl;
+        std::cout << "view_sec:   " << hex(view_sec.data, 32) << std::endl;
+        std::cout << "spend_pub:  " << hex(spend_pub.data, 32) << std::endl;
+        std::cout << "view_pub:   " << hex(view_pub.data, 32) << std::endl;
+        return 0;
+    }
+
     if (cmd == "verify")
     {
         if (argc < 5) { std::cerr << "Usage: gov_crypto verify <pubkey_hex> <sig_hex> <hash_hex>\n"; return 1; }
@@ -106,6 +153,19 @@ int main(int argc, char* argv[])
         bool ok = crypto::check_signature(h, pk, sig);
         std::cout << (ok ? "VALID" : "INVALID") << std::endl;
         return ok ? 0 : 1;
+    }
+
+    if (cmd == "viewkey")
+    {
+        if (argc != 3) { std::cerr << "Usage: gov_crypto viewkey <spend_priv_hex>\n"; return 1; }
+        std::vector<uint8_t> sk_bin;
+        if (!from_hex(argv[2], sk_bin) || sk_bin.size() != 32) { std::cerr << "Invalid privkey\n"; return 1; }
+        crypto::secret_key sk;
+        memcpy(sk.data, sk_bin.data(), 32);
+        crypto::secret_key view_sec;
+        keccak((const uint8_t*)sk.data, 32, (uint8_t*)view_sec.data, 32);
+        std::cout << epee::string_tools::pod_to_hex(view_sec) << std::endl;
+        return 0;
     }
 
     if (cmd == "pubkey") {
@@ -127,7 +187,7 @@ int main(int argc, char* argv[])
             std::cerr << "Invalid address\n"; return 1;
         }
         std::cout << "spend: " << epee::string_tools::pod_to_hex(spend) << "\n";
-        std::cout << "view:  " << epee::string_tools::pod_to_hex(view) << "\n";
+        std::cout << "view: " << epee::string_tools::pod_to_hex(view) << "\n";
         return 0;
     }
 
@@ -174,10 +234,10 @@ int main(int argc, char* argv[])
         std::string address = tools::base58::encode_addr(addr_prefix, addr_bin);
 
         std::cout << "spend_sec: " << hex(sk.data, 32) << std::endl;
-        std::cout << "view_sec:  " << hex(sk.data, 32) << std::endl;
+        std::cout << "view_sec: " << hex(sk.data, 32) << std::endl;
         std::cout << "spend_pub: " << hex(pk.data, 32) << std::endl;
-        std::cout << "view_pub:  " << hex(pk.data, 32) << std::endl;
-        std::cout << "address:   " << address << std::endl;
+        std::cout << "view_pub: " << hex(pk.data, 32) << std::endl;
+        std::cout << "address: " << address << std::endl;
         return 0;
     }
 

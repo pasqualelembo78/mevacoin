@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "filename": "/root/mevacoin/wallet/new_founder",
+  "password": "pass_new_founder",
+  "spendkey": "3b50617a4a09555056872d35dd0ce5ee800942eefb5f4987c62ea6d4c2661b01",
+  "scan_from_height": 1,
+  "create_address_file": 1
+}

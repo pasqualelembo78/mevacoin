@@ -162,8 +162,8 @@ def gov_genkey():
 def gov_decode(address):
     out = _gov("decode", address)
     lines = out.split("\n")
-    spend = lines[0].split(": ")[1]
-    view = lines[1].split(":  ")[1]
+    spend = lines[0].split(": ", 1)[1].strip()
+    view = lines[1].split(": ", 1)[1].strip()
     return spend, view
 
 

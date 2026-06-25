@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "filename": "/root/mevacoin/test_wallets/signer_1",
+  "filename": "/root/mevacoin/wallet/signer_1",
   "password": "pass_signer_1",
   "spendkey": "a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c",
   "scan_from_height": 1

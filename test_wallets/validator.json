@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "filename": "/root/mevacoin/test_wallets/validator",
-  "password": "pass_validator",
-  "spendkey": "d3ecad136a798d797911381f446fe88b6fb042884545aadbb76941ed8d2ad301",
-  "scan_from_height": 1
-}

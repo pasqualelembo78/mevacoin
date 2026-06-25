@@ -27,10 +27,9 @@ Il genesis crea 3 output per un totale di 1.000.000 MVC:
     Spend key   : de23bfba22a241ab9991731efc5e8380a5dddb404a2b66bf5b236b202300e1f9
     View key    : 103057262bc6be1078c96cc345bb023c463ed495452529752ead9e7690a2e773
 
-  Wallet files:
-    /root/mevacoin/test_wallets/validator
-    /root/mevacoin/test_wallets/validator.keys
-    /root/mevacoin/test_wallets/validator.json
+  Wallet files (→ /root/mevacoin/wallet/):
+    /root/mevacoin/wallet/new_founder
+    /root/mevacoin/wallet/new_founder.keys
 
 ======================================================================
   2. TREASURY (400.000 MVC - Indirizzo deterministico)
@@ -87,13 +86,13 @@ Il genesis crea 3 output per un totale di 1.000.000 MVC:
 ======================================================================
 
   Inviare MVC dal premine (AUTOMATICO):
-    cd /root/mevacoin/tools/governance_spend
-    ./governance_spend_auto.py
+    cd /root/mevacoin/tools
+    ./auto.py
     → Sceglie modalita', amount, destinatario. Fa tutto da solo.
     → NOTA: Richiede mevacoind + mevacoin-wallet-rpc in esecuzione.
 
   Inviare dal Team Lock (fondatore, dopo 24 mesi):
-    Aprire wallet: mevacoin-wallet-rpc --wallet-file test_wallets/validator
+    Aprire wallet: mevacoin-wallet-rpc --wallet-file /root/mevacoin/wallet/new_founder
     Poi via RPC:   transfer <address> <amount>
 
   Inviare dal Network Fund:
@@ -113,4 +112,44 @@ Il genesis crea 3 output per un totale di 1.000.000 MVC:
   FOUNDATION_ADDRESS in: src/cryptonote_core/desy.h (riga 29)
   Governance signers in: src/cryptonote_core/foundation_vesting.h (riga 70)
   Premine allocazioni in: src/cryptonote_core/foundation_vesting.h
+======================================================================
+
+======================================================================
+  NUOVO FOUNDER WALLET (sostituisce il precedente)
+  Generated: 2026-06-25
+======================================================================
+
+  NOTE:
+    - Il vecchio wallet del fondatore ('validator') NON controlla piu'
+      l'output del Team Lock.
+    - La genesis transazione deve essere rigenerata (re-genesis) per
+      riflettere il nuovo FOUNDATION_ADDRESS.
+    - L'hash_to_scalar del nuovo indirizzo diventera' la nuova
+      tx_secret_key per la genesis transazione — da qui derivano
+      TUTTI gli output chiavi del premine (Team Lock, Treasury, Network).
+    - Wallet creato con: wallet-cli --generate-from-json
+
+  Password      : pass_new_founder
+
+  Address       : M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2
+
+  Private keys:
+    Spend key   : 3b50617a4a09555056872d35dd0ce5ee800942eefb5f4987c62ea6d4c2661b01
+    View key    : 28c5124b5c316f986e4c6ed35d35059ceeddfa44fd14416367d60e30d5902407
+
+  Public keys:
+    Spend key   : 05917c3b242b6de82ee6b40cc85ba42dc4c4847848c165f6c4bc027bf30f0633
+    View key    : 0b44821a3fdcccf7365f9ddfa2958f35af1c5c954f76fd0a88877cc5f5014407
+
+  Wallet files (consolidati in /root/mevacoin/wallet/):
+    /root/mevacoin/wallet/new_founder
+    /root/mevacoin/wallet/new_founder.keys
+    /root/mevacoin/wallet/new_founder.address.txt
+    /root/mevacoin/wallet/new_founder.json
+
+======================================================================
+  TUTTI I WALLET (CREDENZIALI COMPLETE)
+======================================================================
+  Tutte le chiavi, password e wallet fisici sono consolidati in:
+    /root/mevacoin/wallet/WALLET_README.txt
 ======================================================================

@@ -5526,9 +5526,28 @@ void wallet2::setup_new_blockchain()
 {
   cryptonote::block b;
   generate_genesis(b);
+
+  add_subaddress_account(tr("Primary account"));
+
+  // Process genesis coinbase outputs so the wallet detects premine outputs
+  // (which include team-lock, treasury, and network-fund allocations).
+  // This must happen BEFORE m_blockchain.push_back so the wallet scans
+  // block 0 before treating it as already known.
+  {
+    tx_cache_data cache_data;
+    std::vector<uint64_t> o_indices(b.miner_tx.vout.size());
+    for (size_t i = 0; i < o_indices.size(); ++i)
+      o_indices[i] = i;
+    process_new_transaction(
+        cryptonote::get_transaction_hash(b.miner_tx),
+        b.miner_tx, o_indices,
+        0, b.major_version, b.timestamp,
+        true, false, false,
+        cache_data, nullptr, true);
+  }
+
   m_blockchain.push_back(get_block_hash(b));
   m_last_block_reward = cryptonote::get_outs_money_amount(b.miner_tx);
-  add_subaddress_account(tr("Primary account"));
 }
 
 void wallet2::create_keys_file(const std::string &wallet_, bool watch_only, const epee::wipeable_string &password, bool create_address_file)
