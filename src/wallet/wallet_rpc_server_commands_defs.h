@@ -107,6 +107,7 @@ namespace wallet_rpc
       std::vector<per_subaddress_info> per_subaddress;
       uint64_t   blocks_to_unlock;
       uint64_t   time_to_unlock;
+      std::string warning;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(balance)
@@ -115,6 +116,7 @@ namespace wallet_rpc
         KV_SERIALIZE(per_subaddress)
         KV_SERIALIZE(blocks_to_unlock)
         KV_SERIALIZE(time_to_unlock)
+        KV_SERIALIZE_OPT(warning, std::string())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

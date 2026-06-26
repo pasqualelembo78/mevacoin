@@ -634,6 +634,13 @@ namespace tools
           res.per_subaddress.emplace_back(std::move(info));
         }
       }
+      // Warn if user might benefit from a full refresh from height 0
+      if (m_wallet->get_refresh_from_block_height() > 0)
+      {
+        res.warning = "Wallet refresh from block "
+          + std::to_string(m_wallet->get_refresh_from_block_height())
+          + " may not show all history. For full history, call refresh(start_height=0) or rescan_blockchain.";
+      }
     }
     catch (const std::exception& e)
     {

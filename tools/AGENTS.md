@@ -28,11 +28,6 @@
 3. Enters amount + recipient address
 4. Script handles everything: wallet creation, extra construction, signing, blob patching, broadcast
 
-## Build Notes
-- `gov_crypto` needs recompile after full project rebuild (links to build artifacts)
-- `check_premine_spend` fix needs full `make` (it's in blockchain.cpp)
-- `cn_fast_hash_cli` needs `make -C tools/governance_spend` if `hash.c` or `keccak.c` changes
-
 ## sort_tx_extra Fix (New)
 - **`src/cryptonote_basic/cryptonote_format_utils.cpp:619-624`**: Added `pick<>` calls for `tx_extra_governance_transfer` (0xB0), `tx_extra_governance_add_signer` (0xB1), `tx_extra_governance_remove_signer` (0xB2), and `tx_extra_network_fund_transfer` (0xC0) in `sort_tx_extra()`. The function rejects any type from the `tx_extra_field` variant that it doesn't have a `pick` handler for — causing `"transaction was not constructed"` when the wallet-rpc `transfer` call includes custom extra. **Root cause of wallet-rpc rejecting custom extra.**
 
@@ -45,11 +40,20 @@
 - `cn_fast_hash_cli` needs `make -C tools/governance_spend` if `hash.c` or `keccak.c` changes
 - `sort_tx_extra` fix is in `cryptonote_format_utils.cpp` — part of `libcryptonote_basic`, rebuilds with `make`
 
-## Known Security Gap
-- `check_premine_spend()` enforces governance rules ONLY if governance/network-fund `tx_extra` is present; it does NOT reject transactions that spend treasury/network outputs WITHOUT the extra. Anyone who computes the deterministic private key (derivable from the public domain string) can drain the treasury/network fund without governance approval. Fix should reject premine output spends lacking the expected extra field.
+## Security Fix: Mandatory tx_extra Enforcement
+- **FIXED** — `check_premine_spend()` now uses **key_image comparison** (not ring member scan) to detect treasury/network fund spends. If a premine key_image is detected in any input, the tx MUST carry the appropriate tag (0xB0 for treasury, 0xC0 for network fund). Previously only validated tags IF PRESENT — anyone with the deterministic private key could drain funds.
+- Key_image approach eliminates false positives: an input's key_image uniquely identifies which output is being spent (the spender must know the private key). Decoy ring members have different key_images.
+- Treasury key_image and network fund key_image are pre-computed in `init_premine_state()` at daemon startup using the same derivation as wallet2, ensuring match.
+- Team lock key_image NOT computed (foundation holds the private spend key). Team lock vesting is the foundation's responsibility — no consensus-level enforcement needed.
+- New functions in `foundation_vesting.h`:
+  - `derive_premine_secret_key(domain, nettype)` — returns deterministic secret key (mirrors `derive_premine_address`)
+  - `compute_premine_output_secret_key(...)` — returns one-time output secret key (mirrors `compute_premine_output_key`)
+- New fields in `premine_output_keys`: `treasury_k_image`, `network_k_image`
+- Transparency log at daemon startup: "Premine spend enforcement ACTIVE — any transaction spending a premine output WITHOUT the required tx_extra tag (0xB0 for treasury, 0xC0 for network fund) will be REJECTED."
 
 ## Next Steps
 - Test treasury governance spend flow (zero-sig → sign → inject)
-- Fix the security gap: reject premine output spends that lack the required extra tag
+- Revert wallet2.cpp `get_min_ring_size()` to 11 for mainnet (wrap in `if(m_nettype == MAINNET)`)
 - Add governance add/remove signer support to `gov_spend.py`
+- Fix `gov_crypto` to use shared derivation from `foundation_vesting.h` (currently has stale `derive-wallet` implementation producing wrong keys)
 - Write functional/integration tests
