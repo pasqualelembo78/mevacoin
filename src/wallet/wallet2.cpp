@@ -2264,7 +2264,7 @@ void wallet2::cache_tx_data(const cryptonote::transaction& tx, const crypto::has
   const bool is_miner = tx.vin.size() == 1 && tx.vin[0].type() == typeid(cryptonote::txin_gen);
   if (!is_miner || m_refresh_type != RefreshType::RefreshNoCoinbase)
   {
-    const size_t rec_size = (is_miner && m_refresh_type == RefreshType::RefreshOptimizeCoinbase && tx.version < 2) ? 1 : tx.vout.size();
+    const size_t rec_size = (is_miner && m_refresh_type == RefreshType::RefreshOptimizeCoinbase && tx.version < 2 && tx.vout.size() == 1) ? 1 : tx.vout.size();
     if (!tx.vout.empty())
     {
       // if tx.vout is not empty, we loop through all tx pubkeys
@@ -2411,7 +2411,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     {
       // assume coinbase isn't for us
     }
-    else if (miner_tx && m_refresh_type == RefreshOptimizeCoinbase && tx.version < 2)
+    else if (miner_tx && m_refresh_type == RefreshOptimizeCoinbase && tx.version < 2 && tx.vout.size() == 1)
     {
       check_acc_out_precomp_once(tx.vout[0], derivation, additional_derivations, 0, is_out_data_ptr, tx_scan_info[0], output_found[0]);
       THROW_WALLET_EXCEPTION_IF(tx_scan_info[0].error, error::acc_outs_lookup_error, tx, tx_pub_key, m_account.get_keys());
