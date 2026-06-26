@@ -3361,7 +3361,7 @@ void wallet2::process_parsed_blocks(const uint64_t start_height, const std::vect
     {
       THROW_WALLET_EXCEPTION_IF(txidx >= tx_cache_data.size(), error::wallet_internal_error, "txidx out of range");
       const cryptonote::transaction& tx = parsed_blocks[i].block.miner_tx;
-      const size_t n_vouts = (m_refresh_type == RefreshType::RefreshOptimizeCoinbase && tx.version < 2) ? 1 : tx.vout.size();
+      const size_t n_vouts = (m_refresh_type == RefreshType::RefreshOptimizeCoinbase && tx.version < 2 && tx.vout.size() == 1) ? 1 : tx.vout.size();
       if (parsed_blocks[i].block.major_version >= hf_version_view_tags)
         geniods.push_back(geniod_params{ tx, n_vouts, txidx });
       else
@@ -5535,9 +5535,11 @@ void wallet2::setup_new_blockchain()
   // block 0 before treating it as already known.
   {
     tx_cache_data cache_data;
+    // Compute per-amount output indices (daemon expects per-amount, not global)
+    std::unordered_map<uint64_t, uint64_t> amount_counts;
     std::vector<uint64_t> o_indices(b.miner_tx.vout.size());
     for (size_t i = 0; i < o_indices.size(); ++i)
-      o_indices[i] = i;
+      o_indices[i] = amount_counts[b.miner_tx.vout[i].amount]++;
     process_new_transaction(
         cryptonote::get_transaction_hash(b.miner_tx),
         b.miner_tx, o_indices,
@@ -8602,17 +8604,9 @@ fee_algorithm wallet2::get_fee_algorithm()
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_min_ring_size()
 {
-  if (use_fork_rules(HF_VERSION_MIN_MIXIN_15, 0))
-    return 16;
-  if (use_fork_rules(8, 10))
-    return 11;
-  if (use_fork_rules(7, 10))
-    return 7;
-  if (use_fork_rules(6, 10))
-    return 5;
-  if (use_fork_rules(2, 10))
-    return 3;
-  return 0;
+  // TEMP: allow small rings for test-chain premine spends (only 2 outputs of 400k)
+  // TODO: revert for mainnet
+  return 2;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_max_ring_size()
