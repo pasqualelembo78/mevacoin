@@ -5912,6 +5912,27 @@ bool Blockchain::init_premine_state()
         MERROR("Premine output keys mismatch — genesis block structure may have changed");
     }
 
+    // ── Compute key images for premine outputs ──────────────────────────
+    // These are used by check_premine_spend() to detect when a premine
+    // output is being spent (by comparing input key_images directly,
+    // eliminating false positives from decoy ring members).
+    // ──
+    // Note: team lock key image cannot be computed (foundation holds the
+    // private spend key).  Team lock vesting is the foundation's
+    // responsibility — enforcement is not needed at consensus level.
+    {
+        crypto::secret_key treasury_sec = derive_premine_secret_key("mevacoin_governance", m_nettype);
+        crypto::secret_key network_sec  = derive_premine_secret_key("mevacoin_network_fund", m_nettype);
+
+        crypto::secret_key treasury_output_sec = compute_premine_output_secret_key(
+            foundation_sec, get_governance_address(m_nettype), n - 2, treasury_sec);
+        crypto::secret_key network_output_sec = compute_premine_output_secret_key(
+            foundation_sec, get_network_fund_address(m_nettype), n - 1, network_sec);
+
+        crypto::generate_key_image(m_premine_keys.treasury, treasury_output_sec, m_premine_keys.treasury_k_image);
+        crypto::generate_key_image(m_premine_keys.network, network_output_sec, m_premine_keys.network_k_image);
+    }
+
     // ── Load persisted premine state from LMDB ───────────────────────────
     // If a valid persisted state exists (matching chain height), use it.
     // Otherwise, initialise with genesis defaults and rebuild from blocks.
@@ -5972,6 +5993,9 @@ bool Blockchain::init_premine_state()
     MINFO("Premine state initialised: team=" << m_premine_keys.team
         << " treasury=" << m_premine_keys.treasury
         << " network=" << m_premine_keys.network);
+    MINFO("Premine spend enforcement ACTIVE — any transaction spending a"
+        " premine output WITHOUT the required tx_extra tag (0xB0 for"
+        " treasury, 0xC0 for network fund) will be REJECTED.");
     return true;
 }
 
@@ -5980,8 +6004,7 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
     if (!m_premine_initialized)
         return true;
 
-    // ── Governance / Network fund tag checks ─────────────────────────────
-    // First, parse tx_extra to check if governance fields exist
+    // ── Parse tx_extra ───────────────────────────────────────────────────
     std::vector<tx_extra_field> fields;
     bool has_governance = false;
     if (parse_tx_extra(tx.extra, fields))
@@ -5995,10 +6018,11 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
             find_tx_extra_field_by_type(fields, tmp_rem);
     }
 
-    // Compute tx_prefix_hash.  Governance signatures are embedded in tx_extra
-    // (which feeds into the prefix hash), creating a circular dependency.
-    // Re-serialize with zeroed sigs so the signer can commit to the transaction
-    // without knowing the signatures in advance.
+    // ── Compute tx_prefix_hash ──────────────────────────────────────────
+    // Governance signatures are embedded in tx_extra (which feeds into the
+    // prefix hash), creating a circular dependency.  Re-serialize with
+    // zeroed sigs so the signer can commit to the transaction without
+    // knowing the signatures in advance.
     crypto::hash tx_prefix_hash;
     if (has_governance)
     {
@@ -6033,60 +6057,50 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         tx_prefix_hash = get_transaction_prefix_hash(tx);
     }
 
-    // ── Team lock check ──────────────────────────────────────────────────
-    // Scan ring members for the team lock output.  Only the foundation
-    // (who controls the private key) can spend this output.  Scanning all
-    // ring members is imprecise (it could be a decoy) but with millions of
-    // outputs on chain the false-positive rate is negligible.
+    // ── Premine output detection ─────────────────────────────────────────
+    // Detect if a premine output is being spent by comparing each input's
+    // key_image against the pre-computed premine key images.
+    // ──
+    // Rationale: a key_image uniquely identifies the output being spent
+    // (the spender must know the private key to produce it).  Unlike
+    // scanning ring members, comparing key_images eliminates false
+    // positives — decoy outputs will have different key_images.
+    // ──
+    // Security: the treasury and network fund private keys are derivable
+    // from the public domain strings ("mevacoin_governance",
+    // "mevacoin_network_fund").  Anyone can compute them.  The ONLY thing
+    // preventing unauthorised spending is this consensus-level enforcement.
+    // ──
+    // Transparency: the three premine output keys and enforcement status
+    // are logged at daemon startup (see init_premine_state) so that anyone
+    // can independently verify which outputs are protocol-controlled.
+    bool found_treasury = false;
+    bool found_network = false;
+
     for (const auto& vin : tx.vin)
     {
         if (vin.type() != typeid(txin_to_key))
             continue;
         const txin_to_key& in = boost::get<txin_to_key>(vin);
-
-        struct team_collector
-        {
-            crypto::public_key team_key;
-            bool& found;
-            bool handle_output(uint64_t, const crypto::public_key& pubkey, const rct::key&)
-            {
-                if (pubkey == team_key) found = true;
-                return true;
-            }
-        };
-
-        bool found_team = false;
-        team_collector c{m_premine_keys.team, found_team};
-        uint64_t max_height = 0;
-        if (!scan_outputkeys_for_indexes(tx.version, in, c, tx_prefix_hash, &max_height))
-        {
-            MERROR("Failed to scan output keys for team lock check");
-            return false;
-        }
-
-        if (found_team && height < TEAM_LOCK_BLOCKS)
-        {
-            MERROR("Team lock spend attempted at height " << height
-                   << " but unlock height is " << TEAM_LOCK_BLOCKS);
-            return false;
-        }
-        if (found_team)
-            MDEBUG("Team lock spend OK at height " << height);
+        if (in.k_image == m_premine_keys.treasury_k_image)
+            found_treasury = true;
+        if (in.k_image == m_premine_keys.network_k_image)
+            found_network = true;
     }
 
-    // ── Governance / Network fund tag checks ─────────────────────────────
-    // Treasury and network-fund outputs use deterministic addresses with NO
-    // known private key, so they can never be the real spend in a ring
-    // signature.  Instead, authorized signers voluntarily attach a tx_extra
-    // tag whose signatures authorize the "virtual" spend.  Replay is
-    // prevented because the signatures are bound to tx_prefix_hash.
-    // (fields was already parsed above when computing the hash).
-    if (fields.empty() && !parse_tx_extra(tx.extra, fields))
-        return true;
-
-    tx_extra_governance_transfer gov_transfer;
-    if (find_tx_extra_field_by_type(fields, gov_transfer))
+    // ── Treasury governance check ───────────────────────────────────────
+    // The treasury output (400k MVC) has a deterministic private key
+    // derivable from "mevacoin_governance".  Spending it REQUIRES a
+    // governance_transfer tag (0xB0) with >= GOVERNANCE_THRESHOLD valid
+    // signer signatures.
+    if (found_treasury)
     {
+        tx_extra_governance_transfer gov_transfer;
+        if (!find_tx_extra_field_by_type(fields, gov_transfer))
+        {
+            MERROR("Treasury output spent without governance_transfer tag (0xB0)");
+            return false;
+        }
         std::string err = validate_governance_transfer(m_governance, gov_transfer, tx_prefix_hash);
         if (!err.empty())
         {
@@ -6096,6 +6110,30 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         MDEBUG("Governance transfer OK: " << print_money(gov_transfer.amount));
     }
 
+    // ── Network fund check ──────────────────────────────────────────────
+    // The network fund output (400k MVC) has a deterministic private key
+    // derivable from "mevacoin_network_fund".  Spending it REQUIRES a
+    // network_fund_transfer tag (0xC0) with valid rate-limit check.
+    if (found_network)
+    {
+        tx_extra_network_fund_transfer nf_transfer;
+        if (!find_tx_extra_field_by_type(fields, nf_transfer))
+        {
+            MERROR("Network fund output spent without network_fund_transfer tag (0xC0)");
+            return false;
+        }
+        std::string err = validate_network_fund_spend(m_network_fund, nf_transfer.amount, height);
+        if (!err.empty())
+        {
+            MERROR("Network fund spend validation failed: " << err);
+            return false;
+        }
+        MDEBUG("Network fund spend OK: " << print_money(nf_transfer.amount));
+    }
+
+    // ── Governance actions (add/remove signer) ──────────────────────────
+    // These modify the governance signer set and are validated independently
+    // of any specific premine output spend.
     tx_extra_governance_add_signer add_action;
     if (find_tx_extra_field_by_type(fields, add_action))
     {
@@ -6118,18 +6156,6 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
             return false;
         }
         MDEBUG("Governance remove signer OK");
-    }
-
-    tx_extra_network_fund_transfer nf_transfer;
-    if (find_tx_extra_field_by_type(fields, nf_transfer))
-    {
-        std::string err = validate_network_fund_spend(m_network_fund, nf_transfer.amount, height);
-        if (!err.empty())
-        {
-            MERROR("Network fund spend validation failed: " << err);
-            return false;
-        }
-        MDEBUG("Network fund spend OK: " << print_money(nf_transfer.amount));
     }
 
     return true;

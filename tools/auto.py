@@ -370,9 +370,9 @@ def ensure_wallet(filename, address, spendkey, viewkey, password="govspend"):
         raise
 
 def refresh_wallet():
-    """Refresh the wallet to scan for new outputs."""
-    result = wallet_rpc("refresh")
-    print(f"  Wallet refreshed: {result.get('height', '?')} blocks scanned.")
+    """Rescan blockchain from scratch to ensure correct balance and spent state."""
+    result = wallet_rpc("rescan_blockchain")
+    print("  Wallet rescanned from height 0.")
 
 # ── Fund type operations ─────────────────────────────────────────────────
 

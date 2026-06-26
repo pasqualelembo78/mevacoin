@@ -79,15 +79,45 @@ inline std::vector<crypto::public_key> get_genesis_governance_signers()
     return keys;
 }
 
-// ── Premine output public key tracking ─────────────────────────────────
-// Stores the one-time output public keys of genesis premine outputs.
-// These are computed at genesis and used by validation code to detect
-// when a premine output is being spent.
+// ── Deterministic secret key derivation ─────────────────────────────────
+// Mirrors derive_premine_address() but returns the secret key
+inline crypto::secret_key derive_premine_secret_key(const std::string& domain, network_type nettype)
+{
+    std::string data = domain;
+    data.push_back(static_cast<char>(nettype));
+    crypto::hash h = crypto::cn_fast_hash(data.data(), data.size());
+    crypto::secret_key sk;
+    crypto::hash_to_scalar(h.data, 32, sk);
+    return sk;
+}
+
+// Compute the one-time output SECRET key corresponding to
+// compute_premine_output_key().  Needed to generate the key_image
+// for spend-detection in check_premine_spend().
+inline crypto::secret_key compute_premine_output_secret_key(
+    const crypto::secret_key& tx_secret_key,
+    const account_public_address& recipient,
+    size_t output_index,
+    const crypto::secret_key& recipient_spend_secret_key)
+{
+    crypto::key_derivation derivation;
+    crypto::generate_key_derivation(recipient.m_view_public_key, tx_secret_key, derivation);
+    crypto::secret_key out_sec;
+    crypto::derive_secret_key(derivation, output_index, recipient_spend_secret_key, out_sec);
+    return out_sec;
+}
+
+// ── Premine output key tracking ────────────────────────────────────────
+// Stores the one-time output keys (public + key_image) of genesis premine
+// outputs.  These are computed at genesis and used by validation code to
+// detect when a premine output is being spent.
 struct premine_output_keys
 {
     crypto::public_key team;      // 200k team lock
     crypto::public_key treasury;  // 400k treasury governance
     crypto::public_key network;   // 400k network fund
+    crypto::key_image treasury_k_image;  // key image of treasury output (for spend detection)
+    crypto::key_image network_k_image;   // key image of network fund output (for spend detection)
 };
 
 // Compute the one-time output public key given:
