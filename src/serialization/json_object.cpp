@@ -902,6 +902,33 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::peer& peer)
   GET_FROM_JSON_OBJECT(val, peer.pruning_seed, pruning_seed);
 }
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::ban& ban)
+{
+  dest.StartObject();
+
+  INSERT_INTO_JSON_OBJECT(dest, host, ban.host);
+  INSERT_INTO_JSON_OBJECT(dest, ip, ban.ip);
+  INSERT_INTO_JSON_OBJECT(dest, seconds, ban.seconds);
+  INSERT_INTO_JSON_OBJECT(dest, ban, ban.ban);
+
+  dest.EndObject();
+}
+
+
+void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::ban& ban)
+{
+  if (!val.IsObject())
+  {
+    throw WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, ban.host, host);
+  GET_FROM_JSON_OBJECT(val, ban.ip, ip);
+  GET_FROM_JSON_OBJECT(val, ban.seconds, seconds);
+  GET_FROM_JSON_OBJECT(val, ban.ban, ban);
+}
+
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::tx_in_pool& tx)
 {
   dest.StartObject();

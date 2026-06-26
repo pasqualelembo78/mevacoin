@@ -201,9 +201,7 @@ namespace cryptonote
       return false;
     }
 
-    // if the transaction came from a block popped from the chain,
-    // don't check if we have its key images as spent.
-    // TODO: Investigate why not?
+    // kept_by_block txs come from a popped block — already validated, skip key image check
     if(!kept_by_block)
     {
       if(have_tx_keyimges_as_spent(tx, id))

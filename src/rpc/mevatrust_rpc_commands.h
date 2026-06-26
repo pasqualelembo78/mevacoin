@@ -135,8 +135,8 @@ struct COMMAND_RPC_REGISTER_NODE {
 struct COMMAND_RPC_GET_INCENTIVE_POOL_STATUS {
   struct request_t { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<request_t> request;
-  struct response_t { uint64_t pool_balance; uint64_t total_distributed; uint32_t active_nodes; std::string status;
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(pool_balance) KV_SERIALIZE(total_distributed) KV_SERIALIZE(active_nodes) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  struct response_t { uint64_t pool_balance; uint64_t total_distributed; uint32_t active_nodes; uint64_t last_distribution_height{0}; uint32_t distribution_period{240}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(pool_balance) KV_SERIALIZE(total_distributed) KV_SERIALIZE(active_nodes) KV_SERIALIZE(last_distribution_height) KV_SERIALIZE(distribution_period) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
@@ -494,6 +494,46 @@ struct COMMAND_RPC_GET_NODE_PUBKEY {
       KV_SERIALIZE(status)
     END_KV_SERIALIZE_MAP()
   };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Pool Distribution History ──────────────────────────────────────────────────
+struct COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY {
+  struct request_t { uint32_t limit{50};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE_OPT(limit,(uint32_t)50) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct dist_entry_t { uint64_t height{0}; uint64_t amount{0}; uint32_t node_count{0}; uint64_t timestamp{0};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(height) KV_SERIALIZE(amount) KV_SERIALIZE(node_count) KV_SERIALIZE(timestamp) END_KV_SERIALIZE_MAP() };
+  struct response_t { std::vector<dist_entry_t> entries; uint32_t total{0}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(entries) KV_SERIALIZE(total) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Recent Blocks (wraps Monero get_block_headers_range) ──────────────────────
+struct COMMAND_RPC_GET_RECENT_BLOCKS {
+  struct request_t { uint32_t count{10};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE_OPT(count,(uint32_t)10) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct block_summary_t { uint64_t height{0}; std::string hash; uint64_t timestamp{0}; uint32_t tx_count{0}; uint64_t reward{0};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(height) KV_SERIALIZE(hash) KV_SERIALIZE(timestamp) KV_SERIALIZE(tx_count) KV_SERIALIZE(reward) END_KV_SERIALIZE_MAP() };
+  struct response_t { std::vector<block_summary_t> blocks; uint64_t known_height{0}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(blocks) KV_SERIALIZE(known_height) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Governance Activity History ────────────────────────────────────────────────
+// Scans recent blocks for 0xB0/0xB1/0xB2/0xC0 tx_extra tags.
+// Default: last 1000 blocks, max 100 return entries.
+struct COMMAND_RPC_GET_GOVERNANCE_ACTIVITY {
+  struct request_t { uint64_t from_height{0}; uint32_t count{100};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(from_height) KV_SERIALIZE_OPT(count,(uint32_t)100) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct gov_activity_entry_t { uint64_t height{0}; std::string tx_hash; uint8_t tag{0};
+    uint64_t amount{0}; std::string recipient; std::string type; uint64_t timestamp{0};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(height) KV_SERIALIZE(tx_hash) KV_SERIALIZE(tag)
+    KV_SERIALIZE(amount) KV_SERIALIZE(recipient) KV_SERIALIZE(type) KV_SERIALIZE(timestamp) END_KV_SERIALIZE_MAP() };
+  struct response_t { std::vector<gov_activity_entry_t> entries; uint32_t total{0}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(entries) KV_SERIALIZE(total) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 

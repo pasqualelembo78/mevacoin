@@ -209,6 +209,14 @@ namespace rpc
     uint64_t amount;
     bool cumulative;
   };
+  struct ban
+  {
+    std::string host;
+    uint32_t ip;
+    uint32_t seconds;
+    bool ban;
+  };
+
 }  // namespace rpc
 
 }  // namespace cryptonote

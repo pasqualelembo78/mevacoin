@@ -101,6 +101,8 @@ namespace cryptonote
       HANDLE_NOTIFY_T2(NOTIFY_MEVATRUST_CHALLENGE,  &cryptonote_protocol_handler::handle_NOTIFY_MEVATRUST_CHALLENGE)
       HANDLE_NOTIFY_T2(NOTIFY_MEVATRUST_RESPONSE,   &cryptonote_protocol_handler::handle_NOTIFY_MEVATRUST_RESPONSE)
       HANDLE_NOTIFY_T2(NOTIFY_MEVATRUST_SNAPSHOT, &cryptonote_protocol_handler::handle_NOTIFY_MEVATRUST_SNAPSHOT)
+      HANDLE_NOTIFY_T2(NOTIFY_MEVATRUST_FROST_NONCE, &cryptonote_protocol_handler::handle_NOTIFY_MEVATRUST_FROST_NONCE)
+      HANDLE_NOTIFY_T2(NOTIFY_MEVATRUST_FROST_SIGN, &cryptonote_protocol_handler::handle_NOTIFY_MEVATRUST_FROST_SIGN)
     END_INVOKE_MAP2()
 
     bool on_idle();
@@ -165,6 +167,10 @@ namespace cryptonote
     int handle_NOTIFY_MEVATRUST_SNAPSHOT(int command, NOTIFY_MEVATRUST_SNAPSHOT::request& arg, cryptonote_connection_context& context);
     bool send_mevatrust_challenge(const crypto::hash& target_node_id, const NOTIFY_MEVATRUST_CHALLENGE::request& req);
     bool broadcast_mevatrust_snapshot(const std::vector<uint8_t>& snapshot_extra, uint64_t height);
+    int  handle_NOTIFY_MEVATRUST_FROST_NONCE(int command, NOTIFY_MEVATRUST_FROST_NONCE::request& arg, cryptonote_connection_context& context);
+    int  handle_NOTIFY_MEVATRUST_FROST_SIGN(int command, NOTIFY_MEVATRUST_FROST_SIGN::request& arg, cryptonote_connection_context& context);
+    bool broadcast_frost_nonce(uint64_t height, uint32_t period, uint8_t proposer_index, const crypto::public_key& R_commit);
+    bool broadcast_frost_sign_request(uint64_t height, uint32_t period, uint8_t proposer_index, const crypto::public_key& agg_R);
 
     //----------------- i_bc_protocol_layout ---------------------------------------
     virtual bool relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context);

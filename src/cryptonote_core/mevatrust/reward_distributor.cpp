@@ -309,6 +309,12 @@ bool RewardDistributor::distribute_rewards(std::shared_ptr<MevaTrustEngine> engi
     m_total_distributed    += allocated;
     ++m_distribution_count;
     m_last_distribution_height = 0; // updated by caller
+    DistributionEvent dev;
+    dev.block_height = height;
+    dev.total_amount = allocated;
+    dev.node_count   = static_cast<uint32_t>(m_pending_outputs.size());
+    dev.timestamp    = static_cast<uint64_t>(std::time(nullptr));
+    m_distribution_events.push_back(dev);
     save_pool_state();
     MINFO("[RewardDistributor] Distribution #" << m_distribution_count
           << " allocated=" << allocated << " outputs=" << m_pending_outputs.size());
@@ -377,6 +383,12 @@ uint64_t RewardDistributor::get_total_distributed() const {
 }
 uint64_t RewardDistributor::get_last_distribution_height() const {
     std::lock_guard<std::mutex> lk(m_pool_lock); return m_last_distribution_height;
+}
+std::vector<DistributionEvent> RewardDistributor::get_distribution_history(uint64_t limit) const {
+    std::lock_guard<std::mutex> lk(m_pool_lock);
+    if (limit >= m_distribution_events.size())
+        return m_distribution_events;
+    return std::vector<DistributionEvent>(m_distribution_events.end() - limit, m_distribution_events.end());
 }
 bool RewardDistributor::is_distribution_due(uint64_t current_height) const {
     std::lock_guard<std::mutex> lk(m_pool_lock);

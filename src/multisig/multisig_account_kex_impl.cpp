@@ -114,12 +114,14 @@ namespace multisig
   static void make_multisig_common_privkey(std::vector<crypto::secret_key> participant_base_common_privkeys,
     crypto::secret_key &common_privkey_out)
   {
-    // sort the privkeys for consistency
-    //TODO: need a constant-time operator< for sorting secret keys
+    // sort by hash of each key to avoid variable-time comparison on secret key data
     std::sort(participant_base_common_privkeys.begin(), participant_base_common_privkeys.end(),
         [](const crypto::secret_key &key1, const crypto::secret_key &key2) -> bool
         {
-          return memcmp(&key1, &key2, sizeof(crypto::secret_key)) < 0;
+          crypto::hash h1, h2;
+          crypto::cn_fast_hash(std::addressof(key1), sizeof(crypto::secret_key), h1);
+          crypto::cn_fast_hash(std::addressof(key2), sizeof(crypto::secret_key), h2);
+          return memcmp(&h1, &h2, sizeof(crypto::hash)) < 0;
         }
       );
 

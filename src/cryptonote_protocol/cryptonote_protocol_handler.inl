@@ -3177,6 +3177,159 @@ skip:
     return relayed > 0;
   }
 
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_NOTIFY_MEVATRUST_FROST_NONCE(
+      int command,
+      NOTIFY_MEVATRUST_FROST_NONCE::request& arg,
+      cryptonote_connection_context& context)
+  {
+    MLOG_P2P_MESSAGE("Received NOTIFY_MEVATRUST_FROST_NONCE h=" << arg.height
+                     << " period=" << arg.period << " idx=" << (int)arg.proposer_index
+                     << " type=" << (int)arg.msg_type
+                     << " from " << context.m_remote_address.str());
+
+    auto* pm = cryptonote::mevatrust::get_manager();
+    if (!pm || !pm->is_initialized()) return 1;
+
+    auto* fb = pm->frost_broadcaster();
+    if (!fb) return 1;
+
+    crypto::public_key reply_R{};
+    bool need_reply = fb->on_receive_nonce(
+        arg.height, arg.period, arg.proposer_index, arg.R_commit, reply_R);
+
+    if (need_reply) {
+      NOTIFY_MEVATRUST_FROST_NONCE::request reply;
+      reply.height = arg.height;
+      reply.period = arg.period;
+      reply.msg_type = 1;
+      reply.proposer_index = fb->node_index();
+      reply.R_commit = reply_R;
+      post_notify<NOTIFY_MEVATRUST_FROST_NONCE>(reply, context);
+      MLOG_P2P_MESSAGE("Reply FROST_NONCE h=" << arg.height
+                       << " our_idx=" << (int)fb->node_index());
+    }
+
+    // If we received a reply (as coordinator), check if we can advance to round 2
+    if (arg.msg_type == 1) {
+      if (fb->request_signatures(arg.height, arg.period)) {
+        crypto::public_key agg_R;
+        if (fb->get_agg_R(arg.height, arg.period, agg_R)) {
+          MINFO("[FROST:P2P] Round 1 complete h=" << arg.height
+                << " broadcasting sign request");
+          broadcast_frost_sign_request(arg.height, arg.period, agg_R);
+        }
+      }
+    }
+    return 1;
+  }
+
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_NOTIFY_MEVATRUST_FROST_SIGN(
+      int command,
+      NOTIFY_MEVATRUST_FROST_SIGN::request& arg,
+      cryptonote_connection_context& context)
+  {
+    MLOG_P2P_MESSAGE("Received NOTIFY_MEVATRUST_FROST_SIGN h=" << arg.height
+                     << " period=" << arg.period << " idx=" << (int)arg.proposer_index
+                     << " type=" << (int)arg.msg_type
+                     << " from " << context.m_remote_address.str());
+
+    auto* pm = cryptonote::mevatrust::get_manager();
+    if (!pm || !pm->is_initialized()) return 1;
+    auto* fb = pm->frost_broadcaster();
+    if (!fb) return 1;
+
+    if (arg.msg_type == 0) {
+      // Coordinator broadcast: sign request with agg_R
+      if (arg.sig_data.size() < 32) return 1;
+      crypto::ec_scalar agg_R;
+      memcpy(&agg_R, arg.sig_data.data(), 32);
+
+      crypto::ec_scalar my_sig{};
+      bool need_reply = fb->on_receive_sign_request(
+          arg.height, arg.period, agg_R, my_sig);
+
+      if (need_reply) {
+        NOTIFY_MEVATRUST_FROST_SIGN::request reply;
+        reply.height = arg.height;
+        reply.period = arg.period;
+        reply.msg_type = 1;
+        reply.proposer_index = fb->node_index();
+        crypto::public_key own_R;
+        if (fb->get_own_R(arg.height, arg.period, own_R))
+          reply.R_hiding = own_R;
+        else
+          reply.R_hiding = arg.R_hiding;
+        reply.sig_data.assign(reinterpret_cast<const char*>(&my_sig), 32);
+        post_notify<NOTIFY_MEVATRUST_FROST_SIGN>(reply, context);
+        MLOG_P2P_MESSAGE("Reply FROST_SIGN h=" << arg.height
+                         << " our_idx=" << (int)fb->node_index());
+      }
+    } else {
+      // Signer reply: partial sig
+      if (arg.sig_data.size() < 32) return 1;
+      crypto::ec_scalar partial_sig;
+      memcpy(&partial_sig, arg.sig_data.data(), 32);
+
+      fb->on_receive_partial(arg.height, arg.period,
+                             arg.proposer_index, arg.R_hiding, partial_sig);
+
+      if (fb->try_finalize(arg.height, arg.period)) {
+        MINFO("[FROST:P2P] Distribution finalized h=" << arg.height);
+      }
+    }
+    return 1;
+  }
+
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::broadcast_frost_nonce(
+      uint64_t height, uint32_t period, uint8_t proposer_index,
+      const crypto::public_key& R_commit)
+  {
+    NOTIFY_MEVATRUST_FROST_NONCE::request req;
+    req.height = height;
+    req.period = period;
+    req.msg_type = 0;
+    req.proposer_index = proposer_index;
+    req.R_commit = R_commit;
+    int relayed = 0;
+    m_p2p->for_each_connection(
+      [&req, &relayed, this](cryptonote_connection_context& ctx, nodetool::peerid_type, uint32_t) -> bool {
+        if (ctx.m_state >= cryptonote_connection_context::state_synchronizing)
+          { post_notify<NOTIFY_MEVATRUST_FROST_NONCE>(req, ctx); relayed++; }
+        return true; });
+    MINFO("broadcast_frost_nonce h=" << height << " period=" << period
+          << " idx=" << (int)proposer_index << " peers=" << relayed);
+    return relayed > 0;
+  }
+
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::broadcast_frost_sign_request(
+      uint64_t height, uint32_t period, uint8_t proposer_index,
+      const crypto::public_key& agg_R)
+  {
+    NOTIFY_MEVATRUST_FROST_SIGN::request req;
+    req.height = height;
+    req.period = period;
+    req.msg_type = 0;
+    req.proposer_index = proposer_index;
+    memset(&req.R_hiding, 0, sizeof(req.R_hiding));
+    req.sig_data.assign(reinterpret_cast<const char*>(&agg_R), 32);
+    int relayed = 0;
+    m_p2p->for_each_connection(
+      [&req, &relayed, this](cryptonote_connection_context& ctx, nodetool::peerid_type, uint32_t) -> bool {
+        if (ctx.m_state >= cryptonote_connection_context::state_synchronizing)
+          { post_notify<NOTIFY_MEVATRUST_FROST_SIGN>(req, ctx); relayed++; }
+        return true; });
+    MINFO("broadcast_frost_sign_request h=" << height << " period=" << period
+          << " peers=" << relayed);
+    return relayed > 0;
+  }
 
 } // namespace
 

@@ -29,6 +29,7 @@
 #include "mevatrust_types.h"
 #include "snapshot_broadcaster.h"
 #include "mevatrust_store_registry.h"
+#include "frost_broadcaster.h"
 #include <memory>
 
 namespace cryptonote {
@@ -132,6 +133,15 @@ public:
   // Calcola pool_balance on-chain: somma 3% contributi - distribuzioni eseguite
   uint64_t compute_pool_balance_from_chain() const;
 
+  // Proposer key management for FROST signing
+  void set_proposer_keypairs(const std::array<frost::SignerKeypair, frost::FROST_N>& kp);
+  bool has_proposer_keys() const { return m_has_proposer_keys; }
+
+  // P2P FROST coordination
+  void set_frost_broadcast_func(FrostBroadcaster::BroadcastFunc fn);
+  FrostBroadcaster* frost_broadcaster() { return m_frost_broadcaster.get(); }
+  const FrostBroadcaster* frost_broadcaster() const { return m_frost_broadcaster.get(); }
+
   void set_pool_fraction_percent(uint32_t pct);
   void set_min_score_threshold(float s);
   void set_period_length(uint32_t blocks);
@@ -154,6 +164,7 @@ private:
 
   std::vector<NodeCoinbaseReward> m_resolved_rewards;
   uint64_t m_resolved_at_height{0};
+  uint64_t m_resolved_pool_balance{0};
   uint32_t m_period_length{240};
   uint64_t m_last_period_height{0};
 
@@ -180,6 +191,13 @@ private:
   // ?? Pool Distribution: pending 0xAA blob (FROST-authorized) ??
   std::vector<uint8_t>  m_pending_pool_distribution_extra;
   bool                  m_has_pending_pool_distribution{false};
+
+  // Proposer keypairs for FROST signing
+  std::array<frost::SignerKeypair, frost::FROST_N> m_proposer_keypairs{};
+  bool m_has_proposer_keys{false};
+
+  // P2P FROST coordinator
+  std::unique_ptr<FrostBroadcaster> m_frost_broadcaster;
 
   // ── State commitment (fork resistance) ──────────────────────────────────
   bool                  m_state_root_verification_enabled{true};

@@ -251,7 +251,8 @@
 // New constants are intended to go here
 namespace config
 {
-  uint64_t const DEFAULT_FEE_ATOMIC_MVC_PER_KB = 500; // Just a placeholder!  Change me!
+  // Fee system: dynamic algorithm in blockchain.cpp (inherited from Monero).
+  // FEE_PER_KB = 2000000000, FEE_PER_BYTE = 300000 are the static fallback values.
   uint8_t const FEE_CALCULATION_MAX_RETRIES = 10;
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)2000000000); // 2 * pow(10, 9)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)100000000); // pow(10, 8)

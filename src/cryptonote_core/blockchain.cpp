@@ -74,12 +74,6 @@ using namespace crypto;
 
 //#include "serialization/json_archive.h"
 
-/* TODO:
- *  Clean up code:
- *    Possibly change how outputs are referred to/indexed in blockchain and wallets
- *
- */
-
 using namespace cryptonote;
 using epee::string_tools::pod_to_hex;
 extern "C" void slow_hash_allocate_state();
@@ -496,8 +490,7 @@ bool Blockchain::store_blockchain()
   CRITICAL_REGION_LOCAL(m_db->m_synchronization_lock);
 
   TIME_MEASURE_START(save);
-  // TODO: make sure sync(if this throws that it is not simply ignored higher
-  // up the call stack
+  // TODO: make sure sync() throw is not silently ignored
   try
   {
     m_db->sync();
@@ -1672,7 +1665,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     if (parent_in_main)
     {
       cryptonote::block prev_block;
-      CHECK_AND_ASSERT_MES(get_block_by_hash(*from_block, prev_block), false, "From block not found"); // TODO
+      CHECK_AND_ASSERT_MES(get_block_by_hash(*from_block, prev_block), false, "From block not found");
       uint64_t from_block_height = cryptonote::get_block_height(prev_block);
       height = from_block_height + 1;
       if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
@@ -2210,9 +2203,6 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       return false;
     }
 
-    // FIXME:
-    // this brings up an interesting point: consider allowing to get block
-    // difficulty both by height OR by hash, not just height.
     difficulty_type main_chain_cumulative_difficulty = m_db->get_block_cumulative_difficulty(m_db->height() - 1);
     if (alt_chain.size())
     {
@@ -2316,7 +2306,6 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     m_db->add_alt_block(id, data, cryptonote::block_to_blob(bei.bl));
     alt_chain.push_back(bei);
 
-    // FIXME: is it even possible for a checkpoint to show up not on the main chain?
     if(is_a_checkpoint)
     {
       //do reorganize!
@@ -4297,8 +4286,6 @@ leave:
   uint64_t n_pruned = 0;
   TIME_MEASURE_FINISH(t3);
 
-// XXX old code adds miner tx here
-
   // Iterate over the block's transaction hashes, grabbing each
   // from the tx_pool (or from extra_block_txs) and validating them.  Each is then added
   // to txs.  Keys spent in each are added to <keys> by the double spend check.
@@ -4309,7 +4296,6 @@ leave:
   {
     TIME_MEASURE_START(aa);
 
-// XXX old code does not check whether tx exists
     if (m_db->tx_exists(tx_id))
     {
       MERROR("Block with id: " << id << " attempting to add transaction already in blockchain with id: " << tx_id);
@@ -5740,11 +5726,8 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
         m_blocks_hash_check.resize(m_blocks_hash_of_hashes.size() * HASH_OF_HASHES_STEP, std::make_pair(crypto::null_hash, 0));
         MINFO(nblocks << " block hashes loaded");
 
-        // FIXME: clear tx_pool because the process might have been
-        // terminated and caused it to store txs kept by blocks.
-        // The core will not call check_tx_inputs(..) for these
-        // transactions in this case. Consequently, the sanity check
-        // for tx hashes will fail in handle_block_to_main_chain(..)
+        // Clear tx_pool on startup — stale txs from terminated process
+        // could fail check_tx_inputs(..) and break handle_block_to_main_chain(..)
         CRITICAL_REGION_LOCAL(m_tx_pool);
 
         std::vector<crypto::hash> tx_hashes;

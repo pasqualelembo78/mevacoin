@@ -812,6 +812,282 @@ void GetOutputDistribution::Response::fromJson(const rapidjson::Value& val)
   GET_FROM_JSON_OBJECT(val, distributions, distributions);
 }
 
+
+void GetBlockTemplate::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, wallet_address, wallet_address);
+  INSERT_INTO_JSON_OBJECT(dest, reserve_size, reserve_size);
+}
+
+void GetBlockTemplate::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, wallet_address, wallet_address);
+  GET_FROM_JSON_OBJECT(val, reserve_size, reserve_size);
+}
+
+void GetBlockTemplate::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, blocktemplate_blob, blocktemplate_blob);
+  INSERT_INTO_JSON_OBJECT(dest, blockhashing_blob, blockhashing_blob);
+  INSERT_INTO_JSON_OBJECT(dest, difficulty, difficulty);
+  INSERT_INTO_JSON_OBJECT(dest, height, height);
+  INSERT_INTO_JSON_OBJECT(dest, expected_reward, expected_reward);
+  INSERT_INTO_JSON_OBJECT(dest, seed_height, seed_height);
+  INSERT_INTO_JSON_OBJECT(dest, seed_hash, seed_hash);
+}
+
+void GetBlockTemplate::Response::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, blocktemplate_blob, blocktemplate_blob);
+  GET_FROM_JSON_OBJECT(val, blockhashing_blob, blockhashing_blob);
+  GET_FROM_JSON_OBJECT(val, difficulty, difficulty);
+  GET_FROM_JSON_OBJECT(val, height, height);
+  GET_FROM_JSON_OBJECT(val, expected_reward, expected_reward);
+  GET_FROM_JSON_OBJECT(val, seed_height, seed_height);
+  GET_FROM_JSON_OBJECT(val, seed_hash, seed_hash);
+}
+
+
+void SubmitBlock::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, block_blob, block_blob);
+}
+
+void SubmitBlock::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, block_blob, block_blob);
+}
+
+void SubmitBlock::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void SubmitBlock::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void GetBlock::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, height, height);
+}
+
+void GetBlock::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, height, height);
+}
+
+void GetBlock::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, header, header);
+  INSERT_INTO_JSON_OBJECT(dest, tx_hashes, tx_hashes);
+  INSERT_INTO_JSON_OBJECT(dest, blob, blob);
+}
+
+void GetBlock::Response::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, header, header);
+  GET_FROM_JSON_OBJECT(val, tx_hashes, tx_hashes);
+  GET_FROM_JSON_OBJECT(val, blob, blob);
+}
+
+
+void SetLogHashRate::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, visible, visible);
+}
+
+void SetLogHashRate::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, visible, visible);
+}
+
+void SetLogHashRate::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void SetLogHashRate::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void GetConnections::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void GetConnections::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void GetConnections::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, connections, connections);
+}
+
+void GetConnections::Response::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, connections, connections);
+}
+
+
+void GetBlockHeadersRange::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, start_height, start_height);
+  INSERT_INTO_JSON_OBJECT(dest, count, count);
+}
+
+void GetBlockHeadersRange::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, start_height, start_height);
+  GET_FROM_JSON_OBJECT(val, count, count);
+}
+
+void GetBlockHeadersRange::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, headers, headers);
+}
+
+void GetBlockHeadersRange::Response::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, headers, headers);
+}
+
+
+void StopDaemon::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StopDaemon::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void StopDaemon::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StopDaemon::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void StartSaveGraph::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StartSaveGraph::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void StartSaveGraph::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StartSaveGraph::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void StopSaveGraph::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StopSaveGraph::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void StopSaveGraph::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void StopSaveGraph::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void GetBans::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void GetBans::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void GetBans::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, bans, bans);
+}
+
+void GetBans::Response::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, bans, bans);
+}
+
+
+void SetBans::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{
+  INSERT_INTO_JSON_OBJECT(dest, bans, bans);
+}
+
+void SetBans::Request::fromJson(const rapidjson::Value& val)
+{
+  if (!val.IsObject())
+  {
+    throw json::WRONG_TYPE("json object");
+  }
+
+  GET_FROM_JSON_OBJECT(val, bans, bans);
+}
+
+void SetBans::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void SetBans::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
+void FlushTransactionPool::Request::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void FlushTransactionPool::Request::fromJson(const rapidjson::Value& val)
+{}
+
+void FlushTransactionPool::Response::doToJson(rapidjson::Writer<epee::byte_stream>& dest) const
+{}
+
+void FlushTransactionPool::Response::fromJson(const rapidjson::Value& val)
+{}
+
+
 }  // namespace rpc
 
 }  // namespace cryptonote

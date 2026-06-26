@@ -47,8 +47,6 @@
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4244)
 
-//TODO: fix size_t warning in x32 platform
-
 /*! \struct binary_archive_base
  *
  * \brief base for the binary archive type

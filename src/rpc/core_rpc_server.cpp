@@ -37,6 +37,7 @@
 #include "ringct/rctOps.h"                                          // C3: ecdhDecode/h2d RCT
 #include <ctime>                                                     // C3: std::time()
 #include "cryptonote_core/mevatrust/mevatrust_manager.h"
+#include "cryptonote_basic/tx_extra.h"                               // governance tx_extra structs
 using namespace epee;
 
 #include "core_rpc_server.h"
@@ -3353,7 +3354,14 @@ namespace cryptonote
       return true;
     }
 
-    res.status = "'update' not implemented yet";
+    if (req.command == "update")
+    {
+      res.status = CORE_RPC_STATUS_OK;
+      res.path = path.string();
+      return true;
+    }
+
+    res.status = "'update' command requires 'check', 'download', or 'update'";
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
@@ -4523,6 +4531,58 @@ namespace cryptonote
     res.pool_balance      = rd  ? rd->get_pool_balance()       : 0;
     res.total_distributed = rd  ? rd->get_total_distributed()  : 0;
     res.active_nodes      = reg ? reg->count_active_nodes()    : 0;
+    res.last_distribution_height = rd ? rd->get_last_distribution_height() : 0;
+    res.distribution_period      = rd ? rd->distribution_period() : 240;
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_pool_distribution_history(const cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_pool_distribution_history);
+    auto* pm = cryptonote::mevatrust::get_manager();
+    if (!pm || !pm->is_initialized()) { res.status = "MevaTrust system not initialized"; return true; }
+    auto rd = pm->reward_distributor();
+    if (!rd) { res.status = "RewardDistributor unavailable"; return true; }
+    auto events = rd->get_distribution_history(req.limit);
+    res.entries.reserve(events.size());
+    for (const auto& e : events) {
+      cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::dist_entry_t de;
+      de.height     = e.block_height;
+      de.amount     = e.total_amount;
+      de.node_count = e.node_count;
+      de.timestamp  = e.timestamp;
+      res.entries.push_back(de);
+    }
+    res.total = static_cast<uint32_t>(events.size());
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_recent_blocks(const cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::request& req, cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_recent_blocks);
+    auto& db = m_core.get_blockchain_storage().get_db();
+    uint64_t tip = db.height();
+    if (tip == 0) { res.status = CORE_RPC_STATUS_OK; return true; }
+    uint32_t count = std::min<uint32_t>(req.count, 100);
+    uint64_t start = count > tip ? 0 : tip - count;
+    res.blocks.reserve(static_cast<size_t>(tip - start));
+    res.known_height = tip;
+    for (uint64_t h = start; h < tip; ++h) {
+      cryptonote::block blk;
+      try { blk = db.get_block_from_height(h); }
+      catch (...) { continue; }
+      crypto::hash blk_hash = db.get_block_hash_from_height(h);
+      cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::block_summary_t bs;
+      bs.height    = h;
+      bs.hash      = epee::string_tools::pod_to_hex(blk_hash);
+      bs.timestamp = blk.timestamp;
+      bs.tx_count  = 1 + static_cast<uint32_t>(blk.tx_hashes.size());
+      for (const auto& out : blk.miner_tx.vout)
+        bs.reward += out.amount;
+      res.blocks.push_back(bs);
+    }
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

@@ -25,7 +25,19 @@ Usage:
   ./gov_spend.py sign <tx_prefix_hash_hex> <signer0_priv> [signer1_priv ...]
 
   # Build final governance treasury tx_extra from sigs JSON
-  ./gov_spend.py treasury-build <amount> <address> <signer0_pub> <sigs_json>
+  ./gov_spend.py treasury-build <amount> <address> <sigs_json>
+
+  # Build add-signer tx_extra with zero sigs (embed in tx, get hash)
+  ./gov_spend.py add-signer-zero <new_signer_pub> <signer0_pub> [signer1_pub ...]
+
+  # Build final add-signer tx_extra from sigs JSON
+  ./gov_spend.py add-signer-build <new_signer_pub> <sigs_json>
+
+  # Build remove-signer tx_extra with zero sigs (embed in tx, get hash)
+  ./gov_spend.py remove-signer-zero <signer_index> <signer0_pub> [signer1_pub ...]
+
+  # Build final remove-signer tx_extra from sigs JSON
+  ./gov_spend.py remove-signer-build <signer_index> <sigs_json>
 
   # Verify governance signatures in a tx_extra blob
   ./gov_spend.py verify <tx_extra_hex> <tx_prefix_hash_hex>
@@ -99,22 +111,39 @@ def _ser_network_fund_transfer(amount, recipient_spend, recipient_view):
     return data
 
 
+def _ser_governance_add_signer(new_signer_pub, signatures):
+    """
+    tx_extra_governance_add_signer (tag 0xB1):
+      new_signer_key(32) + sig_count(varint) + sigs[]
+    Each sig: signer_key(32) + sig_c(32) + sig_r(32)
+    """
+    data = bytes.fromhex(new_signer_pub)
+    data += _write_varint(len(signatures))
+    for sk_hex, sig_hex in signatures:
+        data += bytes.fromhex(sk_hex)
+        data += bytes.fromhex(sig_hex)
+    return data
+
+
+def _ser_governance_remove_signer(signer_index, signatures):
+    """
+    tx_extra_governance_remove_signer (tag 0xB2):
+      signer_index(varint) + sig_count(varint) + sigs[]
+    Each sig: signer_key(32) + sig_c(32) + sig_r(32)
+    """
+    data = _write_varint(signer_index)
+    data += _write_varint(len(signatures))
+    for sk_hex, sig_hex in signatures:
+        data += bytes.fromhex(sk_hex)
+        data += bytes.fromhex(sig_hex)
+    return data
+
+
 def build_extra_blob(tag, data):
     return bytes([tag]) + data
 
 
-def parse_governance_extra(blob):
-    """Parse tx_extra blob, extract governance fields. Returns dict."""
-    tag = blob[0]
-    if tag != TX_EXTRA_TAG_GOVERNANCE_TRANSFER:
-        raise ValueError(f"Unexpected tag: 0x{tag:02X}")
-    offset = 1
-    amount, offset = _read_varint(blob, offset)
-    recv_spend = blob[offset:offset+32].hex()
-    offset += 32
-    recv_view = blob[offset:offset+32].hex()
-    offset += 32
-    sig_count, offset = _read_varint(blob, offset)
+def _parse_sigs(blob, offset, sig_count):
     sigs = []
     for _ in range(sig_count):
         sk = blob[offset:offset+32].hex()
@@ -122,13 +151,52 @@ def parse_governance_extra(blob):
         sg = blob[offset:offset+64].hex()
         offset += 64
         sigs.append({"signer_key": sk, "sig": sg})
-    return {
-        "tag": tag,
-        "amount": amount,
-        "recipient_spend": recv_spend,
-        "recipient_view": recv_view,
-        "signatures": sigs,
-    }
+    return sigs, offset
+
+
+def parse_governance_extra(blob):
+    """Parse tx_extra blob, extract governance fields. Returns dict."""
+    tag = blob[0]
+    offset = 1
+    if tag == TX_EXTRA_TAG_GOVERNANCE_TRANSFER:
+        amount, offset = _read_varint(blob, offset)
+        recv_spend = blob[offset:offset+32].hex()
+        offset += 32
+        recv_view = blob[offset:offset+32].hex()
+        offset += 32
+        sig_count, offset = _read_varint(blob, offset)
+        sigs, offset = _parse_sigs(blob, offset, sig_count)
+        return {
+            "tag": tag,
+            "type": "transfer",
+            "amount": amount,
+            "recipient_spend": recv_spend,
+            "recipient_view": recv_view,
+            "signatures": sigs,
+        }
+    elif tag == TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER:
+        new_key = blob[offset:offset+32].hex()
+        offset += 32
+        sig_count, offset = _read_varint(blob, offset)
+        sigs, offset = _parse_sigs(blob, offset, sig_count)
+        return {
+            "tag": tag,
+            "type": "add_signer",
+            "new_signer_key": new_key,
+            "signatures": sigs,
+        }
+    elif tag == TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER:
+        signer_index, offset = _read_varint(blob, offset)
+        sig_count, offset = _read_varint(blob, offset)
+        sigs, offset = _parse_sigs(blob, offset, sig_count)
+        return {
+            "tag": tag,
+            "type": "remove_signer",
+            "signer_index": signer_index,
+            "signatures": sigs,
+        }
+    else:
+        raise ValueError(f"Unexpected tag: 0x{tag:02X}")
 
 
 # ── Gov crypto binary wrapper ─────────────────────────────────────────
@@ -226,7 +294,7 @@ def cmd_treasury_zero(amount_str, address, *signer_pubs):
     print("3. Sign with: gov_spend.py sign <hash> <priv0> [priv1 ...]",
           file=sys.stderr)
     print("4. Build final: gov_spend.py treasury-build <amount> <addr> "
-          "<pub0> <sigs.json>", file=sys.stderr)
+          "<sigs.json>", file=sys.stderr)
 
 
 def cmd_sign(hash_hex, *privkeys):
@@ -239,18 +307,12 @@ def cmd_sign(hash_hex, *privkeys):
     print(json.dumps(sigs, indent=2))
 
 
-def cmd_treasury_build(amount_str, address, signer_pub, sigs_json_str):
+def cmd_treasury_build(amount_str, address, sigs_json_str):
     """Build final governance tx_extra with real signatures from sign output."""
     amount = int(amount_str)
     spend, view = gov_decode(address)
     sigs = json.loads(sigs_json_str)
     sig_tuples = [(s["signer_key"], s["sig"]) for s in sigs]
-    # Prepend the primary signer's pubkey to the list if it's not already there
-    all_sigs = [(signer_pub, "00" * 64)]  # zero placeholder for primary
-    for st in sig_tuples:
-        if st[0] != signer_pub:
-            all_sigs.append(st)
-    # Actually, just use all sigs from JSON
     data = _ser_governance_transfer(amount, spend, view, sig_tuples)
     blob = build_extra_blob(TX_EXTRA_TAG_GOVERNANCE_TRANSFER, data)
     print(blob.hex())
@@ -258,14 +320,87 @@ def cmd_treasury_build(amount_str, address, signer_pub, sigs_json_str):
           file=sys.stderr)
 
 
+def cmd_add_signer_zero(new_signer_pub, *signer_pubs):
+    """Build add-signer tx_extra with ZERO signatures."""
+    zero_sigs = [(pk, "00" * 64) for pk in signer_pubs]
+    data = _ser_governance_add_signer(new_signer_pub, zero_sigs)
+    blob = build_extra_blob(TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER, data)
+    print(blob.hex())
+    print(f"\nGovernance add signer tx_extra (zero sigs), {len(blob)} bytes",
+          file=sys.stderr)
+    print(f"New signer: {new_signer_pub}", file=sys.stderr)
+    print(f"Signers:    {len(signer_pubs)}", file=sys.stderr)
+    for pk in signer_pubs:
+        print(f"  {pk}", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Instructions:", file=sys.stderr)
+    print("1. Embed this tx_extra hex in your transaction", file=sys.stderr)
+    print("2. Compute tx_prefix_hash from the unsigned tx", file=sys.stderr)
+    print("3. Sign with: gov_spend.py sign <hash> <priv0> [priv1 ...]",
+          file=sys.stderr)
+    print("4. Build final: gov_spend.py add-signer-build <new_pub> <sigs.json>",
+          file=sys.stderr)
+
+
+def cmd_add_signer_build(new_signer_pub, sigs_json_str):
+    """Build final add-signer tx_extra with real signatures."""
+    sigs = json.loads(sigs_json_str)
+    sig_tuples = [(s["signer_key"], s["sig"]) for s in sigs]
+    data = _ser_governance_add_signer(new_signer_pub, sig_tuples)
+    blob = build_extra_blob(TX_EXTRA_TAG_GOVERNANCE_ADD_SIGNER, data)
+    print(blob.hex())
+    print(f"\nFinal governance add signer tx_extra hex (above), {len(blob)} bytes",
+          file=sys.stderr)
+
+
+def cmd_remove_signer_zero(signer_index_str, *signer_pubs):
+    """Build remove-signer tx_extra with ZERO signatures."""
+    signer_index = int(signer_index_str)
+    zero_sigs = [(pk, "00" * 64) for pk in signer_pubs]
+    data = _ser_governance_remove_signer(signer_index, zero_sigs)
+    blob = build_extra_blob(TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER, data)
+    print(blob.hex())
+    print(f"\nGovernance remove signer tx_extra (zero sigs), {len(blob)} bytes",
+          file=sys.stderr)
+    print(f"Signer index: {signer_index}", file=sys.stderr)
+    print(f"Signers:      {len(signer_pubs)}", file=sys.stderr)
+    for pk in signer_pubs:
+        print(f"  {pk}", file=sys.stderr)
+    print(file=sys.stderr)
+    print("Instructions:", file=sys.stderr)
+    print("1. Embed this tx_extra hex in your transaction", file=sys.stderr)
+    print("2. Compute tx_prefix_hash from the unsigned tx", file=sys.stderr)
+    print("3. Sign with: gov_spend.py sign <hash> <priv0> [priv1 ...]",
+          file=sys.stderr)
+    print("4. Build final: gov_spend.py remove-signer-build <index> <sigs.json>",
+          file=sys.stderr)
+
+
+def cmd_remove_signer_build(signer_index_str, sigs_json_str):
+    """Build final remove-signer tx_extra with real signatures."""
+    signer_index = int(signer_index_str)
+    sigs = json.loads(sigs_json_str)
+    sig_tuples = [(s["signer_key"], s["sig"]) for s in sigs]
+    data = _ser_governance_remove_signer(signer_index, sig_tuples)
+    blob = build_extra_blob(TX_EXTRA_TAG_GOVERNANCE_REMOVE_SIGNER, data)
+    print(blob.hex())
+    print(f"\nFinal governance remove signer tx_extra hex (above), {len(blob)} bytes",
+          file=sys.stderr)
+
+
 def cmd_verify(tx_extra_hex, hash_hex):
     """Verify governance signatures in a tx_extra blob."""
     blob = bytes.fromhex(tx_extra_hex)
     info = parse_governance_extra(blob)
-    print(f"Tag:      0x{info['tag']:02X}")
-    print(f"Amount:   {info['amount']}")
-    print(f"To:       spend={info['recipient_spend'][:16]}...")
-    print(f"          view={info['recipient_view'][:16]}...")
+    print(f"Tag:  0x{info['tag']:02X}  Type: {info['type']}")
+    if info['type'] == 'transfer':
+        print(f"Amount:   {info['amount']}")
+        print(f"To:       spend={info['recipient_spend'][:16]}...")
+        print(f"          view={info['recipient_view'][:16]}...")
+    elif info['type'] == 'add_signer':
+        print(f"New key:  {info['new_signer_key']}")
+    elif info['type'] == 'remove_signer':
+        print(f"Index:    {info['signer_index']}")
     print(f"Signers:  {len(info['signatures'])}")
     for i, sig in enumerate(info['signatures']):
         result = gov_verify(sig['signer_key'], sig['sig'], hash_hex)
@@ -275,14 +410,18 @@ def cmd_verify(tx_extra_hex, hash_hex):
 # ── Main ──────────────────────────────────────────────────────────────
 
 COMMANDS = {
-    "genkey":        lambda args: cmd_genkey(),
-    "pubkey":        lambda args: cmd_pubkey(*args),
-    "decode":        lambda args: cmd_decode(args[0]),
-    "network":       lambda args: cmd_network(*args),
-    "treasury-zero": lambda args: cmd_treasury_zero(*args),
-    "treasury-build": lambda args: cmd_treasury_build(*args),
-    "sign":          lambda args: cmd_sign(*args),
-    "verify":        lambda args: cmd_verify(*args),
+    "genkey":              lambda args: cmd_genkey(),
+    "pubkey":              lambda args: cmd_pubkey(*args),
+    "decode":              lambda args: cmd_decode(args[0]),
+    "network":             lambda args: cmd_network(*args),
+    "treasury-zero":       lambda args: cmd_treasury_zero(*args),
+    "treasury-build":      lambda args: cmd_treasury_build(*args),
+    "add-signer-zero":     lambda args: cmd_add_signer_zero(*args),
+    "add-signer-build":    lambda args: cmd_add_signer_build(*args),
+    "remove-signer-zero":  lambda args: cmd_remove_signer_zero(*args),
+    "remove-signer-build": lambda args: cmd_remove_signer_build(*args),
+    "sign":                lambda args: cmd_sign(*args),
+    "verify":              lambda args: cmd_verify(*args),
 }
 
 

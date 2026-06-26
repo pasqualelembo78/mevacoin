@@ -3694,8 +3694,7 @@ void wallet2::process_unconfirmed_transfer(bool incremental, const crypto::hash 
     }
   };
 
-  // TODO: set tx_propagation_timeout to CRYPTONOTE_DANDELIONPP_EMBARGO_AVERAGE * 3 / 2 after v15 hardfork
-  constexpr const std::chrono::seconds tx_propagation_timeout{500};
+  constexpr const std::chrono::seconds tx_propagation_timeout{CRYPTONOTE_DANDELIONPP_EMBARGO_AVERAGE * 3 / 2};
   if (seen_in_pool)
   {
     if (tx_details.m_state != wallet2::unconfirmed_transfer_details::pending_in_pool)
@@ -8604,9 +8603,16 @@ fee_algorithm wallet2::get_fee_algorithm()
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_min_ring_size()
 {
-  // TEMP: allow small rings for test-chain premine spends (only 2 outputs of 400k)
-  // TODO: revert for mainnet
-  return 2;
+  // Mirror consensus logic from blockchain.cpp — must match what the chain enforces
+  if (use_fork_rules(HF_VERSION_MIN_MIXIN_15, 0))
+    return 16;
+  if (use_fork_rules(HF_VERSION_MIN_MIXIN_10, 0))
+    return 11;
+  if (use_fork_rules(HF_VERSION_MIN_MIXIN_6, 0))
+    return 7;
+  if (use_fork_rules(HF_VERSION_MIN_MIXIN_4, 0))
+    return 5;
+  return 3;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_max_ring_size()

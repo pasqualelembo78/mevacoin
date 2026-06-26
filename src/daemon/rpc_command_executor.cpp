@@ -2211,7 +2211,11 @@ bool t_rpc_command_executor::update(const std::string &command)
   if (command == "download")
     return true;
 
-  tools::msg_writer() << "'update' not implemented yet";
+  tools::msg_writer() << "Update downloaded to: " << res.path;
+  tools::msg_writer() << "To complete the update:";
+  tools::msg_writer() << "  1. Stop the daemon  (save_bc + exit)";
+  tools::msg_writer() << "  2. Replace the binary with the downloaded file";
+  tools::msg_writer() << "  3. Restart the daemon";
 
   return true;
 }
