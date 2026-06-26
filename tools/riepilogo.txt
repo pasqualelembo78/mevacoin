@@ -1,56 +1,80 @@
-RIEPILOGO LAVORO SVOLTO
-========================
+═══ RIEPILOGO 25/06/2026 — FIX PREMINE SPOT ═══
 
-1. REVISIONE E DEBUG DI governance_spend_auto.py
------------------------------------------------
-Letto e analizzato l'intero script (688 righe). Identificati e corretti i
-seguenti bug:
+PROBLEMA:
+auto.py falliva con "not enough money" per tutti e 3 i fondi
+(team-lock, treasury, network) nonostante il genesis block
+contenesse gli output corretti.
 
-  a) ensure_wallet() — la gestione dell'eccezione nel ramo "already exists"
-     aveva un try/except annidato che chiamava open_wallet due volte (la
-     seconda identica alla prima, chiaramente un errore di copia/incolla).
-     Riscritta per: chiudere prima il wallet aperto → provare
-     generate_from_keys → se fallisce con "already exists", aprire il wallet
-     esistente.
+CAUSA RADICE:
+wallet2.cpp:2414 — RefreshOptimizeCoinbase controllava solo
+l'output 0 delle coinbase. Il genesis ha 4 output (indice 0 =
+Monero originale, 1=team, 2=treasury, 3=network). L'output 0
+non matchava mai il wallet, quindi saltava TUTTI gli output.
 
-  b) compute_tx_prefix_hash_with_zeroed_sigs() — il loop di dispatch dei tag
-     dell'extra aveva codice morto (elif tag == 0xB0 dentro if tag != 0xB0,
-     una condizione logicamente impossibile). Semplificato il loop con
-     if/elif diretti per ogni tag (0x01 pubkey, 0x02 nonce, 0x03 additional
-     pubkeys, 0x04 padding, 0xB0 governance, 0xC0 network fund).
+FIX APPLICATO:
+src/wallet/wallet2.cpp:2414 e 2267 — aggiunto
+  && tx.vout.size() == 1
+alla condizione dell'ottimizzazione. Le coinbase con un solo
+output restano ottimizzate; il genesis (4 output) cade nel
+ramo else che scansiona tutti gli output singolarmente.
 
-  c) Selezione signer — il controllo "i in selected" confrontava un int con
-     una lista di dict, risultando sempre falso. Creata una variabile
-     sel_indices = {s["index"] for s in selected} per il controllo corretto.
+COMPILAZIONE:
+make release timeout (1 CPU/845MB). Compilato wallet2.cpp a mano
+con -O0 e rilinkato mevacoin-wallet-rpc.
 
-  d) Rimosso import struct inutilizzato e variabili fees inutilizzate.
+VERIFICA:
+Wallet treasury: 400.000 MVC (1 output)
+Wallet network fund: 400.000 MVC (1 output)
+Entrambi funzionanti.
 
-2. ANALISI DELLA LOGICA DI SOSTITUZIONE EXTRA (tesoreria)
-----------------------------------------------------------
-Verificata la correttezza dell'approccio per lo spend della tesoreria:
-  - Il wallet RPC crea una tx con do_not_relay=True e extra a firme zero
-  - La tx ha rv.message (nei rctSig) calcolato col prefisso a firme zero
-  - Lo script trova il campo extra nel blob serializzato, localizza il tag
-    0xB0, e sostituisce le firme zero con firme reali (stessa lunghezza)
-  - Il blob modificato mantiene rv.message intatto → CLSAG verifica OK
-  - Il nodo in check_premine_spend() ricalcola il tx_prefix_hash azzerando
-    le firme di governance, matchando l'originale
+STATO BUILD:
+build/Linux/mevacoin/release/bin/mevacoin-wallet-rpc — OK (fixato)
+build/Linux/mevacoin/release/bin/mevacoind — OK (invariato)
 
-3. VERIFICA SINTASSI
----------------------
-python3 -c "py_compile.compile('governance_spend_auto.py', doraise=True)"
-→ Syntax OK
+DAEMON:
+Avviato in offline su 127.0.0.1:18081
 
-4. FILE CREATI/AGGIORNATI
--------------------------
-  - tools/governance_spend/governance_spend_auto.py  (eseguibile)
-  - tools/governance_spend/AGENTS.md                 (workflow finale)
-  - tools/governance_spend/riepilogo.txt             (questo file)
+WALLET RPC:
+Avviato su 127.0.0.1:18083, wallet-dir = tools/wallet_rpc_data
 
-5. NEXT STEPS CONSIGLIATI
---------------------------
-  - Test su rete reale: mevacoind + mevacoin-wallet-rpc
-  - Correggere la security gap nota: check_premine_spend() non rigetta spese
-    di output premine prive del tag extra richiesto
-  - Aggiungere supporto governance add/remove signer a gov_spend.py
-  - Test di integrazione automatizzati
+═══════════════════════════════════════════════════════
+
+TODO (prossimi passi):
+
+[ ] 1. FIX SICUREZZA — blockchain.cpp: rifiutare spese di output
+      premine (treasury/network) che NON hanno il tx_extra
+      appropriato (tag 0xB0/0xC0). Attualmente chiunque conosca
+      la chiave deterministica può drenare i fondi senza
+      governance.
+
+[ ] 2. gov_spend.py — aggiungere comandi add-signer / remove-signer
+      per la governance multisig.
+
+[ ] 3. TEST — test di integrazione per tutti e 3 i tipi di fondo.
+
+[ ] 4. auto.py — testare auto.py contro il wallet RPC fixato.
+
+[ ] 5. AGENTS.md — aggiornare con lo stato corrente.
+
+═══════════════════════════════════════════════════════
+
+COMANDI UTILI:
+  # Avviare demone:
+  mevacoind --data-dir build/.../bin/data --offline
+
+  # Avviare wallet RPC:
+  mevacoin-wallet-rpc --daemon-address 127.0.0.1:18081 \
+    --wallet-dir tools/wallet_rpc_data --rpc-bind-port 18083 \
+    --disable-rpc-login
+
+  # Creare wallet treasury:
+  curl ... generate_from_keys address=<treasury_addr> \
+    spendkey=8454... viewkey=8454...
+
+  # Chiavi treasury:
+  spend_pub=0f3e988eea9dbdfd31b33465415849bc83da7397a458496bdd1a4f74908d7a8d
+  view_pub=0f3e988eea9dbdfd31b33465415849bc83da7397a458496bdd1a4f74908d7a8d
+  spend_sec/view_sec=8454d3b51c18b4faf597c72bf8b5b73dc8ecc3c1f2875e9284093b2a4e2df507
+
+  # Chiavi network fund:
+  spend_sec/view_sec=2b1139a2725feb60076f4b67252faae6b039f593e49e4c5a01ada2205e26d606
