@@ -33,11 +33,23 @@
 - `check_premine_spend` fix needs full `make` (it's in blockchain.cpp)
 - `cn_fast_hash_cli` needs `make -C tools/governance_spend` if `hash.c` or `keccak.c` changes
 
+## sort_tx_extra Fix (New)
+- **`src/cryptonote_basic/cryptonote_format_utils.cpp:619-624`**: Added `pick<>` calls for `tx_extra_governance_transfer` (0xB0), `tx_extra_governance_add_signer` (0xB1), `tx_extra_governance_remove_signer` (0xB2), and `tx_extra_network_fund_transfer` (0xC0) in `sort_tx_extra()`. The function rejects any type from the `tx_extra_field` variant that it doesn't have a `pick` handler for — causing `"transaction was not constructed"` when the wallet-rpc `transfer` call includes custom extra. **Root cause of wallet-rpc rejecting custom extra.**
+
+## Verified Network Fund Spend
+- **Network fund transfer with 0xC0 extra succeeded** after sort_tx_extra fix. Tx `d61e13d2eb62af2b123a24442976d4ad4631eb9023ed3af5d6fb7acc4527d517` was created and broadcast to the tx pool. The `inject_extra.py` blob-injection approach is no longer needed — the wallet-rpc `extra` parameter works directly now.
+
+## Build Notes
+- `gov_crypto` needs recompile after full project rebuild (links to build artifacts)
+- `check_premine_spend` fix needs full `make` (it's in blockchain.cpp)
+- `cn_fast_hash_cli` needs `make -C tools/governance_spend` if `hash.c` or `keccak.c` changes
+- `sort_tx_extra` fix is in `cryptonote_format_utils.cpp` — part of `libcryptonote_basic`, rebuilds with `make`
+
 ## Known Security Gap
 - `check_premine_spend()` enforces governance rules ONLY if governance/network-fund `tx_extra` is present; it does NOT reject transactions that spend treasury/network outputs WITHOUT the extra. Anyone who computes the deterministic private key (derivable from the public domain string) can drain the treasury/network fund without governance approval. Fix should reject premine output spends lacking the expected extra field.
 
 ## Next Steps
-- Test each mode against a running `mevacoind` + `mevacoin-wallet-rpc` network
+- Test treasury governance spend flow (zero-sig → sign → inject)
 - Fix the security gap: reject premine output spends that lack the required extra tag
 - Add governance add/remove signer support to `gov_spend.py`
 - Write functional/integration tests

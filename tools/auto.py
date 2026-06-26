@@ -46,6 +46,11 @@ WALLET_RPC_DIR = os.environ.get("WALLET_RPC_DIR",
 
 COIN = 10**12  # 1 MVC = 10^12 atomic units (matches C++ COIN)
 
+# Minimum ring size — must match wallet2.cpp get_min_ring_size()
+# Testnet (only 2 outputs per amount): 2
+# Mainnet: 11 (standard Monero minimum)
+MIN_RING_SIZE = 2  # TODO: change to 11 for mainnet
+
 # Known deterministic address domains
 DOMAIN_TREASURY = "mevacoin_governance"
 DOMAIN_NETWORK = "mevacoin_network_fund"
@@ -386,7 +391,7 @@ def do_team_lock(amount, dest_addr):
     result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
         "priority": 0,
-        "ring_size": 11,
+        "ring_size": MIN_RING_SIZE,
         "get_tx_key": True,
         "get_tx_hex": True,
         "do_not_relay": False,
@@ -397,7 +402,9 @@ def do_team_lock(amount, dest_addr):
 
 def do_network_fund(amount, dest_addr):
     """Spend from Network Fund. Creates/opens the network fund wallet and
-    builds the transaction with 0xC0 tag extra."""
+    builds the transaction with 0xC0 tag extra.  Uses wallet-rpc `extra`
+    parameter directly (sort_tx_extra fix in cryptonote_format_utils.cpp
+    allows the 0xC0 tag)."""
     print(f"\n{'='*60}")
     print(f"NETWORK FUND SPEND")
     print(f"  Amount:     {amount / COIN:.4f} MVC ({amount} atomic)")
@@ -432,7 +439,7 @@ def do_network_fund(amount, dest_addr):
     result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
         "priority": 0,
-        "ring_size": 11,
+        "ring_size": MIN_RING_SIZE,
         "extra": extra_hex,
         "get_tx_key": True,
         "get_tx_hex": True,
@@ -543,7 +550,7 @@ def do_treasury(amount, dest_addr):
     tx_result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
         "priority": 0,
-        "ring_size": 11,
+        "ring_size": MIN_RING_SIZE,
         "extra": zero_extra_hex,
         "get_tx_key": True,
         "get_tx_hex": True,
