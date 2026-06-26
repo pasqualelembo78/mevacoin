@@ -1634,7 +1634,8 @@ void BlockchainLMDB::close()
   BlockchainLMDB::sync();
   m_tinfo.reset();
 
-  // FIXME: not yet thread safe!!!  Use with care.
+  mdb_txn_safe::prevent_new_txns();
+  mdb_txn_safe::wait_no_active_txns();
   mdb_env_close(m_env);
   m_open = false;
 }

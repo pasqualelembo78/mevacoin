@@ -30,6 +30,7 @@
 
 #include "mevatrust/mevatrust_manager.h"
 #include "mevatrust/availability_proof.h"
+#include "mevatrust/frost_threshold.h"
 #ifndef _WIN32
 #  include <sys/stat.h>
 #  include <unistd.h>
@@ -121,6 +122,12 @@ namespace cryptonote
   const command_line::arg_descriptor<bool> arg_offline = {
     "offline"
   , "Do not listen for peers, nor connect to any"
+  };
+  const command_line::arg_descriptor<std::string> arg_mevatrust_proposer_key = {
+    "mevatrust-proposer-key"
+  , "Proposer secret key for FROST threshold signing (hex). If set, overrides the "
+    "persisted proposer key at the matching consensus index."
+  , ""
   };
   const command_line::arg_descriptor<bool> arg_disable_dns_checkpoints = {
     "disable-dns-checkpoints"
@@ -355,6 +362,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_block_rate_notify);
     command_line::add_arg(desc, arg_keep_alt_blocks);
 
+    command_line::add_arg(desc, arg_mevatrust_proposer_key);
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
   }
@@ -805,6 +813,140 @@ namespace cryptonote
                   MINFO("[MevaTrust] node_pk=" << epee::string_tools::pod_to_hex(node_pk));
                 }
               }
+              // ── FROST proposer keypairs (Fase 5) ───────────────────────────
+              {
+                std::array<cryptonote::mevatrust::frost::SignerKeypair,
+                           cryptonote::mevatrust::frost::FROST_N> prop_kp{};
+                const std::string prop_dir = m_config_folder + "/mevatrust";
+                const std::string prop_file = prop_dir + "/proposer_keys";
+                bool prop_loaded = false;
+
+                // Try loading persisted proposer keys from disk
+                FILE* pf = fopen(prop_file.c_str(), "rb");
+                if (pf) {
+                  crypto::secret_key tmp_sk;
+                  size_t nread = 0;
+                  for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+                    nread += fread(tmp_sk.data, 1, sizeof(tmp_sk.data), pf);
+                    prop_kp[i].sec = tmp_sk;
+                    crypto::secret_key_to_public_key(prop_kp[i].sec, prop_kp[i].pub);
+                  }
+                  if (nread == sizeof(crypto::secret_key) *
+                      cryptonote::mevatrust::frost::FROST_N) {
+                    prop_loaded = true;
+                    MINFO("[FROST] Proposer keys caricati: " << prop_file);
+                  }
+                  fclose(pf);
+                }
+
+                if (!prop_loaded) {
+                  // First run: genera proposer keys deterministiche
+                  // SECURITY: Replace with ceremony-generated keys before mainnet.
+                  // The deterministic keys match CONSENSUS_PROPOSER_PUBKEYS.
+                  auto pubkeys = cryptonote::mevatrust::frost::
+                      derive_proposer_pubkeys(m_nettype);
+                  for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+                    std::string domain = "mevatrust_proposer_"
+                                       + std::to_string(i);
+                    domain.push_back(static_cast<char>(m_nettype));
+                    crypto::hash h = crypto::cn_fast_hash(
+                        domain.data(), domain.size());
+                    crypto::hash_to_scalar(h.data, 32, prop_kp[i].sec);
+                    prop_kp[i].pub = pubkeys[i];
+                  }
+                  // Persiste su disco per startup successivi
+                  FILE* wf = fopen(prop_file.c_str(), "wb");
+                  if (wf) {
+                    for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i)
+                      fwrite(prop_kp[i].sec.data, 1,
+                             sizeof(prop_kp[i].sec.data), wf);
+                    fclose(wf);
+                    chmod(prop_file.c_str(), 0600);
+                    MINFO("[FROST] Proposer keys generate e salvate: "
+                          << prop_file);
+                  } else {
+                    MERROR("[FROST] Impossibile salvare proposer keys: "
+                           << prop_file);
+                  }
+                }
+
+                // CLI override: se --mevatrust-proposer-key e' specificato,
+                // cerca la pubkey corrispondente tra i proposer consensus
+                // e sostituisce quella posizione.
+                {
+                  std::string override_sk_hex =
+                      command_line::get_arg(vm, arg_mevatrust_proposer_key);
+                  if (!override_sk_hex.empty()) {
+                    crypto::secret_key override_sk{};
+                    if (epee::string_tools::hex_to_pod(override_sk_hex,
+                                                       override_sk)) {
+                      crypto::public_key override_pk{};
+                      crypto::secret_key_to_public_key(override_sk, override_pk);
+                      bool matched = false;
+                      for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+                        if (override_pk == prop_kp[i].pub) {
+                          prop_kp[i].sec = override_sk;
+                          // pub rimane invariato
+                          MINFO("[FROST] Proposer key override per index "
+                                << i);
+                          matched = true;
+                          break;
+                        }
+                      }
+                      if (!matched) {
+                        // Proposer pubkey non riconosciuta: cerca tra
+                        // CONSENSUS_PROPOSER_PUBKEYS
+                        auto& consensus = cryptonote::mevatrust::frost::
+                            CONSENSUS_PROPOSER_PUBKEYS;
+                        for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+                          if (override_pk == consensus[i]) {
+                            prop_kp[i].sec = override_sk;
+                            prop_kp[i].pub = override_pk;
+                            MINFO("[FROST] Proposer key override per "
+                                  "CONSENSUS index " << i);
+                            matched = true;
+                            break;
+                          }
+                        }
+                      }
+                      if (!matched) {
+                        MINFO("[FROST] --mevatrust-proposer-key pubkey "
+                              << epee::string_tools::pod_to_hex(override_pk)
+                              << " non matcha alcun proposer consensus");
+                      }
+                    } else {
+                      MERROR("[FROST] --mevatrust-proposer-key hex non valido");
+                    }
+                  }
+                }
+
+                pm_r3->set_proposer_keypairs(prop_kp);
+                MINFO("[FROST] Proposer keypairs attivi ("
+                      << cryptonote::mevatrust::frost::FROST_N << " keys)");
+              }
+              // ── Fase 7: wire FrostBroadcaster broadcast function ──────────
+              pm_r3->set_frost_broadcast_func(
+                [this](const std::vector<uint8_t>& data) -> bool {
+                  // Blob format: type(1) + height(8) + period(4) + idx(1) + payload(32) = 46
+                  if (data.size() < 46) return false;
+                  uint8_t msg_type = data[0];
+                  uint64_t height;
+                  uint32_t period;
+                  uint8_t proposer_index;
+                  crypto::public_key R_key;
+                  memcpy(&height, data.data() + 1, 8);
+                  memcpy(&period, data.data() + 9, 4);
+                  memcpy(&proposer_index, data.data() + 13, 1);
+                  memcpy(&R_key, data.data() + 14, 32);
+                  if (msg_type == 0) {
+                    return m_pprotocol->broadcast_frost_nonce(
+                        height, period, proposer_index, R_key);
+                  }
+                  return m_pprotocol->broadcast_frost_sign_request(
+                      height, period, proposer_index, R_key);
+                }
+              );
+              MINFO("FrostBroadcaster: broadcast function wired [Fase 7]");
               // ── Attiva state root verification (fork resistance) ──────────
               pm_r3->set_state_root_verification_enabled(true);
               MINFO("MevaTrust: state root verification enabled [fork resistance]");

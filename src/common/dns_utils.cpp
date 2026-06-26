@@ -32,6 +32,7 @@
 #include "unbound.h"
 
 #include <deque>
+#include <regex>
 #include <set>
 #include <stdlib.h>
 #include "include_base_utils.h"
@@ -394,32 +395,15 @@ namespace dns_utils
 {
 
 //-----------------------------------------------------------------------
-// TODO: parse the string in a less stupid way, probably with regex
 std::string address_from_txt_record(const std::string& s)
 {
-  // make sure the txt record has "oa1:xmr" and find it
-  auto pos = s.find("oa1:xmr");
-  if (pos == std::string::npos)
+  std::regex re("oa1:xmr[^;]*recipient_address=([^;]+)");
+  std::smatch m;
+  if (!std::regex_search(s, m, re))
     return {};
-  // search from there to find "recipient_address="
-  pos = s.find("recipient_address=", pos);
-  if (pos == std::string::npos)
-    return {};
-  pos += 18; // move past "recipient_address="
-  // find the next semicolon
-  auto pos2 = s.find(";", pos);
-  if (pos2 != std::string::npos)
-  {
-    // length of address == 95, we can at least validate that much here
-    if (pos2 - pos == 95)
-    {
-      return s.substr(pos, 95);
-    }
-    else if (pos2 - pos == 106) // length of address == 106 --> integrated address
-    {
-      return s.substr(pos, 106);
-    }
-  }
+  const auto addr = m[1].str();
+  if (addr.size() == 95 || addr.size() == 106)
+    return addr;
   return {};
 }
 /**

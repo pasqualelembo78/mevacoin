@@ -48,6 +48,7 @@ set(cryptonote_core_sources
   mevatrust/snapshot_broadcaster.cpp
   mevatrust/mevatrust_store_registry.cpp
   mevatrust/frost_threshold.cpp
+  mevatrust/frost_broadcaster.cpp
   mevatrust/pool_distribution.cpp
 )
 

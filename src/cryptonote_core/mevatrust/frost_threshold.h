@@ -12,6 +12,7 @@
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_config.h"
 
 namespace cryptonote {
 namespace mevatrust {
@@ -76,13 +77,14 @@ struct NoncePair {
 bool generate_nonces(NoncePair& nonce_out);
 
 /// Round 2: Each signer creates partial signature
-/// Input: message hash, nonce pair, signer's secret key, Lagrange coeff, aggregated R
+/// Input: message hash, nonce pair, signer's secret key, Lagrange coeff, aggregated R, agg_pubkey
 bool sign_partial(
     const crypto::hash& msg_hash,
     const NoncePair& nonce,
     const crypto::secret_key& sk,
     const crypto::ec_scalar& lagrange_coeff,
     const crypto::ec_scalar& R,        // Aggregated R from coordinator
+    const crypto::public_key& agg_pubkey,
     PartialSignature& partial_out
 );
 
@@ -114,6 +116,16 @@ bool encode_frost_signature(const FrostSignature& sig, std::vector<uint8_t>& out
 
 /// Decode FrostSignature from binary
 bool decode_frost_signature(const std::vector<uint8_t>& in, FrostSignature& sig_out);
+
+/// Derive proposer public keys deterministically from network type
+/// For MAINNET: used as consensus parameter (transparent, verifiable)
+/// In production: replace with governance-elected keys
+std::array<crypto::public_key, FROST_N> derive_proposer_pubkeys(network_type nettype);
+
+/// Sum N public keys using ed25519 point addition.
+/// Returns Y = sum(P_i) for i in [0..N).
+crypto::public_key sum_public_keys(
+    const crypto::public_key* keys, size_t n);
 
 /// Proposer public keys (hardcoded in consensus for transparency)
 /// In production: these would be governance-defined or elected

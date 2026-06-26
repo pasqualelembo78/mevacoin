@@ -417,8 +417,7 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
   }
   if (info.is_subaddress)
   {
-    tools::fail_msg_writer() << "subaddress for mining reward is not yet supported!" << std::endl;
-    return true;
+    // ok — subaddress resolves to valid account_public_address
   }
   if(nettype != cryptonote::MAINNET)
     std::cout << "Mining to a " << (nettype == cryptonote::TESTNET ? "testnet" : "stagenet") << " address, make sure this is intentional!" << std::endl;

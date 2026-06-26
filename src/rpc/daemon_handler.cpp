@@ -39,6 +39,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/blobdatatype.h"
+#include "net/parse.h"
 #include "ringct/rctSigs.h"
 #include "version.h"
 
@@ -79,11 +80,17 @@ namespace rpc
 
     constexpr const handler_map handlers[] =
     {
+      {u8"flush_transaction_pool", handle_message<FlushTransactionPool>},
+      {u8"get_bans", handle_message<GetBans>},
+      {u8"get_block", handle_message<GetBlock>},
       {u8"get_block_hash", handle_message<GetBlockHash>},
       {u8"get_block_header_by_hash", handle_message<GetBlockHeaderByHash>},
       {u8"get_block_header_by_height", handle_message<GetBlockHeaderByHeight>},
       {u8"get_block_headers_by_height", handle_message<GetBlockHeadersByHeight>},
+      {u8"get_block_headers_range", handle_message<GetBlockHeadersRange>},
       {u8"get_blocks_fast", handle_message<GetBlocksFast>},
+      {u8"get_block_template", handle_message<GetBlockTemplate>},
+      {u8"get_connections", handle_message<GetConnections>},
       {u8"get_dynamic_fee_estimate", handle_message<GetFeeEstimate>},
       {u8"get_hashes_fast", handle_message<GetHashesFast>},
       {u8"get_height", handle_message<GetHeight>},
@@ -103,9 +110,15 @@ namespace rpc
       {u8"save_bc", handle_message<SaveBC>},
       {u8"send_raw_tx", handle_message<SendRawTx>},
       {u8"send_raw_tx_hex", handle_message<SendRawTxHex>},
+      {u8"set_bans", handle_message<SetBans>},
+      {u8"set_log_hash_rate", handle_message<SetLogHashRate>},
       {u8"set_log_level", handle_message<SetLogLevel>},
       {u8"start_mining", handle_message<StartMining>},
-      {u8"stop_mining", handle_message<StopMining>}
+      {u8"start_save_graph", handle_message<StartSaveGraph>},
+      {u8"stop_daemon", handle_message<StopDaemon>},
+      {u8"stop_mining", handle_message<StopMining>},
+      {u8"stop_save_graph", handle_message<StopSaveGraph>},
+      {u8"submit_block", handle_message<SubmitBlock>}
     };
   } // anonymous
 
@@ -620,13 +633,13 @@ namespace rpc
   void DaemonHandler::handle(const GetBlockTemplate::Request& req, GetBlockTemplate::Response& res)
   {
     res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    res.error_details = "Use JSON-RPC get_block_template on port 18081 instead.";
   }
 
   void DaemonHandler::handle(const SubmitBlock::Request& req, SubmitBlock::Response& res)
   {
     res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    res.error_details = "Use JSON-RPC submit_block on port 18081 instead.";
   }
 
   void DaemonHandler::handle(const GetLastBlockHeader::Request& req, GetLastBlockHeader::Response& res)
@@ -690,20 +703,82 @@ namespace rpc
 
   void DaemonHandler::handle(const GetBlock::Request& req, GetBlock::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    if (m_core.get_current_blockchain_height() <= req.height)
+    {
+      res.status = Message::STATUS_FAILED;
+      res.error_details = "Height given is higher than current chain height";
+      return;
+    }
+
+    crypto::hash block_hash = m_core.get_block_id_by_height(req.height);
+    if (!getBlockHeaderByHash(block_hash, res.header))
+    {
+      res.status = Message::STATUS_FAILED;
+      res.error_details = "Requested block does not exist";
+      return;
+    }
+
+    block blk;
+    if (!m_core.get_block_by_hash(block_hash, blk))
+    {
+      res.status = Message::STATUS_FAILED;
+      res.error_details = "Block not found";
+      return;
+    }
+
+    res.tx_hashes.reserve(blk.tx_hashes.size());
+    for (const auto& tx_hash : blk.tx_hashes)
+    {
+      res.tx_hashes.push_back(epee::string_tools::pod_to_hex(tx_hash));
+    }
+
+    res.blob = epee::string_tools::buff_to_hex_nodelimer(block_to_blob(blk));
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const GetPeerList::Request& req, GetPeerList::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    std::vector<nodetool::peerlist_entry> white_list;
+    std::vector<nodetool::peerlist_entry> gray_list;
+    m_p2p.get_peerlist(gray_list, white_list);
+
+    auto to_rpc_peer = [](const nodetool::peerlist_entry& e) -> cryptonote::rpc::peer
+    {
+      cryptonote::rpc::peer p{};
+      p.id = e.id;
+      p.port = e.adr.port();
+      if (e.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
+        p.ip = e.adr.as<epee::net_utils::ipv4_network_address>().ip();
+      p.rpc_port = e.rpc_port;
+      p.rpc_credits_per_hash = e.rpc_credits_per_hash;
+      p.last_seen = e.last_seen;
+      p.pruning_seed = e.pruning_seed;
+      return p;
+    };
+
+    res.white_list.reserve(white_list.size());
+    for (const auto& e : white_list)
+      res.white_list.push_back(to_rpc_peer(e));
+
+    res.gray_list.reserve(gray_list.size());
+    for (const auto& e : gray_list)
+      res.gray_list.push_back(to_rpc_peer(e));
+
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const SetLogHashRate::Request& req, SetLogHashRate::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    if (m_core.get_miner().is_mining())
+    {
+      m_core.get_miner().do_print_hashrate(req.visible);
+      res.status = Message::STATUS_OK;
+    }
+    else
+    {
+      res.status = Message::STATUS_FAILED;
+      res.error_details = "Not mining";
+    }
   }
 
   void DaemonHandler::handle(const SetLogLevel::Request& req, SetLogLevel::Response& res)
@@ -730,32 +805,48 @@ namespace rpc
 
   void DaemonHandler::handle(const GetConnections::Request& req, GetConnections::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    auto conns = m_p2p.get_payload_object().get_connections();
+    res.connections.assign(conns.begin(), conns.end());
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const GetBlockHeadersRange::Request& req, GetBlockHeadersRange::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    const uint64_t chain_height = m_core.get_current_blockchain_height();
+    const uint64_t end = std::min(req.start_height + req.count, chain_height);
+
+    res.headers.reserve(end - req.start_height);
+    for (uint64_t h = req.start_height; h < end; ++h)
+    {
+      const crypto::hash block_hash = m_core.get_block_id_by_height(h);
+      cryptonote::rpc::BlockHeaderResponse header;
+      if (!getBlockHeaderByHash(block_hash, header))
+      {
+        res.status = Message::STATUS_FAILED;
+        res.error_details = "Failed to get block header";
+        return;
+      }
+      res.headers.push_back(std::move(header));
+    }
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const StopDaemon::Request& req, StopDaemon::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    m_p2p.send_stop_signal();
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const StartSaveGraph::Request& req, StartSaveGraph::Response& res)
   {
     res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    res.error_details = "Not implemented";
   }
 
   void DaemonHandler::handle(const StopSaveGraph::Request& req, StopSaveGraph::Response& res)
   {
     res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    res.error_details = "Not implemented";
   }
 
   void DaemonHandler::handle(const HardForkInfo::Request& req, HardForkInfo::Response& res)
@@ -770,20 +861,96 @@ namespace rpc
 
   void DaemonHandler::handle(const GetBans::Request& req, GetBans::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    const auto now = time(nullptr);
+
+    const auto blocked_hosts = m_p2p.get_blocked_hosts();
+    for (const auto& [host, expiry] : blocked_hosts)
+    {
+      if (expiry > now)
+      {
+        cryptonote::rpc::ban b{};
+        b.host = host;
+        b.ip = 0;
+        b.seconds = static_cast<uint32_t>(expiry - now);
+        b.ban = true;
+        res.bans.push_back(std::move(b));
+      }
+    }
+
+    const auto blocked_subnets = m_p2p.get_blocked_subnets();
+    for (const auto& [subnet, expiry] : blocked_subnets)
+    {
+      if (expiry > now)
+      {
+        cryptonote::rpc::ban b{};
+        b.host = subnet.host_str();
+        b.ip = 0;
+        b.seconds = static_cast<uint32_t>(expiry - now);
+        b.ban = true;
+        res.bans.push_back(std::move(b));
+      }
+    }
+
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const SetBans::Request& req, SetBans::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    for (const auto& b : req.bans)
+    {
+      if (!b.host.empty())
+      {
+        auto ns_parsed = net::get_ipv4_subnet_address(b.host);
+        if (ns_parsed)
+        {
+          if (b.ban)
+            m_p2p.block_subnet(*ns_parsed, b.seconds);
+          else
+            m_p2p.unblock_subnet(*ns_parsed);
+          continue;
+        }
+      }
+
+      epee::net_utils::network_address na;
+      if (!b.host.empty())
+      {
+        auto na_parsed = net::get_network_address(b.host, 0);
+        if (na_parsed)
+          na = std::move(*na_parsed);
+        else
+          na = epee::net_utils::ipv4_network_address{b.ip, 0};
+      }
+      else
+      {
+        na = epee::net_utils::ipv4_network_address{b.ip, 0};
+      }
+
+      if (b.ban)
+        m_p2p.block_host(na, b.seconds);
+      else
+        m_p2p.unblock_host(na);
+    }
+
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const FlushTransactionPool::Request& req, FlushTransactionPool::Response& res)
   {
-    res.status = Message::STATUS_FAILED;
-    res.error_details = "RPC method not yet implemented.";
+    std::vector<transaction> pool_txs;
+    if (!m_core.get_pool_transactions(pool_txs, true))
+    {
+      res.status = Message::STATUS_FAILED;
+      res.error_details = "Failed to get txpool contents";
+      return;
+    }
+
+    std::vector<crypto::hash> txids;
+    txids.reserve(pool_txs.size());
+    for (const auto& tx : pool_txs)
+      txids.push_back(cryptonote::get_transaction_hash(tx));
+
+    m_core.get_blockchain_storage().flush_txes_from_pool(txids);
+    res.status = Message::STATUS_OK;
   }
 
   void DaemonHandler::handle(const GetOutputHistogram::Request& req, GetOutputHistogram::Response& res)

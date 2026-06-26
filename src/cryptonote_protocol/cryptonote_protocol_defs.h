@@ -447,5 +447,57 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<request_t> request;
   };
+
+  /************************************************************************/
+  /* FROST — Round 1: Nonce Commitment Exchange (MevaCoin HF 13+)         */
+  /************************************************************************/
+  struct NOTIFY_MEVATRUST_FROST_NONCE
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 14;
+    struct request_t
+    {
+      uint64_t           height;
+      uint32_t           period;
+      uint8_t            msg_type;        // 0=broadcast(coordinator), 1=reply(signer)
+      uint8_t            proposer_index;  // 0-4
+      crypto::public_key R_commit;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(period)
+        KV_SERIALIZE(msg_type)
+        KV_SERIALIZE(proposer_index)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(R_commit)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
+  /************************************************************************/
+  /* FROST — Round 2: Partial Signature Exchange (MevaCoin HF 13+)        */
+  /************************************************************************/
+  struct NOTIFY_MEVATRUST_FROST_SIGN
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 15;
+    struct request_t
+    {
+      uint64_t           height;
+      uint32_t           period;
+      uint8_t            msg_type;        // 0=coordinator broadcast(agg_R), 1=signer reply(s_i)
+      uint8_t            proposer_index;  // 0-4
+      crypto::public_key R_hiding;        // signer's R_i (for verification)
+      std::string        sig_data;        // agg_R (msg_type=0) or s_i (msg_type=1), raw 32 bytes
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(period)
+        KV_SERIALIZE(msg_type)
+        KV_SERIALIZE(proposer_index)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(R_hiding)
+        KV_SERIALIZE(sig_data)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
 }
 

@@ -124,8 +124,9 @@ bool check_mevatrust_coinbase(
   uint32_t period = static_cast<uint32_t>(height / pm->period_length());
 
   mevatrust::ProposerState proposers;
-  for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
-    proposers.pubkeys[i] = mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i];
+  {
+    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i)
+      proposers.pubkeys[i] = mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i];
   }
 
   if (!mevatrust::validate_pool_distribution(dist, height, period, pool_balance, proposers, error_msg)) {

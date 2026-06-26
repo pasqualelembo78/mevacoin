@@ -20,6 +20,10 @@
 #include "pool_address.h"
 #include "frost_threshold.h"
 
+extern "C" {
+#include "crypto/crypto-ops.h"
+}
+
 namespace cryptonote {
 
 namespace mevatrust {
@@ -75,6 +79,8 @@ bool MevaTrustManager::init(const std::string& data_dir, network_type nettype, u
     m_store_registry->load_from_disk();
     m_snapshot_broadcaster = std::make_unique<SnapshotBroadcaster>();
     MINFO("SnapshotBroadcaster creato [Fase 3]");
+    m_frost_broadcaster = std::make_unique<FrostBroadcaster>();
+    MINFO("FrostBroadcaster creato [Fase 7]");
 
     // ── C2-WIRING: badge_system -> on_chain_cb_ ──────────────────────────────
     // Quando award_badge() assegna un badge, questo callback viene chiamato
@@ -132,6 +138,31 @@ bool MevaTrustManager::init(const std::string& data_dir, network_type nettype, u
       );
       MINFO("[MevaTrustManager] C4: apply_func configurato per SnapshotBroadcaster (quorum 3/5)");
     }
+
+    // ── Fase 7: FrostBroadcaster apply callback ─────────────────────────────
+    // When P2P FROST round completes, store the aggregate sig for miner_tx.
+    if (m_frost_broadcaster) {
+      m_frost_broadcaster->set_apply_func(
+        [this](const mevatrust::frost::FrostSignature& sig) -> bool {
+          std::lock_guard<std::mutex> lk(m_lock);
+          std::vector<uint8_t> dist_extra;
+          // Reuse cached resolved rewards
+          if (!mevatrust::construct_pool_distribution_extra(
+              m_resolved_at_height,
+              static_cast<uint32_t>(m_resolved_at_height / m_period_length),
+              m_resolved_pool_balance, m_resolved_rewards, sig, dist_extra)) {
+            MERROR("[FROST:P2P] construct_pool_distribution_extra failed");
+            return false;
+          }
+          m_pending_pool_distribution_extra = std::move(dist_extra);
+          m_has_pending_pool_distribution = true;
+          MINFO("[FROST:P2P] apply_func: distribution stored h="
+                << m_resolved_at_height);
+          return true;
+        }
+      );
+      MINFO("[FROST:P2P] apply_func configurato per FrostBroadcaster");
+    }
     // ────────────────────────────────────────────────────────────────────────
 
   } catch (const std::exception& e) {
@@ -151,7 +182,22 @@ void MevaTrustManager::shutdown() {
   if (m_badge_system)         m_badge_system->save_to_disk();
 }
 
-// ── Validator system ──────────────────────────────────────────────────────
+void MevaTrustManager::set_proposer_keypairs(
+    const std::array<frost::SignerKeypair, frost::FROST_N>& kp)
+{
+    std::lock_guard<std::mutex> lk(m_lock);
+    m_proposer_keypairs = kp;
+    m_has_proposer_keys = true;
+    // Wire FrostBroadcaster with the first proposer key (index 0 as default coordinator)
+    if (m_frost_broadcaster) {
+      m_frost_broadcaster->set_node_key(kp[0].sec, kp[0].pub, 0);
+      MINFO("[FROST:P2P] FrostBroadcaster key set: index=0 pub="
+            << epee::string_tools::pod_to_hex(kp[0].pub));
+    }
+    MINFO("[FROST] Proposer keypairs set (" << frost::FROST_N << " keys)");
+}
+
+  // ── Validator system ──────────────────────────────────────────────────────
 static constexpr uint64_t VALIDATOR_MIN_STAKE = 1'000'000'000'000'000ULL; // 1000 MVC
 static constexpr uint64_t VALIDATOR_AUTO_UPTIME_SECS = 30 * 86400ULL;     // 30 giorni
 static constexpr float    VALIDATOR_AUTO_UPTIME_PCT = 0.95f;              // 95%
@@ -274,6 +320,7 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
 
   // Pool balance from on-chain state root (not LMDB)
   uint64_t pool_balance = compute_pool_balance_from_chain();
+  m_resolved_pool_balance = pool_balance;
   if (pool_balance == 0) return;
 
   // Process welcome bonuses  
@@ -313,9 +360,86 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
   m_resolved_rewards=std::move(resolved); m_resolved_at_height=height;
   
   // Build FROST-authorized pool distribution blob (0xAA) for consensus validation
-  // TODO: real FROST signing
   cryptonote::mevatrust::frost::FrostSignature frost_sig;
-  memset(&frost_sig, 0, sizeof(frost_sig)); // TODO: real FROST signing
+  if (m_has_proposer_keys) {
+    // Real FROST signing using proposer keypairs
+    // We need at least FROST_T (3) signers. Use all available proposers.
+    std::vector<uint8_t> signer_indices;
+    for (uint8_t i = 0; i < frost::FROST_N; ++i) signer_indices.push_back(i);
+
+    // Compute Lagrange coefficients for the signer set
+    cryptonote::mevatrust::frost::PublicKeyPackage pkg;
+    {
+        crypto::public_key pk_array[frost::FROST_N];
+        for (size_t i = 0; i < frost::FROST_N; ++i) {
+            pk_array[i] = m_proposer_keypairs[i].pub;
+            pkg.signer_pubkeys[i] = m_proposer_keypairs[i].pub;
+        }
+        pkg.agg_pubkey = cryptonote::mevatrust::frost::sum_public_keys(
+            pk_array, frost::FROST_N);
+    }
+    cryptonote::mevatrust::frost::compute_lagrange_coeffs(signer_indices, pkg.lagrange_coeffs);
+
+    // Build distribution outputs to get the message hash
+    auto outputs = cryptonote::mevatrust::build_distribution_outputs(
+        m_resolved_rewards, pool_balance);
+    crypto::hash msg_hash = cryptonote::mevatrust::frost::create_distribution_message_hash(
+        height, static_cast<uint32_t>(height / m_period_length), outputs);
+
+    // Round 1: each signer generates nonces
+    std::array<cryptonote::mevatrust::frost::NoncePair, frost::FROST_N> nonces;
+    for (size_t i = 0; i < frost::FROST_N; ++i)
+        cryptonote::mevatrust::frost::generate_nonces(nonces[i]);
+
+    // Compute aggregate R = sum(R_i)
+    crypto::ec_scalar R;
+    {
+        bool first = true;
+        ge_p3 R_sum;
+        for (size_t i = 0; i < frost::FROST_N; ++i) {
+            ge_p3 R_i;
+            unsigned char r_bytes[32];
+            memcpy(r_bytes, &nonces[i].hiding, 32);
+            ge_scalarmult_base(&R_i, r_bytes);
+            if (first) {
+                R_sum = R_i;
+                first = false;
+            } else {
+                ge_cached cached;
+                ge_p3_to_cached(&cached, &R_i);
+                ge_p1p1 p1;
+                ge_add(&p1, &R_sum, &cached);
+                ge_p1p1_to_p3(&R_sum, &p1);
+            }
+        }
+        crypto::public_key R_pk;
+        ge_p3_tobytes(reinterpret_cast<unsigned char*>(&R_pk), &R_sum);
+        memcpy(&R, &R_pk, 32);
+    }
+
+    // Round 2: each signer creates partial signature
+    std::vector<cryptonote::mevatrust::frost::PartialSignature> partials;
+    for (size_t i = 0; i < frost::FROST_N; ++i) {
+        cryptonote::mevatrust::frost::PartialSignature ps;
+        ps.signer_index = i;
+        ps.hiding_nonce = nonces[i].hiding;
+        ps.binding_nonce = nonces[i].binding;
+        cryptonote::mevatrust::frost::sign_partial(
+            msg_hash, nonces[i], m_proposer_keypairs[i].sec,
+            pkg.lagrange_coeffs[i], R, pkg.agg_pubkey, ps);
+        partials.push_back(std::move(ps));
+    }
+
+    // Aggregate into final FROST signature
+    cryptonote::mevatrust::frost::aggregate_signatures(
+        msg_hash, partials, pkg, frost_sig);
+    MINFO("[FROST] Real FROST signature produced for h=" << height
+          << " signers=" << partials.size());
+  } else {
+    // No proposer keys available — produce a placeholder (will fail validation)
+    memset(&frost_sig, 0, sizeof(frost_sig));
+    MWARNING("[FROST] No proposer keys set — distribution will NOT validate");
+  }
   
   std::vector<uint8_t> dist_extra;
   if (mevatrust::construct_pool_distribution_extra(
@@ -330,7 +454,20 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
     MINFO("Pool distribution 0xAA ready: " << m_resolved_rewards.size()
           << " outputs, period=" << (height / m_period_length));
   }
-  
+
+  // Start P2P FROST round in parallel (if broadcaster is wired).
+  // This allows a real multi-proposer signature to replace the local one
+  // for subsequent blocks in this period.
+  if (m_frost_broadcaster && m_has_proposer_keys) {
+    auto outputs = cryptonote::mevatrust::build_distribution_outputs(
+        m_resolved_rewards, pool_balance);
+    (void)m_frost_broadcaster->propose_distribution(
+        height,
+        static_cast<uint32_t>(height / m_period_length),
+        outputs);
+    MINFO("[FROST:P2P] Asynchronous round started h=" << height);
+  }
+
   MINFO("Distribution ready: "<<m_resolved_rewards.size()<<" outputs h="<<height);
 }
 
@@ -377,6 +514,12 @@ void MevaTrustManager::set_broadcast_tx_func(BroadcastTxFunc fn) {
   std::lock_guard<std::mutex> lk(m_lock);
   if (m_snapshot_broadcaster)
     m_snapshot_broadcaster->set_broadcast_func(std::move(fn));
+}
+
+void MevaTrustManager::set_frost_broadcast_func(FrostBroadcaster::BroadcastFunc fn) {
+  std::lock_guard<std::mutex> lk(m_lock);
+  if (m_frost_broadcaster)
+    m_frost_broadcaster->set_broadcast_func(std::move(fn));
 }
 
   void MevaTrustManager::set_node_key(const crypto::secret_key& sk,
@@ -1295,7 +1438,7 @@ uint64_t MevaTrustManager::compute_pool_balance_from_chain() const
 {
     if (!m_get_block_func) return 0;
     
-    const uint64_t HF_POOL_ACTIVATION = 100000; // TODO: usare costante HF reale
+    const uint64_t HF_POOL_ACTIVATION = 13; // Activation at HF_VERSION_MEVATRUST (v13)
     uint64_t current_height = 0;
     if (m_get_block_func) {
         block dummy;

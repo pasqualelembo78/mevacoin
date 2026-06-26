@@ -258,6 +258,9 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::amount_with_ran
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::peer& peer);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::peer& peer);
 
+void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::ban& ban);
+void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::ban& ban);
+
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::rpc::tx_in_pool& tx);
 void fromJsonValue(const rapidjson::Value& val, cryptonote::rpc::tx_in_pool& tx);
 

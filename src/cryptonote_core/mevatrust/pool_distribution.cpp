@@ -151,10 +151,12 @@ bool verify_distribution_signature(
     const ProposerState& proposers)
 {
     frost::PublicKeyPackage pkg;
-    pkg.agg_pubkey = frost::CONSENSUS_PROPOSER_PUBKEYS[0]; // TODO: compute real agg pubkey
     for (size_t i = 0; i < frost::FROST_N && i < proposers.pubkeys.size(); ++i) {
         pkg.signer_pubkeys[i] = proposers.pubkeys[i];
     }
+    // Real aggregate pubkey: Y = sum(pk_i) for all proposers
+    pkg.agg_pubkey = frost::sum_public_keys(
+        pkg.signer_pubkeys.data(), frost::FROST_N);
     
     frost::FrostSignature sig;
     sig.R = dist.frost_R;

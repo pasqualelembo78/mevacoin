@@ -34,6 +34,13 @@ struct PendingCoinbaseOutput {
   float       score;
 };
 
+struct DistributionEvent {
+  uint64_t block_height;
+  uint64_t total_amount;
+  uint32_t node_count;
+  uint64_t timestamp;
+};
+
 class RewardDistributor {
 public:
   explicit RewardDistributor(const std::string& db_path);
@@ -51,6 +58,7 @@ public:
   bool has_pending_outputs() const;
   uint64_t get_node_reward(const crypto::hash& node_id, uint64_t period_height);
   std::vector<RewardRecord> get_reward_history(const crypto::hash& node_id, uint64_t limit = 100);
+  std::vector<DistributionEvent> get_distribution_history(uint64_t limit = 50) const;
   uint64_t get_pool_balance();
   uint64_t get_total_distributed() const;
   uint64_t get_last_distribution_height() const;
@@ -58,6 +66,7 @@ public:
   void set_pool_fraction(uint32_t p)    { m_pool_fraction = p; }
   void set_min_score(float s)           { m_min_score_for_reward = s; }
   void set_distribution_period(uint32_t p) { m_distribution_period = p; }
+  uint32_t distribution_period() const { return m_distribution_period; }
   uint32_t get_pool_fraction() const    { return m_pool_fraction; }
 
 private:
@@ -72,6 +81,7 @@ private:
   uint32_t  m_maturation_blocks;
   uint32_t  m_pool_fraction;
   float     m_min_score_for_reward;
+  std::vector<DistributionEvent> m_distribution_events;
   bool calculate_node_share(const crypto::hash&, float, float, uint64_t, uint64_t&);
   bool append_reward_record(const RewardRecord&);
   bool save_pool_state() const;

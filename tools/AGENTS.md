@@ -52,8 +52,12 @@
 - Transparency log at daemon startup: "Premine spend enforcement ACTIVE — any transaction spending a premine output WITHOUT the required tx_extra tag (0xB0 for treasury, 0xC0 for network fund) will be REJECTED."
 
 ## Next Steps
-- Test treasury governance spend flow (zero-sig → sign → inject)
-- Revert wallet2.cpp `get_min_ring_size()` to 11 for mainnet (wrap in `if(m_nettype == MAINNET)`)
-- Add governance add/remove signer support to `gov_spend.py`
+- Test all premine spend flows (treasury, add-signer, remove-signer)
 - Fix `gov_crypto` to use shared derivation from `foundation_vesting.h` (currently has stale `derive-wallet` implementation producing wrong keys)
 - Write functional/integration tests
+
+## Completed in this session
+- `DEFAULT_FEE_ATOMIC_MVC_PER_KB` removed (dead code, dynamic fee system already active)
+- `gov_spend.py`: added `add-signer-zero/build`, `remove-signer-zero/build` commands for 0xB1/0xB2
+- `parse_governance_extra()` now handles all 3 governance tags
+- `cmd_verify()` shows type-specific fields for all tags

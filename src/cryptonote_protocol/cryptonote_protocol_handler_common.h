@@ -34,6 +34,16 @@ namespace cryptonote
       const std::vector<uint8_t>& snapshot_extra, uint64_t height)
     { (void)snapshot_extra; (void)height; return false; }
 
+    virtual bool broadcast_frost_nonce(
+      uint64_t height, uint32_t period, uint8_t proposer_index,
+      const crypto::public_key& R_commit)
+    { (void)height; (void)period; (void)proposer_index; (void)R_commit; return false; }
+
+    virtual bool broadcast_frost_sign_request(
+      uint64_t height, uint32_t period, uint8_t proposer_index,
+      const crypto::public_key& agg_R)
+    { (void)height; (void)period; (void)proposer_index; (void)agg_R; return false; }
+
     virtual ~i_cryptonote_protocol() {}
   };
 
@@ -49,6 +59,10 @@ namespace cryptonote
       const NOTIFY_MEVATRUST_CHALLENGE::request&) override { return false; }
     bool broadcast_mevatrust_snapshot(const std::vector<uint8_t>&,
       uint64_t) override { return false; }
+    bool broadcast_frost_nonce(uint64_t, uint32_t, uint8_t,
+      const crypto::public_key&) override { return false; }
+    bool broadcast_frost_sign_request(uint64_t, uint32_t, uint8_t,
+      const crypto::public_key&) override { return false; }
   };
 
 } // namespace cryptonote
