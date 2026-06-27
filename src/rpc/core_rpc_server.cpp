@@ -4092,6 +4092,37 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_lookup_node_by_wallet(const cryptonote::rpc::COMMAND_RPC_LOOKUP_NODE_BY_WALLET::request& req, cryptonote::rpc::COMMAND_RPC_LOOKUP_NODE_BY_WALLET::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(lookup_node_by_wallet);
+    if (req.wallet_address.empty()) {
+      error_resp.code = -32602; error_resp.message = "wallet_address required"; return false;
+    }
+    auto* pm = cryptonote::mevatrust::get_manager();
+    if (!pm || !pm->is_initialized()) { res.status = "MevaTrust system not initialized"; return true; }
+    auto reg = pm->node_registry();
+    res.wallet_address = req.wallet_address;
+    NodeRegistryEntry entry{};
+    if (reg && reg->get_node_by_wallet(req.wallet_address, entry)) {
+      res.node_id = epee::string_tools::pod_to_hex(entry.node_id);
+      res.is_active  = (entry.status == NodeStatus::ACTIVE);
+      res.is_synced  = entry.is_synchronized;
+      res.last_seen  = entry.last_seen_timestamp;
+      res.uptime_seconds = entry.total_uptime_seconds;
+      auto engine = pm->mevatrust_engine();
+      if (engine) {
+        auto all = engine->calculate_all_scores(m_core.get_current_blockchain_height());
+        auto it = all.find(res.node_id);
+        if (it != all.end()) {
+          res.score = static_cast<double>(it->second.total_score);
+          res.uptime_percentage = static_cast<double>(it->second.uptime_score) * 100.0;
+        }
+      }
+      res.status = CORE_RPC_STATUS_OK;
+    } else { res.status = "Node not found for wallet address"; }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_reward_history(const cryptonote::rpc::COMMAND_RPC_GET_REWARD_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_REWARD_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_reward_history);

@@ -29,7 +29,8 @@ import requests
 
 # ── Configuration ─────────────────────────────────────────────────────────
 DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://127.0.0.1:18081")
-WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:18083")
+# Use a dedicated port so we don't conflict with pool wallet-rpc on 18083
+WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:18087")
 GOV_CRYPTO = os.environ.get("GOV_CRYPTO_BIN", os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "gov_crypto"
 ))

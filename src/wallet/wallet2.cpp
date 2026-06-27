@@ -4533,6 +4533,26 @@ void wallet2::clear_soft(bool keep_key_images)
 
   cryptonote::block b;
   generate_genesis(b);
+
+  // Process genesis coinbase outputs so the wallet detects premine outputs
+  // (which include team-lock, treasury, and network-fund allocations).
+  // This must happen BEFORE m_blockchain.push_back so the wallet scans
+  // block 0 before treating it as already known.  Mirrors the same logic
+  // in setup_new_blockchain().
+  {
+    tx_cache_data cache_data;
+    std::unordered_map<uint64_t, uint64_t> amount_counts;
+    std::vector<uint64_t> o_indices(b.miner_tx.vout.size());
+    for (size_t i = 0; i < o_indices.size(); ++i)
+      o_indices[i] = amount_counts[b.miner_tx.vout[i].amount]++;
+    process_new_transaction(
+        cryptonote::get_transaction_hash(b.miner_tx),
+        b.miner_tx, o_indices,
+        0, b.major_version, b.timestamp,
+        true, false, false,
+        cache_data, nullptr, true);
+  }
+
   m_blockchain.push_back(get_block_hash(b));
   m_last_block_reward = cryptonote::get_outs_money_amount(b.miner_tx);
 }
@@ -8612,7 +8632,7 @@ uint64_t wallet2::get_min_ring_size()
     return 7;
   if (use_fork_rules(HF_VERSION_MIN_MIXIN_4, 0))
     return 5;
-  return 3;
+  return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_max_ring_size()
