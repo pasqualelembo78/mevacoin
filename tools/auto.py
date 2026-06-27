@@ -28,15 +28,7 @@ import time
 import requests
 
 # ── Configuration ─────────────────────────────────────────────────────────
-# Command-line: auto.py [<daemon_ip>] e.g. auto.py 82.165.218.56
-_daemon_ip = sys.argv[1] if len(sys.argv) > 1 else None
-if _daemon_ip:
-    if _daemon_ip.startswith("http"):
-        DAEMON_URL = _daemon_ip
-    else:
-        DAEMON_URL = f"http://{_daemon_ip}:18081"
-else:
-    DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://127.0.0.1:18081")
+DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://82.165.218.56:18081")
 # Use a dedicated port so we don't conflict with pool wallet-rpc on 18083
 WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:18087")
 GOV_CRYPTO = os.environ.get("GOV_CRYPTO_BIN", os.path.join(
