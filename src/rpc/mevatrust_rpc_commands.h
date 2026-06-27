@@ -478,6 +478,25 @@ struct COMMAND_RPC_STORE_PURCHASES_BY_STORE {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+// ── Lookup Node By Wallet Address ─────────────────────────────────────────────
+struct COMMAND_RPC_LOOKUP_NODE_BY_WALLET {
+  struct request_t { std::string wallet_address;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(wallet_address) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t {
+    std::string node_id; std::string wallet_address;
+    bool is_active{false}; bool is_synced{false}; uint64_t last_seen{0};
+    double score{0.0}; uint64_t uptime_seconds{0}; double uptime_percentage{0.0};
+    std::string status;
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(node_id) KV_SERIALIZE(wallet_address)
+      KV_SERIALIZE(is_active) KV_SERIALIZE(is_synced) KV_SERIALIZE(last_seen)
+      KV_SERIALIZE(score) KV_SERIALIZE(uptime_seconds) KV_SERIALIZE(uptime_percentage)
+      KV_SERIALIZE(status)
+    END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 // ── Get Node Public Key ──────────────────────────────────────────────────────
 // Restituisce la chiave pubblica del nodo (node_pk) caricata nel daemon.
 // Utile per registrare il nodo da remoto senza SSH.

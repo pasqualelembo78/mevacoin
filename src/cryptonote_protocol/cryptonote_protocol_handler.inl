@@ -3218,7 +3218,7 @@ skip:
         if (fb->get_agg_R(arg.height, arg.period, agg_R)) {
           MINFO("[FROST:P2P] Round 1 complete h=" << arg.height
                 << " broadcasting sign request");
-          broadcast_frost_sign_request(arg.height, arg.period, agg_R);
+           broadcast_frost_sign_request(arg.height, arg.period, fb->node_index(), agg_R);
         }
       }
     }
