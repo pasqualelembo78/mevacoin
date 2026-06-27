@@ -38,6 +38,7 @@ No sigs needed. `gov_spend.py network <amount> <addr>` → tx_extra blob.
 - Test all premine spend flows (treasury, add-signer, remove-signer)
 - Fix `gov_crypto` to use shared derivation from `foundation_vesting.h` (stale `derive-wallet`)
 - Write functional/integration tests
+- Build and test network fund spend via wallet-rpc `transfer` (e.g., 10 MVC to `M8viv...`)
 
 ## Completed in this session
 - `DEFAULT_FEE_ATOMIC_MVC_PER_KB` removed (dead code, dynamic fee system active)
@@ -57,3 +58,8 @@ No sigs needed. `gov_spend.py network <amount> <addr>` → tx_extra blob.
   - `MevaTrustManager` integration: `m_frost_broadcaster`, `set_frost_broadcast_func()`, apply callback, P2P round start in `trigger_distribution()`
   - `CMakeLists.txt` updated with `frost_broadcaster.cpp`
   - `m_resolved_pool_balance` added for async apply callback
+- **Wallet ring-size fix for unmixable outputs** (`src/wallet/wallet2.cpp`):
+  - **`get_outs()` (line 9703–9708)**: When `outs.back().size() < fake_outputs_count+1` (not enough decoys on chain for minimum mixin), check if output is non‑RCT with `num_outs <= fake_outputs_count+1`. If so, mark as `unmixable` instead of `scanty` — suppresses the `not_enough_outs_to_mix` error (`WALLET_RPC_ERROR_CODE_NOT_ENOUGH_OUTS_TO_MIX`, code –19). Consensus (`blockchain.cpp:3517–3585`) already allows smaller rings for unmixable outputs; wallet just needed to not reject them.
+  - **`transfer_selected()` (line 9813)**: Changed ring iteration from `fake_outputs_count + 1` to `outs[out_index].size()` so the non‑RCT tx builder uses whatever ring size was gathered.
+  - **`transfer_selected_rct()` (lines 10034, 10037)**: Same ring‑size fix for the RCT tx builder. Error guard changed from `outs[out_index].size() < fake_outputs_count` to `outs[out_index].size() == 0` since smaller rings are now valid.
+  - **Root cause**: HF version 13 enforces `min_mixin=10` (ring ≥ 11), but only 2 outputs of 400k MVC exist on chain (treasury + network fund at genesis height 0, unlocked at height 60). `get_min_ring_size()` returns 11 → `adjust_mixin()` overrides user‑requested `ring_size=2` → `get_outs()` tries to build ring of 11 but finds only 2 → throws `not_enough_outs_to_mix`. `create_unmixable_sweep_transactions()` (which uses `fake_outs_count=0`) already worked but sends to own address, not a custom destination.

@@ -9702,7 +9702,18 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
       }
       if (outs.back().size() < fake_outputs_count + 1)
       {
-        scanty_outs[td.is_rct() ? 0 : td.amount()] = outs.back().size();
+        // If the output doesn't have enough instances on chain to form the
+        // minimum ring, the consensus accepts a smaller ring (unmixable).
+        // Only flag as scanty if enough outputs exist but we failed to pick.
+        bool unmixable = (!td.is_rct() && num_outs <= fake_outputs_count + 1);
+        if (!unmixable)
+        {
+          scanty_outs[td.is_rct() ? 0 : td.amount()] = outs.back().size();
+        }
+        else
+        {
+          MDEBUG("Unmixable output, accepting ring of size " << outs.back().size());
+        }
       }
       else
       {
@@ -9799,7 +9810,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
     src.rct = td.is_rct();
     //paste keys (fake and real)
 
-    for (size_t n = 0; n < fake_outputs_count + 1; ++n)
+    for (size_t n = 0; n < outs[out_index].size(); ++n)
     {
       tx_output_entry oe;
       oe.first = std::get<0>(outs[out_index][n]);
@@ -10020,10 +10031,10 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
     //paste mixin transaction
 
     THROW_WALLET_EXCEPTION_IF(outs.size() < out_index + 1 ,  error::wallet_internal_error, "outs.size() < out_index + 1"); 
-    THROW_WALLET_EXCEPTION_IF(outs[out_index].size() < fake_outputs_count ,  error::wallet_internal_error, "fake_outputs_count > random outputs found");
+    THROW_WALLET_EXCEPTION_IF(outs[out_index].size() == 0 ,  error::wallet_internal_error, "no outputs found");
       
     typedef cryptonote::tx_source_entry::output_entry tx_output_entry;
-    for (size_t n = 0; n < fake_outputs_count + 1; ++n)
+    for (size_t n = 0; n < outs[out_index].size(); ++n)
     {
       tx_output_entry oe;
       oe.first = std::get<0>(outs[out_index][n]);
