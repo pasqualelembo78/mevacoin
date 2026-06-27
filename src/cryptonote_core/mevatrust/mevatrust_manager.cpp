@@ -183,7 +183,7 @@ void MevaTrustManager::shutdown() {
 }
 
 void MevaTrustManager::set_proposer_keypairs(
-    const std::array<frost::SignerKeypair, frost::FROST_N>& kp)
+    const std::array<mevatrust::frost::SignerKeypair, mevatrust::frost::FROST_N>& kp)
 {
     std::lock_guard<std::mutex> lk(m_lock);
     m_proposer_keypairs = kp;
@@ -194,7 +194,7 @@ void MevaTrustManager::set_proposer_keypairs(
       MINFO("[FROST:P2P] FrostBroadcaster key set: index=0 pub="
             << epee::string_tools::pod_to_hex(kp[0].pub));
     }
-    MINFO("[FROST] Proposer keypairs set (" << frost::FROST_N << " keys)");
+    MINFO("[FROST] Proposer keypairs set (" << mevatrust::frost::FROST_N << " keys)");
 }
 
   // ── Validator system ──────────────────────────────────────────────────────
@@ -365,18 +365,18 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
     // Real FROST signing using proposer keypairs
     // We need at least FROST_T (3) signers. Use all available proposers.
     std::vector<uint8_t> signer_indices;
-    for (uint8_t i = 0; i < frost::FROST_N; ++i) signer_indices.push_back(i);
+    for (uint8_t i = 0; i < mevatrust::frost::FROST_N; ++i) signer_indices.push_back(i);
 
     // Compute Lagrange coefficients for the signer set
     cryptonote::mevatrust::frost::PublicKeyPackage pkg;
     {
-        crypto::public_key pk_array[frost::FROST_N];
-        for (size_t i = 0; i < frost::FROST_N; ++i) {
+        crypto::public_key pk_array[mevatrust::frost::FROST_N];
+        for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
             pk_array[i] = m_proposer_keypairs[i].pub;
             pkg.signer_pubkeys[i] = m_proposer_keypairs[i].pub;
         }
         pkg.agg_pubkey = cryptonote::mevatrust::frost::sum_public_keys(
-            pk_array, frost::FROST_N);
+            pk_array, mevatrust::frost::FROST_N);
     }
     cryptonote::mevatrust::frost::compute_lagrange_coeffs(signer_indices, pkg.lagrange_coeffs);
 
@@ -387,8 +387,8 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
         height, static_cast<uint32_t>(height / m_period_length), outputs);
 
     // Round 1: each signer generates nonces
-    std::array<cryptonote::mevatrust::frost::NoncePair, frost::FROST_N> nonces;
-    for (size_t i = 0; i < frost::FROST_N; ++i)
+    std::array<cryptonote::mevatrust::frost::NoncePair, mevatrust::frost::FROST_N> nonces;
+    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i)
         cryptonote::mevatrust::frost::generate_nonces(nonces[i]);
 
     // Compute aggregate R = sum(R_i)
@@ -396,7 +396,7 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
     {
         bool first = true;
         ge_p3 R_sum;
-        for (size_t i = 0; i < frost::FROST_N; ++i) {
+        for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
             ge_p3 R_i;
             unsigned char r_bytes[32];
             memcpy(r_bytes, &nonces[i].hiding, 32);
@@ -419,7 +419,7 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
 
     // Round 2: each signer creates partial signature
     std::vector<cryptonote::mevatrust::frost::PartialSignature> partials;
-    for (size_t i = 0; i < frost::FROST_N; ++i) {
+    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
         cryptonote::mevatrust::frost::PartialSignature ps;
         ps.signer_index = i;
         ps.hiding_nonce = nonces[i].hiding;

@@ -537,6 +537,39 @@ struct COMMAND_RPC_GET_GOVERNANCE_ACTIVITY {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+// ── Treasury Status (governance balance) ────────────────────────────────────
+struct COMMAND_RPC_GET_TREASURY_STATUS {
+  struct request_t { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t { uint64_t balance{0}; uint64_t initial_allocation{0}; uint32_t signer_count{0}; uint32_t threshold{0}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(balance) KV_SERIALIZE(initial_allocation) KV_SERIALIZE(signer_count) KV_SERIALIZE(threshold) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Network Fund Status ─────────────────────────────────────────────────────
+struct COMMAND_RPC_GET_NETWORK_FUND_STATUS {
+  struct request_t { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct spend_entry_t { uint64_t height{0}; uint64_t amount{0};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(height) KV_SERIALIZE(amount) END_KV_SERIALIZE_MAP() };
+  struct response_t { uint64_t balance{0}; uint64_t initial_allocation{0}; uint64_t window_total{0}; std::vector<spend_entry_t> recent_spends; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(balance) KV_SERIALIZE(initial_allocation) KV_SERIALIZE(window_total) KV_SERIALIZE(recent_spends) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
+// ── Proposer Set Status ─────────────────────────────────────────────────────
+struct COMMAND_RPC_GET_PROPOSER_STATUS {
+  struct request_t { BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct proposer_entry_t { uint8_t index{0}; std::string pubkey; bool active{false}; bool is_me{false};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(index) KV_SERIALIZE(pubkey) KV_SERIALIZE(active) KV_SERIALIZE(is_me) END_KV_SERIALIZE_MAP() };
+  struct response_t { std::vector<proposer_entry_t> proposers; uint32_t threshold{3}; uint8_t my_index{0};
+    bool has_proposer_keys{false}; std::string status;
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(proposers) KV_SERIALIZE(threshold) KV_SERIALIZE(my_index)
+    KV_SERIALIZE(has_proposer_keys) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 } // namespace rpc
 } // namespace cryptonote
 

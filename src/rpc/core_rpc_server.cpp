@@ -4774,6 +4774,189 @@ bool core_rpc_server::on_get_reward_history_by_node(
 
 
 // =============================================================================
+// Treasury Status RPC Handler
+// =============================================================================
+bool core_rpc_server::on_get_treasury_status(
+    const cryptonote::rpc::COMMAND_RPC_GET_TREASURY_STATUS::request& req,
+    cryptonote::rpc::COMMAND_RPC_GET_TREASURY_STATUS::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  RPC_TRACKER(get_treasury_status);
+  auto& gs = m_core.get_blockchain_storage().get_governance_state();
+  res.balance = gs.balance;
+  res.initial_allocation = TREASURY_ALLOCATION;
+  res.signer_count = static_cast<uint32_t>(gs.signers.size());
+  res.threshold = gs.threshold;
+  res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
+// =============================================================================
+// Network Fund Status RPC Handler
+// =============================================================================
+bool core_rpc_server::on_get_network_fund_status(
+    const cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS::request& req,
+    cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  RPC_TRACKER(get_network_fund_status);
+  auto& nfs = m_core.get_blockchain_storage().get_network_fund_state();
+  res.balance = nfs.balance;
+  res.initial_allocation = NETWORK_FUND_ALLOCATION;
+  uint64_t window_total = 0;
+  for (const auto& se : nfs.recent_spends) {
+    cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS::spend_entry_t e;
+    e.height = se.height;
+    e.amount = se.amount;
+    res.recent_spends.push_back(std::move(e));
+    window_total += se.amount;
+  }
+  res.window_total = window_total;
+  res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
+// =============================================================================
+// Governance Activity RPC Handler (0xB0/0xB1/0xB2/0xC0)
+// =============================================================================
+bool core_rpc_server::on_get_governance_activity(
+    const rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::request& req,
+    rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  RPC_TRACKER(get_governance_activity);
+
+  auto& db = m_core.get_blockchain_storage().get_db();
+  uint64_t tip = db.height();
+  if (tip == 0) { res.status = CORE_RPC_STATUS_OK; return true; }
+
+  uint64_t start = req.from_height;
+  if (start == 0) {
+    start = req.count >= tip ? 0 : tip - req.count;
+  }
+  if (start >= tip) { res.status = CORE_RPC_STATUS_OK; return true; }
+
+  for (uint64_t h = start; h < tip; ++h) {
+    cryptonote::block blk;
+    try { blk = db.get_block_from_height(h); }
+    catch (...) { continue; }
+
+    crypto::hash blk_hash = db.get_block_hash_from_height(h);
+    std::string hash_hex = epee::string_tools::pod_to_hex(blk_hash);
+
+    // Check miner_tx first
+    std::vector<tx_extra_field> miner_fields;
+    if (parse_tx_extra(blk.miner_tx.extra, miner_fields)) {
+      for (const auto& f : miner_fields) {
+        rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::gov_activity_entry_t e;
+        e.height = h;
+        e.tx_hash = hash_hex;
+        e.timestamp = blk.timestamp;
+
+        if (const auto* g = boost::get<tx_extra_governance_transfer>(&f)) {
+          e.tag = 0xB0; e.amount = g->amount;
+          e.recipient = epee::string_tools::pod_to_hex(g->recipient_spend);
+          e.type = "treasury_transfer";
+          res.entries.push_back(std::move(e));
+        } else if (boost::get<tx_extra_governance_add_signer>(&f)) {
+          e.tag = 0xB1; e.type = "add_signer";
+          res.entries.push_back(std::move(e));
+        } else if (boost::get<tx_extra_governance_remove_signer>(&f)) {
+          e.tag = 0xB2; e.type = "remove_signer";
+          res.entries.push_back(std::move(e));
+        } else if (const auto* nf = boost::get<tx_extra_network_fund_transfer>(&f)) {
+          e.tag = 0xC0; e.amount = nf->amount;
+          e.recipient = epee::string_tools::pod_to_hex(nf->recipient_spend);
+          e.type = "network_fund_transfer";
+          res.entries.push_back(std::move(e));
+        }
+      }
+    }
+
+    // Check regular tx hashes
+    for (const auto& tx_hash : blk.tx_hashes) {
+      cryptonote::transaction tx;
+      try { db.get_tx(tx_hash, tx); }
+      catch (...) { continue; }
+
+      std::vector<tx_extra_field> tx_fields;
+      if (!parse_tx_extra(tx.extra, tx_fields)) continue;
+
+      for (const auto& f : tx_fields) {
+        rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::gov_activity_entry_t e;
+        e.height = h;
+        e.tx_hash = epee::string_tools::pod_to_hex(tx_hash);
+        e.timestamp = blk.timestamp;
+
+        if (const auto* g = boost::get<tx_extra_governance_transfer>(&f)) {
+          e.tag = 0xB0; e.amount = g->amount;
+          e.recipient = epee::string_tools::pod_to_hex(g->recipient_spend);
+          e.type = "treasury_transfer";
+          res.entries.push_back(std::move(e));
+        } else if (boost::get<tx_extra_governance_add_signer>(&f)) {
+          e.tag = 0xB1; e.type = "add_signer";
+          res.entries.push_back(std::move(e));
+        } else if (boost::get<tx_extra_governance_remove_signer>(&f)) {
+          e.tag = 0xB2; e.type = "remove_signer";
+          res.entries.push_back(std::move(e));
+        } else if (const auto* nf = boost::get<tx_extra_network_fund_transfer>(&f)) {
+          e.tag = 0xC0; e.amount = nf->amount;
+          e.recipient = epee::string_tools::pod_to_hex(nf->recipient_spend);
+          e.type = "network_fund_transfer";
+          res.entries.push_back(std::move(e));
+        }
+      }
+    }
+
+    if (res.entries.size() >= req.count) break;
+  }
+
+  res.total = static_cast<uint32_t>(res.entries.size());
+  res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
+// =============================================================================
+// Proposer Status RPC Handler
+// =============================================================================
+bool core_rpc_server::on_get_proposer_status(
+    const rpc::COMMAND_RPC_GET_PROPOSER_STATUS::request& req,
+    rpc::COMMAND_RPC_GET_PROPOSER_STATUS::response& res,
+    epee::json_rpc::error&, const connection_context*)
+{
+  RPC_TRACKER(get_proposer_status);
+
+  auto* pm = cryptonote::mevatrust::get_manager();
+  if (!pm || !pm->is_initialized()) {
+    res.has_proposer_keys = false;
+    res.status = "MevaTrust system not initialized";
+    return true;
+  }
+
+  res.has_proposer_keys = pm->has_proposer_keys();
+  res.threshold = FrostBroadcaster::FROST_THRESHOLD;
+  res.my_index = 0;
+
+  auto fb = pm->frost_broadcaster();
+    if (fb) {
+      res.my_index = fb->node_index();
+      if (pm->has_proposer_keys()) {
+        for (uint8_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+        rpc::COMMAND_RPC_GET_PROPOSER_STATUS::proposer_entry_t pe;
+        pe.index = i;
+        pe.pubkey = epee::string_tools::pod_to_hex(pm->get_node_pk());  // approximate
+        pe.active = true;  // all local proposers are active
+        pe.is_me = (i == res.my_index);
+        res.proposers.push_back(std::move(pe));
+      }
+    }
+  }
+
+  res.status = CORE_RPC_STATUS_OK;
+  return true;
+}
+
+// =============================================================================
 // Circle Registry RPC Handlers (Fase 3)
 // =============================================================================
 

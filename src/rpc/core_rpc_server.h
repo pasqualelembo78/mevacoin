@@ -221,6 +221,9 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_pool_distribution_history",  on_get_pool_distribution_history,  cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY)
         MAP_JON_RPC_WE("get_recent_blocks",              on_get_recent_blocks,              cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS)
         MAP_JON_RPC_WE("get_governance_activity",        on_get_governance_activity,        cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY)
+        MAP_JON_RPC_WE("get_treasury_status",             on_get_treasury_status,             cryptonote::rpc::COMMAND_RPC_GET_TREASURY_STATUS)
+        MAP_JON_RPC_WE("get_network_fund_status",          on_get_network_fund_status,          cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS)
+        MAP_JON_RPC_WE("get_proposer_status",            on_get_proposer_status,            cryptonote::rpc::COMMAND_RPC_GET_PROPOSER_STATUS)
         // ── Store ──────────────────────────────────────────────────────────────
         MAP_JON_RPC_WE("store_list",         on_store_list,           cryptonote::rpc::COMMAND_RPC_STORE_LIST)
         MAP_JON_RPC_WE("store_show",         on_store_show,           cryptonote::rpc::COMMAND_RPC_STORE_SHOW)
@@ -345,6 +348,9 @@ namespace cryptonote
     bool on_get_pool_distribution_history(const cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_recent_blocks(const cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::request& req, cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_governance_activity(const cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::request& req, cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_treasury_status(const cryptonote::rpc::COMMAND_RPC_GET_TREASURY_STATUS::request& req, cryptonote::rpc::COMMAND_RPC_GET_TREASURY_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_network_fund_status(const cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS::request& req, cryptonote::rpc::COMMAND_RPC_GET_NETWORK_FUND_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_get_proposer_status(const cryptonote::rpc::COMMAND_RPC_GET_PROPOSER_STATUS::request& req, cryptonote::rpc::COMMAND_RPC_GET_PROPOSER_STATUS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     // ── Store RPC ──────────────────────────────────────────────────────────────
     bool on_store_list(const cryptonote::rpc::COMMAND_RPC_STORE_LIST::request& req, cryptonote::rpc::COMMAND_RPC_STORE_LIST::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_store_show(const cryptonote::rpc::COMMAND_RPC_STORE_SHOW::request& req, cryptonote::rpc::COMMAND_RPC_STORE_SHOW::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
