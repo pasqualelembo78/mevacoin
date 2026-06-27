@@ -134,7 +134,7 @@ public:
   uint64_t compute_pool_balance_from_chain() const;
 
   // Proposer key management for FROST signing
-  void set_proposer_keypairs(const std::array<frost::SignerKeypair, frost::FROST_N>& kp);
+  void set_proposer_keypairs(const std::array<mevatrust::frost::SignerKeypair, mevatrust::frost::FROST_N>& kp);
   bool has_proposer_keys() const { return m_has_proposer_keys; }
 
   // P2P FROST coordination
@@ -193,7 +193,7 @@ private:
   bool                  m_has_pending_pool_distribution{false};
 
   // Proposer keypairs for FROST signing
-  std::array<frost::SignerKeypair, frost::FROST_N> m_proposer_keypairs{};
+  std::array<mevatrust::frost::SignerKeypair, mevatrust::frost::FROST_N> m_proposer_keypairs{};
   bool m_has_proposer_keys{false};
 
   // P2P FROST coordinator

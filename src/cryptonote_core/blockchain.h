@@ -1675,6 +1675,9 @@ namespace cryptonote
      */
     void send_miner_notifications(uint64_t height, const crypto::hash &seed_hash, const crypto::hash &prev_id, uint64_t already_generated_coins);
 
+    const governance_state& get_governance_state() const { return m_governance; }
+    const network_fund_state& get_network_fund_state() const { return m_network_fund; }
+
     friend struct BlockchainAndPool;
   };
 }  // namespace cryptonote
