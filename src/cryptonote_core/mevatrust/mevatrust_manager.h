@@ -110,7 +110,9 @@ public:
   // ── State commitment (fork resistance) ───────────────────────────────────
   // Calcola un hash Merkle dello stato MevaTrust corrente (nodi + cerchie + badge + pool_balance).
   // Questo root viene incluso nella coinbase tx_extra (tag 0xA7) di ogni blocco.
-  crypto::hash compute_mevatrust_state_root() const;
+  // up_to_height_exclusive: se >0, calcola pool_balance fino a (ma non incluso) questo height;
+  // se 0, usa il tip corrente del DB.
+  crypto::hash compute_mevatrust_state_root(uint64_t up_to_height_exclusive = 0) const;
 
   // Verifica che lo state root calcolato localmente matchi quello nel blocco.
   // Se non matcha => fork detection => blocco rifiutato.
@@ -131,7 +133,9 @@ public:
   bool is_state_root_verification_enabled() const { return m_state_root_verification_enabled; }
 
   // Calcola pool_balance on-chain: somma 3% contributi - distribuzioni eseguite
-  uint64_t compute_pool_balance_from_chain() const;
+  // up_to_height_exclusive: se >0, calcola contributi solo da blocchi < questo height;
+  // se 0, scansiona il DB per trovare il tip corrente.
+  uint64_t compute_pool_balance_from_chain(uint64_t up_to_height_exclusive = 0) const;
 
   // Proposer key management for FROST signing
   void set_proposer_keypairs(const std::array<mevatrust::frost::SignerKeypair, mevatrust::frost::FROST_N>& kp);

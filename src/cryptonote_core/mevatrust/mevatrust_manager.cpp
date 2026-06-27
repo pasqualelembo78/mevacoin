@@ -887,7 +887,9 @@ void MevaTrustManager::process_mevatrust_txs(
             tx_extra_mevatrust_state_root sr;
             if (m_state_root_verification_enabled &&
                 mevatrust::parse_mevatrust_state_root_from_tx(tx, sr)) {
-                crypto::hash local_root = compute_mevatrust_state_root();
+                // height = blocco appena aggiunto. Usalo come upper bound esclusivo
+                // per pool_balance, matchando cio' che il minatore ha calcolato.
+                crypto::hash local_root = compute_mevatrust_state_root(height);
                 if (local_root != sr.state_root) {
                     MERROR("[MevaTrustManager] MEVATRUST STATE ROOT MISMATCH h=" << height
                            << " blocco=" << epee::string_tools::pod_to_hex(sr.state_root)
@@ -1382,7 +1384,7 @@ void MevaTrustManager::on_mevatrust_block_popped(const block& bl, uint64_t heigh
 // ============================================================================
 // State Commitment
 // ============================================================================
-crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
+crypto::hash MevaTrustManager::compute_mevatrust_state_root(uint64_t up_to_height_exclusive) const
 {
     // Costruisce un hash ordinato di tutto lo stato MevaTrust:
     // 1. Hash di tutti i nodi registrati
@@ -1426,7 +1428,7 @@ crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
     }
 
     // Pool balance — deterministico da chain (non da LMDB locale)
-    uint64_t pool_balance = compute_pool_balance_from_chain();
+    uint64_t pool_balance = compute_pool_balance_from_chain(up_to_height_exclusive);
     state_data.append(reinterpret_cast<const char*>(&pool_balance), sizeof(pool_balance));
 
     return crypto::cn_fast_hash(state_data.data(), state_data.size());
@@ -1434,28 +1436,32 @@ crypto::hash MevaTrustManager::compute_mevatrust_state_root() const
 
 // Calcola pool_balance on-chain: somma 3% contributi - distribuzioni eseguite
 // Itera blocchi da HF_MEVATRUST_POOL activation height
-uint64_t MevaTrustManager::compute_pool_balance_from_chain() const
+// Se up_to_height_exclusive == 0, scansiona il DB per trovare il tip corrente.
+// Altrimenti usa up_to_height_exclusive come upper bound esclusivo.
+uint64_t MevaTrustManager::compute_pool_balance_from_chain(uint64_t up_to_height_exclusive) const
 {
     if (!m_get_block_func) return 0;
     
     const uint64_t HF_POOL_ACTIVATION = 13; // Activation at HF_VERSION_MEVATRUST (v13)
-    uint64_t current_height = 0;
-    if (m_get_block_func) {
+    
+    // Se nessun bound esplicito, scansiona il DB per trovare il tip
+    if (up_to_height_exclusive == 0) {
         block dummy;
-        if (m_get_block_func(0, dummy)) {
-            // Find current tip height
-            for (uint64_t h = 1; ; ++h) {
-                if (!m_get_block_func(h, dummy)) { current_height = h - 1; break; }
-            }
+        if (!m_get_block_func(0, dummy)) return 0;
+        uint64_t current_height = 0;
+        for (uint64_t h = 1; ; ++h) {
+            if (!m_get_block_func(h, dummy)) { current_height = h - 1; break; }
         }
+        up_to_height_exclusive = current_height + 1;
     }
-    if (current_height <= HF_POOL_ACTIVATION) return 0;
+    
+    if (up_to_height_exclusive <= HF_POOL_ACTIVATION + 1) return 0;
 
     uint64_t total_contributions = 0;
     uint64_t total_distributions = 0;
     
     block bl;
-    for (uint64_t h = HF_POOL_ACTIVATION + 1; h <= current_height; ++h) {
+    for (uint64_t h = HF_POOL_ACTIVATION + 1; h < up_to_height_exclusive; ++h) {
         if (!m_get_block_func(h, bl)) continue;
         
         // 1. Contribution: 3% of block reward (base_reward + fees)
@@ -1500,7 +1506,9 @@ bool MevaTrustManager::verify_mevatrust_state_root(const block& bl, uint64_t hei
         MWARNING("[MevaTrustManager] State root height mismatch h=" << height);
         return false;
     }
-    crypto::hash local = compute_mevatrust_state_root();
+    // Usa height come upper bound esclusivo per pool_balance,
+    // così il calcolo corrisponde a quello del minatore (prima che il blocco fosse aggiunto).
+    crypto::hash local = compute_mevatrust_state_root(height);
     if (local != sr.state_root) {
         MERROR("[MevaTrustManager] FORK DETECTED! State root mismatch h=" << height
                << " chain=" << epee::string_tools::pod_to_hex(sr.state_root)
