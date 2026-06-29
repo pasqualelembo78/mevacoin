@@ -1113,6 +1113,7 @@ namespace cryptonote
     bool txpool_tx_matches_category(const crypto::hash& tx_hash, relay_category category);
 
     bool is_within_compiled_block_hash_area() const { return is_within_compiled_block_hash_area(m_db->height()); }
+    const std::string& get_last_premine_fail_reason() const { return m_last_premine_fail_reason; }
     uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes, const std::vector<uint64_t> &weights);
     uint32_t get_blockchain_pruning_seed() const { return m_db->get_blockchain_pruning_seed(); }
     bool prune_blockchain(uint32_t pruning_seed = 0);
@@ -1263,6 +1264,7 @@ namespace cryptonote
     governance_state m_governance;
     network_fund_state m_network_fund;
     bool m_premine_initialized{false};
+    mutable std::string m_last_premine_fail_reason;
 
     bool init_premine_state();
     bool check_premine_spend(const transaction& tx, uint64_t height, uint8_t hf_version) const;

@@ -27,6 +27,8 @@ import time
 
 import requests
 
+VERBOSE = os.environ.get("VERBOSE", "").lower() in ("1", "yes", "true", "on")
+
 # ── Configuration ─────────────────────────────────────────────────────────
 DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://82.165.218.56:18081")
 # Use a dedicated port so we don't conflict with pool wallet-rpc on 18083
@@ -64,36 +66,79 @@ FOUNDER_PASSWORD = "pass_new_founder"
 
 # ── RPC helpers ───────────────────────────────────────────────────────────
 
+def _dump_send_raw_response(resp):
+    """Formatted dump of send_raw_transaction response fields."""
+    lines = []
+    flags = [
+        ("low_mixin", resp.get("low_mixin")),
+        ("double_spend", resp.get("double_spend")),
+        ("invalid_input", resp.get("invalid_input")),
+        ("invalid_output", resp.get("invalid_output")),
+        ("too_big", resp.get("too_big")),
+        ("overspend", resp.get("overspend")),
+        ("fee_too_low", resp.get("fee_too_low")),
+        ("too_few_outputs", resp.get("too_few_outputs")),
+        ("sanity_check_failed", resp.get("sanity_check_failed")),
+        ("tx_extra_too_big", resp.get("tx_extra_too_big")),
+        ("nonzero_unlock_time", resp.get("nonzero_unlock_time")),
+        ("not_relayed", resp.get("not_relayed")),
+    ]
+    for name, val in flags:
+        if val:
+            lines.append(f"    {name} = {val}")
+    reason = resp.get("reason", "")
+    if reason:
+        lines.append(f"    reason = {reason}")
+    status = resp.get("status", "")
+    if status:
+        lines.append(f"    status = {status}")
+    return "\n".join(lines) if lines else "    (empty response)"
+
 def daemon_rpc(method, params=None):
     """JSON-RPC calls: /json_rpc"""
     url = DAEMON_URL + "/json_rpc"
     payload = {"jsonrpc": "2.0", "id": "0", "method": method}
     if params is not None:
         payload["params"] = params
+    if VERBOSE:
+        print(f"    daemon_rpc: {method}")
     resp = requests.post(url, json=payload, timeout=30)
     data = resp.json()
     if "error" in data:
-        raise RuntimeError(f"Daemon RPC error: {data['error']}")
+        raise RuntimeError(f"Daemon RPC error ({method}): {data['error']}")
     return data.get("result")
 
 def daemon_rest(path, payload=None):
     """REST-style calls: GET /path or POST /path with JSON body."""
     url = DAEMON_URL + path
     if payload is not None:
-        resp = requests.post(url, json=payload, timeout=30)
+        if VERBOSE:
+            print(f"    daemon_rest POST {path} ({len(json.dumps(payload))} bytes)")
+        resp = requests.post(url, json=payload, timeout=60)
     else:
+        if VERBOSE:
+            print(f"    daemon_rest GET {path}")
         resp = requests.get(url, timeout=30)
-    return resp.json()
+    try:
+        return resp.json()
+    except Exception as e:
+        raise RuntimeError(f"Daemon REST {path} returned non-JSON (HTTP {resp.status_code}): {resp.text[:200]}")
 
 def wallet_rpc(method, params=None):
     url = WALLET_URL + "/json_rpc"
     payload = {"jsonrpc": "2.0", "id": "0", "method": method}
     if params is not None:
         payload["params"] = params
+    if VERBOSE:
+        print(f"    wallet_rpc: {method} params={json.dumps(params)[:160] if params else 'None'}")
     resp = requests.post(url, json=payload, timeout=60)
     data = resp.json()
     if "error" in data:
-        raise RuntimeError(f"Wallet RPC error: {data['error']}")
+        err = data["error"]
+        msg = f"Wallet RPC error ({method}): {err.get('message', 'N/A')}"
+        if VERBOSE:
+            msg += f"\n      code={err.get('code')} data={err.get('data', 'N/A')}"
+        raise RuntimeError(msg)
     return data.get("result")
 
 # ── Wallet RPC process management ────────────────────────────────────────
@@ -372,8 +417,16 @@ def ensure_wallet(filename, address, spendkey, viewkey, password="govspend"):
 
 def refresh_wallet():
     """Rescan blockchain from scratch to ensure correct balance and spent state."""
+    if VERBOSE:
+        print("  Refreshing wallet (rescan_blockchain)...")
     result = wallet_rpc("rescan_blockchain")
     print("  Wallet rescanned from height 0.")
+    if VERBOSE:
+        try:
+            bal = wallet_rpc("get_balance")
+            print(f"    balance: {bal.get('unlocked_balance', 0) / COIN:.4f} MVC unlocked / {bal.get('balance', 0) / COIN:.4f} MVC total")
+        except Exception:
+            pass
 
 # ── Fund type operations ─────────────────────────────────────────────────
 
@@ -389,6 +442,9 @@ def do_team_lock(amount, dest_addr):
     ensure_wallet("founder", FOUNDER_ADDRESS, FOUNDER_SPENDKEY, FOUNDER_VIEWKEY, FOUNDER_PASSWORD)
     refresh_wallet()
 
+    if VERBOSE:
+        print(f"  ring_size={MIN_RING_SIZE}")
+
     result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
         "priority": 0,
@@ -399,6 +455,9 @@ def do_team_lock(amount, dest_addr):
     })
     print(f"\n✓ Transaction broadcast!")
     print(f"  Tx hash: {result['tx_hash']}")
+    if VERBOSE:
+        print(f"  tx_key: {result.get('tx_key', 'N/A')}")
+        print(f"  tx_blob ({len(result.get('tx_blob',''))//2} bytes) present: {bool(result.get('tx_blob'))}")
     return result
 
 def do_network_fund(amount, dest_addr):
@@ -416,6 +475,9 @@ def do_network_fund(amount, dest_addr):
     wallet_info = derive_wallet(DOMAIN_NETWORK, 0)
     print(f"  Network fund address: {wallet_info['address']}")
 
+    if VERBOSE:
+        print(f"  Derived keys: spend_sec={wallet_info['spend_sec'][:16]}... view_sec={wallet_info['view_sec'][:16]}...")
+
     # Ensure wallet exists in wallet RPC
     ensure_wallet(
         "network_fund",
@@ -428,14 +490,20 @@ def do_network_fund(amount, dest_addr):
     refresh_wallet()
 
     # Build tx_extra via gov_spend.py
+    if VERBOSE:
+        print(f"  Running: {GOV_SPEND} network {amount} {dest_addr[:16]}...")
     result = subprocess.run(
         [GOV_SPEND, "network", str(amount), dest_addr],
         capture_output=True, text=True
     )
     if result.returncode != 0:
-        raise RuntimeError(f"gov_spend.py failed: {result.stderr}")
+        err_detail = result.stderr[:500] if result.stderr else "(no stderr)"
+        raise RuntimeError(f"gov_spend.py failed: {err_detail}")
     extra_hex = result.stdout.strip().split("\n")[0].strip()
-    print(f"  tx_extra: {extra_hex[:40]}... ({len(bytes.fromhex(extra_hex))} bytes)")
+    extra_bytes = bytes.fromhex(extra_hex)
+    print(f"  tx_extra: {extra_hex[:40]}... ({len(extra_bytes)} bytes)")
+    if VERBOSE:
+        print(f"  full tx_extra hex ({len(extra_bytes)} bytes): {extra_hex}")
 
     result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
@@ -548,6 +616,9 @@ def do_treasury(amount, dest_addr):
     )
     refresh_wallet()
 
+    print(f"    Calling wallet_rpc transfer (do_not_relay=True)...")
+    if VERBOSE:
+        print(f"      extra ({len(zero_extra_bytes)} bytes): {zero_extra_hex[:80]}...")
     tx_result = wallet_rpc("transfer", {
         "destinations": [{"amount": amount, "address": dest_addr}],
         "priority": 0,
@@ -558,8 +629,12 @@ def do_treasury(amount, dest_addr):
         "do_not_relay": True,
     })
     tx_blob_hex = tx_result["tx_blob"]
-    print(f"    Unsigned tx created: {tx_result['tx_hash']}")
+    tx_hash = tx_result["tx_hash"]
+    print(f"    Unsigned tx created: {tx_hash}")
     print(f"    tx_blob: {len(tx_blob_hex)//2} bytes")
+    if VERBOSE:
+        print(f"      tx_hash: {tx_hash}")
+        print(f"      tx_blob_hex ({len(tx_blob_hex)//2} bytes): {tx_blob_hex[:120]}...")
 
     # ── Step 3: Compute tx_prefix_hash with zeroed sigs ─────────────
     print("  [3/7] Computing tx_prefix_hash (governance zero-sig convention)...")
@@ -686,19 +761,42 @@ def do_treasury(amount, dest_addr):
     })
     if send_result.get("status") == "OK":
         print(f"\n✓ Transaction broadcast successfully!")
-        # Get tx hash from the wallet result
         print(f"  Tx hash (from wallet): {tx_result['tx_hash']}")
     else:
-        reason = send_result.get("reason", "unknown")
-        raise RuntimeError(f"Broadcast failed: {reason}")
+        print(f"\n  ✗ Daemon rejected transaction:")
+        print(f"    status: {send_result.get('status', 'N/A')}")
+        print(f"    reason: {send_result.get('reason', 'N/A')}")
+        flags_on = []
+        for flag in ["low_mixin", "double_spend", "invalid_input", "invalid_output",
+                       "too_big", "overspend", "fee_too_low", "too_few_outputs",
+                       "sanity_check_failed", "tx_extra_too_big", "nonzero_unlock_time",
+                       "not_relayed"]:
+            if send_result.get(flag):
+                flags_on.append(flag)
+        if flags_on:
+            print(f"    flags: {', '.join(flags_on)}")
+        msg = f"Broadcast failed: {send_result.get('reason', 'unknown')}"
+        if VERBOSE:
+            print(f"\n  Verbose dump:")
+            print(_dump_send_raw_response(send_result))
+        raise RuntimeError(msg)
 
     return tx_result
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def main():
+    global VERBOSE
+    # Parse --verbose early
+    if "--verbose" in sys.argv or "-v" in sys.argv:
+        VERBOSE = True
+        # Strip from argv so it doesn't interfere with other arg parsing
+        sys.argv = [a for a in sys.argv if a not in ("--verbose", "-v")]
+
     print("=" * 60)
     print("  MevaCoin Premine Spend — Automated Tool")
+    if VERBOSE:
+        print("  Verbose mode ON")
     print("=" * 60)
     print()
     print(f"  Daemon RPC:  {DAEMON_URL}")
@@ -708,7 +806,17 @@ def main():
     # Check connectivity
     try:
         height_info = daemon_rest("/get_height")
-        print(f"  ✓ Daemon connected (height: {height_info['height']})")
+        h = height_info['height']
+        print(f"  ✓ Daemon connected (height: {h})")
+        if VERBOSE:
+            # Try to get more daemon info
+            try:
+                info = daemon_rpc("get_info")
+                print(f"    network: {info.get('nettype', 'N/A')}")
+                print(f"    hf_version: {info.get('version', 'N/A')}")
+                print(f"    tx_pool_size: {info.get('tx_pool_size', 0)}")
+            except Exception:
+                pass
     except Exception as e:
         print(f"  ✗ Cannot connect to daemon at {DAEMON_URL}")
         print(f"    Error: {e}")

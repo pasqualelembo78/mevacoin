@@ -218,6 +218,11 @@ namespace
         add_reason(reason, "tx sanity check failed");
       if (res.not_relayed)
         add_reason(reason, "tx was not relayed");
+      // Include daemon-provided reason string as fallback (populated by
+      // on_send_raw_tx for failures that don't map to a boolean flag,
+      // e.g. premine spend enforcement checks).
+      if (reason.empty() && !res.reason.empty())
+        add_reason(reason, res.reason.c_str());
       return reason;
   }
 
@@ -2548,8 +2553,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             else if (miner_tx && tx.version == 2)
             {
-              td.m_mask = rct::identity();
-              td.m_rct = true;
+              td.m_mask = rct::zero();
+              td.m_rct = false;
             }
             else
             {
@@ -2635,8 +2640,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             }
             else if (miner_tx && tx.version == 2)
             {
-              td.m_mask = rct::identity();
-              td.m_rct = true;
+              td.m_mask = rct::zero();
+              td.m_rct = false;
             }
             else
             {
@@ -9832,7 +9837,7 @@ void wallet2::transfer_selected(const std::vector<cryptonote::tx_destination_ent
     tx_output_entry real_oe;
     real_oe.first = td.m_global_output_index;
     real_oe.second.dest = rct::pk2rct(td.get_public_key());
-    real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
+    real_oe.second.mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommit(td.amount());
     *it_to_replace = real_oe;
     src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
     src.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
@@ -10055,13 +10060,13 @@ void wallet2::transfer_selected_rct(std::vector<cryptonote::tx_destination_entry
     tx_output_entry real_oe;
     real_oe.first = td.m_global_output_index;
     real_oe.second.dest = rct::pk2rct(td.get_public_key());
-    real_oe.second.mask = rct::commit(td.amount(), td.m_mask);
+    real_oe.second.mask = td.is_rct() ? rct::commit(td.amount(), td.m_mask) : rct::zeroCommit(td.amount());
     *it_to_replace = real_oe;
     src.real_out_tx_key = get_tx_pub_key_from_extra(td.m_tx, td.m_pk_index);
     src.real_out_additional_tx_keys = get_additional_tx_pub_keys_from_extra(td.m_tx);
     src.real_output = it_to_replace - src.outputs.begin();
     src.real_output_in_tx_index = td.m_internal_output_index;
-    src.mask = td.m_mask;
+    src.mask = td.is_rct() ? td.m_mask : rct::zero();
     if (m_multisig)
       // note: multisig_kLRki is a legacy struct, currently only used as a key image shuttle into the multisig tx builder
       src.multisig_kLRki = {.k = {}, .L = {}, .R = {}, .ki = rct::ki2rct(td.m_key_image)};
