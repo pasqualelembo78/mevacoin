@@ -1432,7 +1432,14 @@ namespace cryptonote
           const auto& premine_reason = m_core.get_blockchain_storage().get_last_premine_fail_reason();
           LOG_PRINT_L0("[on_send_raw_tx]: premine_reason='" << premine_reason << "' (empty=" << premine_reason.empty() << ")");
           if (!premine_reason.empty())
+          {
             reason = premine_reason;
+            // Premine failure is not an input-verification failure — clear
+            // the misleading flag so get_text_reason() doesn't prefer the
+            // generic "invalid input" over the detailed reason.
+            res.invalid_input = false;
+            res.double_spend = false;
+          }
         }
         res.reason = reason;
         const std::string punctuation = reason.empty() ? "" : ": ";

@@ -268,6 +268,9 @@ namespace cryptonote
         tvc.m_added_to_pool = true;
       }else
       {
+        const std::string premine_reason = m_blockchain.get_last_premine_fail_reason();
+        if (!premine_reason.empty())
+          LOG_PRINT_L1("tx premine check failed: " << premine_reason);
         LOG_PRINT_L1("tx used wrong inputs, rejected");
         tvc.m_verifivation_failed = true;
         tvc.m_invalid_input = true;

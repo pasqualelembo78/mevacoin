@@ -445,6 +445,17 @@ namespace rpc
         if (!res.error_details.empty()) res.error_details += " and ";
         res.error_details += "non-zero unlock time";
       }
+      // If premine enforcement rejected the tx, its specific reason
+      // overrides the generic tvc-based error details.
+      {
+        const auto& premine_reason = m_core.get_blockchain_storage().get_last_premine_fail_reason();
+        if (!premine_reason.empty())
+        {
+          MERROR("[SendRawTx]: premine_reason='" << premine_reason << "'");
+          res.error_details = premine_reason;
+        }
+      }
+
       if (res.error_details.empty())
       {
         res.error_details = "an unknown issue was found with the transaction";

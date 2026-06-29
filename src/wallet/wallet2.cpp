@@ -218,10 +218,11 @@ namespace
         add_reason(reason, "tx sanity check failed");
       if (res.not_relayed)
         add_reason(reason, "tx was not relayed");
-      // Include daemon-provided reason string as fallback (populated by
-      // on_send_raw_tx for failures that don't map to a boolean flag,
-      // e.g. premine spend enforcement checks).
-      if (reason.empty() && !res.reason.empty())
+      // Include daemon-provided reason string (populated by on_send_raw_tx
+      // for e.g. premine spend enforcement checks). Always appended since
+      // it may carry detail not captured by the boolean flags alone — e.g.
+      // "network fund spent without network_fund_transfer tag (0xC0)".
+      if (!res.reason.empty())
         add_reason(reason, res.reason.c_str());
       return reason;
   }
