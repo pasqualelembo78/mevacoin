@@ -663,7 +663,9 @@ namespace tools
     struct tx_rejected : public transfer_error
     {
       explicit tx_rejected(std::string&& loc, const cryptonote::transaction& tx, const std::string& status, const std::string& reason)
-        : transfer_error(std::move(loc), "transaction was rejected by daemon")
+        : transfer_error(std::move(loc),
+            "transaction was rejected by daemon" +
+            (!reason.empty() ? ": " + reason : ""))
         , m_tx(tx)
         , m_status(status)
         , m_reason(reason)

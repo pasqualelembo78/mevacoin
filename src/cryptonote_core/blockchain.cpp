@@ -5984,6 +5984,7 @@ bool Blockchain::init_premine_state()
 
 bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uint8_t hf_version) const
 {
+    m_last_premine_fail_reason.clear();
     if (!m_premine_initialized)
         return true;
 
@@ -6026,10 +6027,11 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         binary_archive<true> nar(oss);
         for (auto& f : mod_fields)
             if (!::do_serialize(nar, f))
-            {
-                MERROR("Failed to re-serialize governance-modified tx_extra");
-                return false;
-            }
+        {
+            MERROR("Failed to re-serialize governance-modified tx_extra");
+            m_last_premine_fail_reason = "governance checksum failed: re-serialization error";
+            return false;
+        }
         std::string new_extra_str = oss.str();
         transaction tx_mod = tx;
         tx_mod.extra.assign(new_extra_str.begin(), new_extra_str.end());
@@ -6082,12 +6084,14 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         if (!find_tx_extra_field_by_type(fields, gov_transfer))
         {
             MERROR("Treasury output spent without governance_transfer tag (0xB0)");
+            m_last_premine_fail_reason = "treasury output spent without governance_transfer tag (0xB0)";
             return false;
         }
         std::string err = validate_governance_transfer(m_governance, gov_transfer, tx_prefix_hash);
         if (!err.empty())
         {
             MERROR("Governance transfer validation failed: " << err);
+            m_last_premine_fail_reason = "governance transfer validation failed: " + err;
             return false;
         }
         MDEBUG("Governance transfer OK: " << print_money(gov_transfer.amount));
@@ -6103,12 +6107,14 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         if (!find_tx_extra_field_by_type(fields, nf_transfer))
         {
             MERROR("Network fund output spent without network_fund_transfer tag (0xC0)");
+            m_last_premine_fail_reason = "network fund spent without network_fund_transfer tag (0xC0)";
             return false;
         }
         std::string err = validate_network_fund_spend(m_network_fund, nf_transfer.amount, height);
         if (!err.empty())
         {
             MERROR("Network fund spend validation failed: " << err);
+            m_last_premine_fail_reason = "network fund spend validation failed: " + err;
             return false;
         }
         MDEBUG("Network fund spend OK: " << print_money(nf_transfer.amount));
@@ -6124,6 +6130,7 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         if (!err.empty())
         {
             MERROR("Governance add signer validation failed: " << err);
+            m_last_premine_fail_reason = "governance add signer validation failed: " + err;
             return false;
         }
         MDEBUG("Governance add signer OK");
@@ -6136,6 +6143,7 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
         if (!err.empty())
         {
             MERROR("Governance remove signer validation failed: " << err);
+            m_last_premine_fail_reason = "governance remove signer validation failed: " + err;
             return false;
         }
         MDEBUG("Governance remove signer OK");

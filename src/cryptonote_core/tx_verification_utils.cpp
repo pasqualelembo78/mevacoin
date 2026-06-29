@@ -34,6 +34,7 @@
 #include "cryptonote_core/tx_verification_utils.h"
 #include "cryptonote_core/mevatrust/mevatrust_manager.h"
 #include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "hardforks/hardforks.h"
 #include "ringct/rctSigs.h"
 
@@ -45,17 +46,74 @@
 using namespace cryptonote;
 
 // Do RCT expansion, then do post-expansion sanity checks, then do full non-semantics verification.
+// ── Governance sig zeroing helper ──────────────────────────────────────
+// Breaks the circular dependency (governance sigs in tx_extra → prefix hash
+// → CLSAG proof → need sigs to verify) by temporarily zeroing governance
+// signature bytes in tx.extra so that the computed tx_prefix_hash matches
+// what the signer committed to during tx construction.
+// Returns true if any governance fields were found and zeroed, false otherwise.
+static bool zero_governance_sigs_in_extra(std::vector<uint8_t>& extra)
+{
+    std::vector<tx_extra_field> fields;
+    if (!parse_tx_extra(extra, fields))
+        return false;
+
+    bool found = false;
+    for (auto& f : fields)
+    {
+        if (auto* g = boost::get<tx_extra_governance_transfer>(&f))
+        {
+            for (auto& sig : g->signatures)
+                memset(&sig.sig, 0, sizeof(sig.sig));
+            found = true;
+        }
+        else if (auto* g = boost::get<tx_extra_governance_add_signer>(&f))
+        {
+            for (auto& sig : g->signatures)
+                memset(&sig.sig, 0, sizeof(sig.sig));
+            found = true;
+        }
+        else if (auto* g = boost::get<tx_extra_governance_remove_signer>(&f))
+        {
+            for (auto& sig : g->signatures)
+                memset(&sig.sig, 0, sizeof(sig.sig));
+            found = true;
+        }
+    }
+    if (!found)
+        return false;
+
+    std::ostringstream oss;
+    binary_archive<true> nar(oss);
+    for (auto& f : fields)
+        ::do_serialize(nar, f);
+    std::string s = oss.str();
+    extra.assign(s.begin(), s.end());
+    return true;
+}
+
 static bool expand_tx_and_ver_rct_non_sem(transaction& tx, const rct::ctkeyM& mix_ring)
 {
     // Pruned transactions can not be expanded and verified because they are missing RCT data
     VER_ASSERT(!tx.pruned, "Pruned transaction will not pass verRctNonSemanticsSimple");
 
-    // Calculate prefix hash
+    // Zero governance sigs in a copy of tx.extra so that tx_prefix_hash
+    // matches the one used during CLSAG signing
+    std::vector<uint8_t> saved_extra;
+    if (zero_governance_sigs_in_extra(tx.extra))
+        saved_extra = tx.extra;
+    // (saved_extra is empty if no governance fields were found)
+
+    // Calculate prefix hash (with zeroed governance sigs if applicable)
     const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 
     // Expand mixring, tx inputs, tx key images, prefix hash message, etc into the RCT sig
     const bool exp_res = Blockchain::expand_transaction_2(tx, tx_prefix_hash, mix_ring);
     VER_ASSERT(exp_res, "Failed to expand rct signatures!");
+
+    // Restore original tx.extra after expand_transaction_2 consumed the hash
+    if (!saved_extra.empty())
+        tx.extra = saved_extra;
 
     const rct::rctSig& rv = tx.rct_signatures;
 
@@ -98,12 +156,22 @@ static bool expand_tx_and_ver_full_rct_non_sem(transaction& tx, const rct::ctkey
     VER_ASSERT(tx.rct_signatures.type == rct::RCTTypeFull,
         "Non-full (simple) RingCT transaction will not pass rct::verRct");
 
-    // Calculate prefix hash
+    // Zero governance sigs in a copy of tx.extra so that tx_prefix_hash
+    // matches the one used during CLSAG signing
+    std::vector<uint8_t> saved_extra;
+    if (zero_governance_sigs_in_extra(tx.extra))
+        saved_extra = tx.extra;
+
+    // Calculate prefix hash (with zeroed governance sigs if applicable)
     const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
 
     // Expand mixring, tx inputs, tx key images, prefix hash message, etc into the RCT sig
     const bool exp_res = Blockchain::expand_transaction_2(tx, tx_prefix_hash, mix_ring);
     VER_ASSERT(exp_res, "Failed to expand rct signatures!");
+
+    // Restore original tx.extra after expand_transaction_2 consumed the hash
+    if (!saved_extra.empty())
+        tx.extra = saved_extra;
 
     const rct::rctSig& rv = tx.rct_signatures;
 

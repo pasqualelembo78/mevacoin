@@ -1426,6 +1426,15 @@ namespace cryptonote
           add_reason(reason, "tx-extra too big");
         if ((res.nonzero_unlock_time = tvc.m_nonzero_unlock_time))
           add_reason(reason, "tx unlock time is not zero");
+        // If premine enforcement rejected the tx, its specific reason
+        // takes priority over generic flags from tx_pool.
+        {
+          const auto& premine_reason = m_core.get_blockchain_storage().get_last_premine_fail_reason();
+          LOG_PRINT_L0("[on_send_raw_tx]: premine_reason='" << premine_reason << "' (empty=" << premine_reason.empty() << ")");
+          if (!premine_reason.empty())
+            reason = premine_reason;
+        }
+        res.reason = reason;
         const std::string punctuation = reason.empty() ? "" : ": ";
         if (tvc.m_verifivation_failed)
         {
