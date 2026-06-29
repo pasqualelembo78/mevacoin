@@ -5988,6 +5988,13 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
     if (!m_premine_initialized)
         return true;
 
+    // Log the tx_extra hex for debugging premine spend attempts
+    {
+        std::string extra_str(tx.extra.begin(), tx.extra.end());
+        std::string extra_hex = epee::string_tools::buff_to_hex_nodelimer(extra_str);
+        MDEBUG("check_premine_spend: tx.extra hex=" << extra_hex);
+    }
+
     // ── Parse tx_extra ───────────────────────────────────────────────────
     std::vector<tx_extra_field> fields;
     bool has_governance = false;
