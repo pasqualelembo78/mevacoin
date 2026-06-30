@@ -1,0 +1,86 @@
+## Stato attuale
+
+### Perché abbiamo il v1-fallback in create_transactions_2
+- **Problema originale**: Spesa output non-RCT (genesis, height 0) per network-fund/tx normale
+  falliva perché `get_outs()` lanciava `not_enough_outs_to_mix` (solo 2 output con stesso amount su chain,
+  ma HF richiede min_mixin=10). Fix: rimossa THROW_WALLET_EXCEPTION quando unmixable.
+- **Dopo**: wallet creava v2 tx (CLSAG) per input non-RCT, ma CLSAG verificava male su
+  `zeroCommit(amount)` con ring piccolo. Errore: `"verRctCLSAGSimple failed for input 0"`.
+- **Workaround in `create_transactions_2`**: se c'è un input non-RCT, forza `use_rct = false`,
+  ottenendo tx v1 con firma ad anello tradizionale.
+- **Network fund funziona**: tx v1 + extra 0xC0 → broadcast riuscito (tx d61e13...).
+- **Treasury è ROTTO**: blob-patching cambia extra (sostituisce firme governance zero con reali),
+  ma tx v1 firma `tx_prefix_hash` (che include extra). Cambiando extra dopo firma, la verifica fallisce.
+  v2 funziona per treasury perché `rv.message` preserva l'hash originale.
+
+### Analisi CLSAG per input non-RCT
+- `proveRctCLSAGSimple` (rctSigs.cpp:767) calcola `C[i] = pubs[i].mask - Cout`.
+  Per non-RCT: `pubs[i].mask = zeroCommit(amount) = amount*H`, `Cout = a*G + amount*H`.
+  Quindi `C[i] = -a*G` per TUTTI gli anelli (stesso commitment per tutti).
+- `sk[1] = inSk.mask - a = 0 - a = -a` che è il log discreto di `C[l]`.
+- **Matematicamente corretto**: CLSAG_Gen/CLSAG_Ver funzionano anche quando tutti i C[i] sono
+  identici. Non c'è una ragione matematica per il fallimento.
+- **Possibili cause reali**:
+  1. `ge_frombytes_vartime` fallisce su `zeroCommit(amount)` — improbabile, è un punto valido.
+  2. `expand_transaction_2` non gestisce correttamente non-RCT (ma il codice è generico).
+  3. Il wallet non ha RICHIESTO abbastanza decoy (ring size < 2), e il verifica fallisce
+     per altri motivi di validazione (non CLSAG).
+  4. **Errore nei logs ERRATI**: forse l'errore non è CLSAG ma qualcos'altro nella pipeline.
+
+### `transfer_selected_rct` analisi (wallet2.cpp:10008-10014)
+```
+bool all_rct = true;
+for(size_t idx: selected_transfers) {
+    all_rct &= m_transfers[idx].is_rct();
+}
+```
+`all_rct` è false quando ci sono input non-RCT. Questo `all_rct` viene passato a
+`get_outs()` e influenza il numero di output richiesti:
+```
+size_t requested_outputs_count = fake_outputs_count +
+    (td.is_rct() ? CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW - CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE : 0);
+```
+Per td.is_rct() == false (non-RCT), `requested_outputs_count = fake_outputs_count + 0`.
+
+### LMDB get_output_key per amount != 0
+(blockchain_db/lmdb/db_lmdb.cpp:4257-4258)
+```cpp
+pre_rct_outkey *okp = (const pre_rct_outkey *)v.mv_data;
+data.commitment = rct::zeroCommit(amount);  // ← FILLED IN at read time, not stored
+```
+Confermato: per output non-RCT, il "commitment" restituito dalla blockchain è `zeroCommit(amount)`.
+
+### Output DB storage per non-RCT
+`add_output` (db_lmdb.cpp:1100-1108): quando `amount != 0`, la dimensione dati è
+`sizeof(pre_rct_outkey)` (64 byte), che NON contiene `commitment` (32 byte). Quando
+`amount == 0`, la dimensione è `sizeof(outkey)` (96 byte) e include il commitment.
+- **Nessun bug qui**: il codice già gestisce correttamente il riempimento di `zeroCommit`.
+
+### Blob-patching treasury
+- v2 tx: `rv.message` = hash2rct(tx_prefix_hash) con extra a zero.
+  `get_pre_mlsag_hash(rv)` = hash(rv.message + rv.mixRing + bulletproof).
+  Questa è la chiave: CLSAG firma questo "full message", NON direttamente tx_prefix_hash.
+- Dopo patching extra (sostituendo firme governance reali), `expand_tx_and_ver_rct_non_sem`
+  a) azzera firme governance in copia di extra
+  b) calcola tx_prefix_hash = hash(extra con firme azzerate, vin, vout...)
+  c) chiama `expand_transaction_2(tx, tx_prefix_hash, mix_ring)` che setta rv.message = hash2rct(tx_prefix_hash)
+  d) verifica CLSAG con `get_pre_mlsag_hash(rv)` che usa il rv.message appena impostato
+  → DOVREBBE FUNZIONARE perché entrambi i lati usano la stessa tx_prefix_hash (con firme azzerate).
+- v1 tx: firma ring = generate_ring_signature(tx_prefix_hash, ...). Non c'è rv.message.
+  Cambiare extra cambia tx_prefix_hash → firma invalida.
+
+### Perché il v1-fallback funziona per network-fund
+- extra 0xC0 non viene patchato (non ha firme da sostituire).
+- La costruzione v1 usa tx_prefix_hash direttamente, e l'extra è definitivo fin dall'inizio.
+- v1 è più semplice, non richiede CLSAG.
+
+## Conclusioni
+- **V1-fallback è un workaround corretto per network-fund ma sbagliato per treasury.**
+- **Per sbloccare treasury, dobbiamo o:**
+  A. **Trovare e fixare il vero bug in CLSAG per non-RCT** (opzione preferita, ma
+     l'analisi matematica dice che funziona — potrebbe non esserci un bug CLSAG).
+  B. **Rimuovere v1-fallback e usare v2 per SEMPRE** (anche per network-fund),
+     poi fixare qualsiasi cosa causa il fallimento CLSAG.
+  C. **Modificare auto.py per firmare DOPO il patching** invece di patchare blob
+     pre-firmato (adatto per v1, ma richiede accesso alle chiavi private durante
+     il patching).
