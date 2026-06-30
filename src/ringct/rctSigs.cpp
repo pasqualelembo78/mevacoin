@@ -1359,7 +1359,7 @@ namespace rct {
           const rctSig &rv = *rvp;
           CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
               false, "verRctSemanticsSimple called on non simple rctSig");
-          const bool bulletproof = is_rct_bulletproof(rv.type);
+          const bool bulletproof = is_rct_bulletproof(rv.type) || is_rct_clsag(rv.type);
           const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
           if (bulletproof || bulletproof_plus)
           {
@@ -1379,12 +1379,6 @@ namespace rct {
             }
             CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
           }
-          else
-          {
-            CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.p.rangeSigs.size(), false, "Mismatched sizes of outPk and rv.p.rangeSigs");
-            CHECK_AND_ASSERT_MES(rv.pseudoOuts.size() == rv.p.MGs.size(), false, "Mismatched sizes of rv.pseudoOuts and rv.p.MGs");
-            CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
-          }
           CHECK_AND_ASSERT_MES(rv.outPk.size() == rv.ecdhInfo.size(), false, "Mismatched sizes of outPk and rv.ecdhInfo");
 
           if (!bulletproof && !bulletproof_plus)
@@ -1396,9 +1390,9 @@ namespace rct {
         {
           const rctSig &rv = *rvp;
 
-          const bool bulletproof = is_rct_bulletproof(rv.type);
+          const bool bulletproof = is_rct_bulletproof(rv.type) || is_rct_clsag(rv.type);
           const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
-          const keyV &pseudoOuts = bulletproof || bulletproof_plus ? rv.p.pseudoOuts : rv.pseudoOuts;
+          const keyV &pseudoOuts = rv.get_pseudo_outs();
 
           rct::keyV masks(rv.outPk.size());
           for (size_t i = 0; i < rv.outPk.size(); i++) {
@@ -1488,13 +1482,13 @@ namespace rct {
 
         CHECK_AND_ASSERT_MES(rv.type == RCTTypeSimple || rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG || rv.type == RCTTypeBulletproofPlus,
             false, "verRctNonSemanticsSimple called on non simple rctSig");
-        const bool bulletproof = is_rct_bulletproof(rv.type);
+        const bool bulletproof = is_rct_bulletproof(rv.type) || is_rct_clsag(rv.type);
         const bool bulletproof_plus = is_rct_bulletproof_plus(rv.type);
         // semantics check is early, and mixRing/MGs aren't resolved yet
         if (bulletproof || bulletproof_plus)
-          CHECK_AND_ASSERT_MES(rv.p.pseudoOuts.size() == rv.mixRing.size(), false, "Mismatched sizes of rv.p.pseudoOuts and mixRing");
+          CHECK_AND_ASSERT_MES(rv.get_pseudo_outs().size() == rv.mixRing.size(), false, "Mismatched sizes of pseudoOuts and mixRing");
         else
-          CHECK_AND_ASSERT_MES(rv.pseudoOuts.size() == rv.mixRing.size(), false, "Mismatched sizes of rv.pseudoOuts and mixRing");
+          CHECK_AND_ASSERT_MES(rv.get_pseudo_outs().size() == rv.mixRing.size(), false, "Mismatched sizes of pseudoOuts and mixRing");
 
         const size_t threads = std::max(rv.outPk.size(), rv.mixRing.size());
 
@@ -1502,7 +1496,7 @@ namespace rct {
         tools::threadpool& tpool = tools::threadpool::getInstanceForCompute();
         tools::threadpool::waiter waiter(tpool);
 
-        const keyV &pseudoOuts = bulletproof || bulletproof_plus ? rv.p.pseudoOuts : rv.pseudoOuts;
+        const keyV &pseudoOuts = rv.get_pseudo_outs();
 
         const key message = get_pre_mlsag_hash(rv, hw::get_device("default"));
 
