@@ -106,6 +106,8 @@ static bool expand_tx_and_ver_rct_non_sem(transaction& tx, const rct::ctkeyM& mi
 
     // Calculate prefix hash (with zeroed governance sigs if applicable)
     const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+    MDEBUG("EXPAND_CTX[tx_prefix_hash]=" << tx_prefix_hash);
+    MDEBUG("EXPAND_CTX[extra_hex]=" << epee::string_tools::buff_to_hex_nodelimer(std::string(reinterpret_cast<const char*>(tx.extra.data()), tx.extra.size())));
 
     // Expand mixring, tx inputs, tx key images, prefix hash message, etc into the RCT sig
     const bool exp_res = Blockchain::expand_transaction_2(tx, tx_prefix_hash, mix_ring);
