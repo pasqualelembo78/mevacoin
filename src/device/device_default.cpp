@@ -38,6 +38,7 @@
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "ringct/rctOps.h"
 #include "cryptonote_config.h"
+#include "string_tools.h"
 
 namespace hw {
 
@@ -430,11 +431,20 @@ namespace hw {
         }
 
         bool device_default::clsag_sign(const rct::key &c, const rct::key &a, const rct::key &p, const rct::key &z, const rct::key &mu_P, const rct::key &mu_C, rct::key &s) {
+            MDEBUG("CLSAGSIGN_DBG[clsag_sign]: c=" << epee::string_tools::pod_to_hex(c)
+                   << " a=" << epee::string_tools::pod_to_hex(a)
+                   << " p=" << epee::string_tools::pod_to_hex(p)
+                   << " z=" << epee::string_tools::pod_to_hex(z)
+                   << " mu_P=" << epee::string_tools::pod_to_hex(mu_P)
+                   << " mu_C=" << epee::string_tools::pod_to_hex(mu_C));
             rct::key s0_p_mu_P;
             sc_mul(s0_p_mu_P.bytes,mu_P.bytes,p.bytes);
             rct::key s0_add_z_mu_C;
             sc_muladd(s0_add_z_mu_C.bytes,mu_C.bytes,z.bytes,s0_p_mu_P.bytes);
+            MDEBUG("CLSAGSIGN_DBG[clsag_sign]: s0_p_mu_P=" << epee::string_tools::pod_to_hex(s0_p_mu_P)
+                   << " s0_add_z_mu_C=" << epee::string_tools::pod_to_hex(s0_add_z_mu_C));
             sc_mulsub(s.bytes,c.bytes,s0_add_z_mu_C.bytes,a.bytes);
+            MDEBUG("CLSAGSIGN_DBG[clsag_sign]: s=" << epee::string_tools::pod_to_hex(s));
 
             return true;
         }

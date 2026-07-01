@@ -263,6 +263,15 @@ namespace rct {
 
         hwdev.clsag_prepare(p,z,sig.I,D,H,a,aG,aH);
 
+        MDEBUG("CLSAGSIGN_DBG: p=" << epee::string_tools::pod_to_hex(p)
+               << " z=" << epee::string_tools::pod_to_hex(z)
+               << " sig.I=" << epee::string_tools::pod_to_hex(sig.I)
+               << " D=" << epee::string_tools::pod_to_hex(D)
+               << " H=" << epee::string_tools::pod_to_hex(H)
+               << " a=" << epee::string_tools::pod_to_hex(a)
+               << " aG=" << epee::string_tools::pod_to_hex(aG)
+               << " aH=" << epee::string_tools::pod_to_hex(aH));
+
         geDsmp I_precomp;
         geDsmp D_precomp;
         precomp(I_precomp.k,sig.I);
@@ -270,6 +279,7 @@ namespace rct {
 
         // Offset key image
         scalarmultKey(sig.D,D,INV_EIGHT);
+        MDEBUG("CLSAGSIGN_DBG: sig.D=" << epee::string_tools::pod_to_hex(sig.D));
 
         // Aggregation hashes
         keyV mu_P_to_hash(2*n+4); // domain, I, D, P, C, C_offset
@@ -295,6 +305,9 @@ namespace rct {
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
+        MDEBUG("CLSAGSIGN_DBG: mu_P=" << epee::string_tools::pod_to_hex(mu_P)
+               << " mu_C=" << epee::string_tools::pod_to_hex(mu_C));
+        MDEBUG("CLSAGSIGN_DBG: n=" << n << " l=" << l);
 
         // Initial commitment
         keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, aG, aH
@@ -312,7 +325,16 @@ namespace rct {
         c_to_hash[2*n+3] = aG;
         c_to_hash[2*n+4] = aH;
 
+        {
+            std::ostringstream oss;
+            oss << "CLSAGSIGN_DBG: c_to_hash[0]=" << epee::string_tools::pod_to_hex(c_to_hash[0]);
+            for (size_t di = 0; di < c_to_hash.size(); ++di)
+                oss << " c_to_hash[" << di << "]=" << epee::string_tools::pod_to_hex(c_to_hash[di]);
+            MDEBUG(oss.str());
+        }
+
         hwdev.clsag_hash(c_to_hash,c);
+        MDEBUG("CLSAGSIGN_DBG: initial c=" << epee::string_tools::pod_to_hex(c));
         
         size_t i;
         i = (l + 1) % n;
@@ -361,6 +383,9 @@ namespace rct {
 
         // Compute final scalar
         hwdev.clsag_sign(c,a,p,z,mu_P,mu_C,sig.s[l]);
+        MDEBUG("CLSAGSIGN_DBG: final c=" << epee::string_tools::pod_to_hex(c)
+               << " sig.c1=" << epee::string_tools::pod_to_hex(sig.c1)
+               << " sig.s[" << l << "]=" << epee::string_tools::pod_to_hex(sig.s[l]));
         memwipe(&a, sizeof(key));
 
         return sig;
