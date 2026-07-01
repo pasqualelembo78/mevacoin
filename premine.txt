@@ -1,0 +1,303 @@
+# Premine Spend — Diagnostic Record
+## Date: 2026-06-30
+
+## Chain State
+- Height 63, mainnet, HF13 (major_version=13), CLSAG enforced
+- Genesis miner_tx unlock_time=60 → all 3 premine outputs unlocked at height ≥60
+- 0 transactions in pool; only 63 blocks (all empty miner txs)
+
+## Premine Outputs (genesis miner_tx)
+| Output | Amount | Destination | Key Type |
+|--------|--------|-------------|----------|
+| vout[0] | standard coinbase (not premine) | — | — |
+| vout[1] | 200,000 MVC (team lock) | FOUNDATION_ADDRESS = M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2 | Regular spend key (non-deterministic) |
+| vout[2] | 400,000 MVC (treasury) | Governance multisig address | Deterministic from "mevacoin_governance" |
+| vout[3] | 400,000 MVC (network fund) | Network fund address | Deterministic from "mevacoin_network_fund" |
+
+## Genesis Key Derivation
+Uses deterministic foundation txkey:
+```cpp
+crypto::hash_to_scalar(FOUNDATION_ADDRESS, strlen(FOUNDATION_ADDRESS), foundation_sec);
+crypto::secret_key_to_public_key(foundation_sec, foundation_pub);
+```
+Tx public key = `foundation_pub` = `19a0d2c7ce815d81e4c44db82754f55da900cbb7778365bb7fc1a3631724de2a`
+Verified: cn_fast_hash("M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2") → pubkey matches.
+
+Each output's one-time pubkey derived via:
+```cpp
+generate_key_derivation(info.address.m_view_public_key, foundation_txkey.sec, derivation);
+derive_public_key(derivation, output_index, info.address.m_spend_public_key, out_eph_public_key);
+```
+
+## Wallet Creation
+- **Founder** (team lock): `generate_from_keys` with spendkey + viewkey
+  - Address: M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2
+  - Spendkey: 3b50617a4a09555056872d35dd0ce5ee800942eefb5f4987c62ea6d4c2661b01
+  - Viewkey: 28c5124b5c316f986e4c6ed35d35059ceeddfa44fd14416367d60e30d5902407
+- **Network fund**: auto-created by auto.py (deterministic from "mevacoin_network_fund")
+- **Treasury**: auto-created by auto.py (deterministic from "mevacoin_governance", 3-key multisig)
+
+===========================================================================
+# FIXES APPLIED
+===========================================================================
+
+## 1. sort_tx_extra Fix (DONE — 2026-06-30)
+File: `src/cryptonote_basic/cryptonote_format_utils.cpp:619-624`
+Added `pick<>` for `tx_extra_governance_transfer` (0xB0), `tx_extra_governance_add_signer` (0xB1),
+`tx_extra_governance_remove_signer` (0xB2), `tx_extra_network_fund_transfer` (0xC0).
+
+Root cause: `sort_tx_extra()` rejected any `tx_extra_field` variant without a `pick` handler.
+This caused "transaction was not constructed" when wallet-rpc `transfer` included custom extra.
+Without this fix, BOTH founder AND governance/network transactions would fail at wallet level.
+**After fix**: wallet-rpc accepts custom extra → founder tx proceeds to daemon, but daemon rejects.
+
+## 2. Unmixable Ring Size Fix (DONE — 2026-06-30)
+File: `src/wallet/wallet2.cpp`
+- Lines 9709-9722: when `outs.back().size() < fake_outputs_count + 1`, check if non-RCT output
+  has `num_outs <= fake_outputs_count + 1` → mark unmixable (not scanty).
+- Lines 10039-10040: `transfer_selected_rct` iterates by `outs[out_index].size()` not
+  `fake_outputs_count`.
+- Also fixed `transfer_selected()` similarly.
+
+Root cause: HF13 enforces `min_mixin=10` → wallet sets `fake_outs_count=10`. But premine outputs
+have only 1-2 instances of each amount on chain. Without this fix, wallet throws
+`WALLET_RPC_ERROR_CODE_NOT_ENOUGH_OUTS_TO_MIX`.
+**After fix**: wallet creates tx with smaller ring → tx reaches daemon, but daemon still rejects.
+
+===========================================================================
+# THE BLOCKER: CLSAG VERIFICATION FAILURE
+===========================================================================
+
+**SYMPTOM**: ALL transactions fail with "invalid input" at daemon.
+Daemon log: `verRctCLSAGSimple failed for input 0` inside `verRctNonSemanticsSimple`.
+
+**AFFECTS**: ALL wallets and ALL ring sizes identically:
+- Founder (regular keys, ring_size=1,2,11)
+- Network fund (deterministic keys, ring_size=1,2,11)
+- Treasury (deterministic, ring_size=1,2,11)
+
+**NOT wallet-specific**: same error regardless of key type → points to systematic issue
+in transaction construction or CLSAG implementation.
+
+## Daemon Verification Flow (what passes, what fails)
+
+| Step | Result |
+|------|--------|
+| `check_ring_size()` — unmixable exception | PASS |
+| `check_tx_input()` → `scan_outputkeys_for_indexes()` — DB pubkey lookup | PASS |
+| Key image match (`memcmp(I, CLSAGs[n].I)`) | PASS |
+| `verRctSemanticsSimple()` — range proofs + balance | PASS |
+| `expand_transaction_2()` — mixRing + message expansion | PASS |
+| **`verRctCLSAGSimple()` — actual CLSAG crypto** | **FAIL** |
+
+## What I've Verified (all ruled out)
+
+### 1. Secret key correctness
+Founder uses regular spend key extracted from wallet. Network fund uses deterministic key
+from "mevacoin_network_fund". Both fail identically → NOT a key derivation issue.
+
+### 2. Ring pubkeys match
+Wallet gets pubkeys via `get_outs.bin` RPC. Daemon looks up same outputs via
+`scan_outputkeys_for_indexes`. Both query the same DB → keys must match.
+Additionally, `rv.mixRing == mix_ring` check in `expand_tx_and_ver_rct_non_sem` passes
+(no "mismatched pubkeys/mixRing" error).
+
+### 3. Commitment for non-RCT outputs
+- Wallet: `rct::zeroCommit(amount)` = `amount * H`
+- Daemon (db_lmdb.cpp:4258): `data.commitment = rct::zeroCommit(amount)`
+Both produce same commitment. Verified at code level.
+
+### 4. outPk.dest mismatch
+During signing (rctSigs.cpp:1157): `rv.outPk[i].dest = copy(destinations[i])` − set from vout key.
+During deserialization (expand_transaction_1): `rv.outPk[n].dest = rct::pk2rct(output_public_key)`
+− set from same vout key. Match confirmed.
+
+### 5. get_pre_mlsag_hash mismatch
+Both signing and verification call `get_pre_mlsag_hash(rv, hwdev)` with same `rv` state.
+The hash includes: `rv.message` + serialized `rctSigBase` (mixRing, outPk, ecdhInfo, pseudoOuts)
++ bulletproof data. All fields are populated identically on both sides.
+
+### 6. zero_governance_sigs_in_extra corruption
+Only modifies extra when 0xB0/0xB1/0xB2 governance tags found. Founder wallet has no such tags
+(extra contains only tx_pub_key). Function returns `false` without modification.
+
+### 7. Build mismatch
+Both mevacoind and wallet-rpc built from same source at same time (78cb3eb04).
+
+### 8. CLSAG ring_size=1 unsupported
+CLSAG spec supports n≥1. Performance test `sig_clsag.h` works with various ring sizes.
+
+## CLSAG Math Verification (manual trace)
+
+For non-RCT output with ring_size=1:
+- `inSk = (derived_secret_key, mask=0)`
+- `a` = random pseudoOut mask
+- `Cout = a*G + amount*H` (pseudoOut)
+- `C[l] = pubs[l].mask - Cout = amount*H - (a*G + amount*H) = -a*G`
+- `z = inSk.mask - a = 0 - a = -a`
+- `P[l] = output_pubkey = derived_secret_key * G`
+
+The CLSAG proves: P[l] = p*G AND C[l] = z*G = (-a)*G
+
+During verification with ring_size=1:
+- Start with c = sig.c1
+- Compute L = s[0]*G + c*mu_P*P[0] + c*mu_C*C[0]
+  = (a - c*(mu_P*p + mu_C*(-a)))*G + c*mu_P*(p*G) + c*mu_C*(-a*G)
+  = a*G - c*mu_P*p*G + c*mu_C*a*G + c*mu_P*p*G - c*mu_C*a*G
+  = a*G ✓ (reconstructs the initial aG from signing)
+- Compute R similarly → a*H ✓
+- c_new = H(aG, aH) should equal sig.c1
+
+**Math checks out. The failure must be in data values, not the algorithm.**
+
+===========================================================================
+# DEBUG LOGGING ADDED (but build not completed)
+===========================================================================
+
+Added detailed hex logging to `verRctCLSAGSimple()` (rctSigs.cpp:875):
+- Dumps: message, C_offset, sig.c1, sig.I, sig.D, D_8, mu_P, mu_C
+- Each round: c, c_p, c_c, L, R, c_new
+- Final: c_final, c1, diff
+
+Also needed to add: logging in `get_pre_mlsag_hash()` to dump `full_message`
+on both signing and verification side.
+
+Build attempted but machine too slow (1 CPU, 845MB RAM).
+Build command: `cd /root/mevacoin/build/Linux/mevacoin/release && make -j1`
+
+===========================================================================
+# ROOT CAUSE: NOT FOUND (hypotheses in order of likelihood)
+===========================================================================
+
+## Hypothesis A: tx_prefix_hash mismatch ← MOST LIKELY
+The `get_transaction_prefix_hash()` serializes `transaction_prefix` (version, unlock_time,
+vin, vout, extra) and hashes it.
+
+**Wallet side** (cryptonote_tx_utils.cpp:594-595):
+```cpp
+get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
+```
+Called AFTER:
+- Vin amounts zeroed ONLY for RCT sources (line 588-589)
+  ```cpp
+  if (sources[i].rct)
+      boost::get<txin_to_key>(tx.vin[i]).amount = 0;
+  ```
+  For non-RCT sources (premine): `amount` is NOT zeroed — stays as real amount (200000000000000)
+- Vout amounts zeroed (line 592)
+  ```cpp
+  for (size_t i = 0; i < tx.vout.size(); ++i)
+      tx.vout[i].amount = 0;
+  ```
+
+**Daemon side** (tx_verification_utils.cpp:108):
+```cpp
+const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+```
+Called from deserialized blob. The blob was serialized by the wallet AFTER the above zeroing.
+So the daemon sees the same serialized data → hash should match.
+
+**HOWEVER**: The wallet uses `get_transaction_prefix_hash(tx, h, hwdev)` (hw::device version)
+which delegates to `hwdev.get_transaction_prefix_hash(tx, h)`.
+The default device calls `cryptonote::get_transaction_prefix_hash(tx, h)` (basic version).
+The daemon calls `get_transaction_prefix_hash(tx)` (basic version directly).
+
+Both serialize `transaction_prefix` with binary_archive and hash with cn_fast_hash.
+Should produce identical results. **But this is the #1 suspect** because the amount zeroing
+logic for non-RCT sources is unusual and could hide a bug.
+
+### What to check for Hypothesis A
+Add logging to BOTH sides showing the hex of the serialized prefix before hashing.
+Compare wallet-side vs daemon-side prefix_hex.
+
+## Hypothesis B: Non-RCT amount in vin breaks output lookup
+At HF≥4, Monero convention is ALL version 2 txs have `txin_to_key.amount = 0`.
+But the wallet doesn't zero it for non-RCT sources. Daemon's `scan_outputkeys_for_indexes`
+uses `tx_in_to_key.amount` to look up outputs. For non-RCT sources, amount is real (non-zero).
+Daemon finds output by amount → works, BUT the `absolute_offsets` computation might differ.
+
+**Note**: This is unlikely because the output IS found (check_tx_input passes).
+
+## Hypothesis C: Different `get_pre_mlsag_hash` between signing and verification
+Both sides call `get_pre_mlsag_hash(rv, hwdev)`. But between signing and verification:
+1. Transaction is serialized to blob and deserialized
+2. `expand_transaction_1` runs on deserialization, which might modify `rv.outPk.dest`
+3. `expand_transaction_2` overwrites `rv.message` and `rv.mixRing`
+
+If the rctSigBase serialization differs between the two calls (because of `outPk.dest` or
+other fields being set differently), the hash would differ.
+
+**However**: signing code at line 1157 DOES set `rv.outPk[i].dest = copy(destinations[i])`,
+and expand_transaction_1 sets it from the same vout pubkey. So `outPk.dest` should match.
+
+## Hypothesis D: PseudoOuts size mismatch
+For non-RCT sources, the pseudoOut commitment must be `a*G + amount*H`. If the wallet
+uses wrong amount (e.g., 0 instead of real amount), the pseudoOut would be wrong.
+But the wallet's `inamounts` should contain the real amounts.
+
+## Hypothesis E: CLSAG implementation bug in this fork
+The CLSAG code was forked from Monero. If any modifications were made during the fork
+(mevacoin-specific changes), they could introduce bugs. Need to diff against upstream.
+
+===========================================================================
+# NEXT STEPS (recommended order)
+===========================================================================
+
+1. **Build with debug logging** — Compile mevacoind with the ADDED logging in
+   `verRctCLSAGSimple()`. This requires a machine with sufficient resources or patience
+   for slow builds. The build takes >10 minutes on this machine (1 CPU, 845MB).
+
+2. **Capture and compare tx_prefix_hash** — After adding logging, submit a simple founder
+   transfer and dump:
+   - Wallet-side: the serialized prefix hex + tx_prefix_hash
+   - Daemon-side: the deserialized prefix hex + tx_prefix_hash before/after zero_governance_sigs
+   Compare them byte-by-byte.
+
+3. **Add logging to `get_pre_mlsag_hash()`** — Dump `rv.message`, the serialized rctSigBase
+   hex, and the resulting `full_message` hash. Compare wallet-side vs daemon-side.
+
+4. **Manual CLSAG verification test** — Write a standalone C++ test that:
+   - Constructs a minimal CLSAG signature using known keys
+   - Verifies it
+   - Reproduces the exact transaction data that the wallet produces
+   This would isolate whether the bug is in the signing path or verification path.
+
+5. **Check if ANY transaction works on this chain** — The most basic test: can ANY
+   transaction (not spending premine) succeed? If not, the issue might be in the
+   daemon's CLSAG verification itself, not the wallet. Need a non-premine output
+   (a regular miner output from block mining).
+
+===========================================================================
+# FILES MODIFIED
+===========================================================================
+
+| File | Change |
+|------|--------|
+| src/cryptonote_basic/cryptonote_format_utils.cpp | sort_tx_extra: added pick<> for 0xB0/0xB1/0xB2/0xC0 |
+| src/wallet/wallet2.cpp (9709-9722, 10039-10040 + transfer_selected) | unmixable ring handling |
+| src/ringct/rctSigs.cpp (lines 880-1016) | ADDED debug logging in verRctCLSAGSimple (not yet tested) |
+| src/ringct/rctSigs.cpp (line 33) | ADDED #include "string_tools.h" |
+
+===========================================================================
+# COMMANDS REFERENCE
+===========================================================================
+
+```bash
+# Build (SLOW on this machine)
+cd /root/mevacoin/build/Linux/mevacoin/release && make -j1
+
+# Start daemon
+mevacoind --data-dir /root/.mevacoin --log-level 3 --add-exclusive-node 127.0.0.1:28080 \
+  --p2p-bind-port=28080 --rpc-bind-port=18081 --confirm-external-bind --non-interactive
+
+# Check daemon
+curl -s http://127.0.0.1:18081/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"get_info","params":{}}' \
+  -H 'Content-Type: application/json'
+
+# Submit tx via auto.py
+python3 tools/auto.py team-lock <amount> <address>
+
+# Check daemon log
+tail -50 /root/.mevacoin/MevaCoin.log
+```

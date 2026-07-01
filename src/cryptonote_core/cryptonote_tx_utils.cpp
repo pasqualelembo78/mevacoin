@@ -593,6 +593,15 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
 
       crypto::hash tx_prefix_hash;
       get_transaction_prefix_hash(tx, tx_prefix_hash, hwdev);
+      MDEBUG("SIGNER[tx_prefix_hash]=" << tx_prefix_hash);
+      MDEBUG("SIGNER[extra_hex]=" << epee::string_tools::buff_to_hex_nodelimer(std::string(reinterpret_cast<const char*>(tx.extra.data()), tx.extra.size())));
+      MDEBUG("SIGNER[vin_size]=" << tx.vin.size() << " vout_size=" << tx.vout.size());
+      for (size_t _vi=0; _vi<tx.vin.size(); ++_vi) {
+          if (tx.vin[_vi].type() == typeid(txin_to_key))
+              MDEBUG("SIGNER[vin" << _vi << "_amount]=" << boost::get<txin_to_key>(tx.vin[_vi]).amount);
+      }
+      for (size_t _vo=0; _vo<tx.vout.size(); ++_vo)
+          MDEBUG("SIGNER[vout" << _vo << "_amount]=" << tx.vout[_vo].amount);
       rct::ctkeyV outSk;
       if (use_simple_rct)
         tx.rct_signatures = rct::genRctSimple(rct::hash2rct(tx_prefix_hash), inSk, destinations, inamounts, outamounts, amount_in - amount_out, mixRing, amount_keys, index, outSk, rct_config, hwdev);

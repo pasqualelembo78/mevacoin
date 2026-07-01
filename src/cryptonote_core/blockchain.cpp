@@ -3491,6 +3491,7 @@ bool Blockchain::check_tx_inputs(transaction& tx,
     *pmax_used_block_height = 0;
 
   crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+  MDEBUG("CHECK_TX_INPUTS[tx_prefix_hash(1)]=" << tx_prefix_hash);
 
   const uint8_t hf_version = m_hardfork->get_current_version();
 

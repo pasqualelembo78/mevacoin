@@ -32,6 +32,7 @@
 
 #include "misc_log_ex.h"
 #include "misc_language.h"
+#include "string_tools.h"
 #include "common/perf_timer.h"
 #include "common/threadpool.h"
 #include "common/util.h"
@@ -603,6 +604,7 @@ namespace rct {
     {
       keyV hashes;
       hashes.reserve(3);
+      MDEBUG("PREMLSAGHASH[rv.message]=" << epee::string_tools::pod_to_hex(rv.message));
       hashes.push_back(rv.message);
       crypto::hash h;
 
@@ -615,8 +617,11 @@ namespace rct {
       CHECK_AND_ASSERT_THROW_MES(const_cast<rctSig&>(rv).serialize_rctsig_base(ba, inputs, outputs),
           "Failed to serialize rctSigBase");
       const std::string sig_base_blob = ss.str();
+      MDEBUG("PREMLSAGHASH[sig_base_blob size=" << sig_base_blob.size() << " raw="
+             << epee::string_tools::buff_to_hex_nodelimer(sig_base_blob));
       cn_fast_hash(sig_base_blob.data(), sig_base_blob.size(), h);
       hashes.push_back(hash2rct(h));
+      MDEBUG("PREMLSAGHASH[base_hash]=" << epee::string_tools::pod_to_hex(hash2rct(h)));
 
       keyV kv;
       if (rv.type == RCTTypeBulletproof || rv.type == RCTTypeBulletproof2 || rv.type == RCTTypeCLSAG)
@@ -674,8 +679,11 @@ namespace rct {
             kv.push_back(r.Ci[n]);
         }
       }
-      hashes.push_back(cn_fast_hash(kv));
+      key kv_hash = cn_fast_hash(kv);
+      MDEBUG("PREMLSAGHASH[kv_hash]=" << epee::string_tools::pod_to_hex(kv_hash));
+      hashes.push_back(kv_hash);
       hwdev.mlsag_prehash(ss.str(), inputs, outputs, hashes, rv.outPk, prehash);
+      MDEBUG("PREMLSAGHASH[result]=" << epee::string_tools::pod_to_hex(prehash));
       return  prehash;
     }
 
@@ -878,6 +886,20 @@ namespace rct {
             PERF_TIMER(verRctCLSAGSimple);
             const size_t n = pubs.size();
 
+            // ── DEBUG: dump inputs ──────────────────────────────────
+            const std::string dbg_prefix = "CLSAGDBG[" + std::to_string(n) + "]: ";
+            MDEBUG(dbg_prefix << "message=" << epee::string_tools::pod_to_hex(message));
+            MDEBUG(dbg_prefix << "C_offset=" << epee::string_tools::pod_to_hex(C_offset));
+            MDEBUG(dbg_prefix << "sig.c1=" << epee::string_tools::pod_to_hex(sig.c1));
+            MDEBUG(dbg_prefix << "sig.I=" << epee::string_tools::pod_to_hex(sig.I));
+            MDEBUG(dbg_prefix << "sig.D=" << epee::string_tools::pod_to_hex(sig.D));
+            for (size_t di = 0; di < n; ++di) {
+                MDEBUG(dbg_prefix << "pubs[" << di << "].dest=" << epee::string_tools::pod_to_hex(pubs[di].dest));
+                MDEBUG(dbg_prefix << "pubs[" << di << "].mask=" << epee::string_tools::pod_to_hex(pubs[di].mask));
+                MDEBUG(dbg_prefix << "sig.s[" << di << "]=" << epee::string_tools::pod_to_hex(sig.s[di]));
+            }
+            // ─────────────────────────────────────────────────────────
+
             // Check data
             CHECK_AND_ASSERT_MES(n >= 1, false, "Empty pubs");
             CHECK_AND_ASSERT_MES(n == sig.s.size(), false, "Signature scalar vector is the wrong size!");
@@ -896,6 +918,7 @@ namespace rct {
             key c = copy(sig.c1);
             key D_8 = scalarmult8(sig.D);
             CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad auxiliary key image!");
+            MDEBUG(dbg_prefix << "D_8=" << epee::string_tools::pod_to_hex(D_8));
             geDsmp I_precomp;
             geDsmp D_precomp;
             precomp(I_precomp.k,sig.I);
@@ -925,6 +948,8 @@ namespace rct {
             key mu_P, mu_C;
             mu_P = hash_to_scalar(mu_P_to_hash);
             mu_C = hash_to_scalar(mu_C_to_hash);
+            MDEBUG(dbg_prefix << "mu_P=" << epee::string_tools::pod_to_hex(mu_P));
+            MDEBUG(dbg_prefix << "mu_C=" << epee::string_tools::pod_to_hex(mu_C));
 
             // Set up round hash
             keyV c_to_hash(2*n+5); // domain, P, C, C_offset, message, L, R
@@ -950,6 +975,7 @@ namespace rct {
             ge_p3 temp_p3;
             ge_p1p1 temp_p1;
 
+            MDEBUG(dbg_prefix << "initial c=" << epee::string_tools::pod_to_hex(c));
             while (i < n) {
                 sc_0(c_new.bytes);
                 sc_mul(c_p.bytes,mu_P.bytes,c.bytes);
@@ -975,11 +1001,21 @@ namespace rct {
                 c_to_hash[2*n+4] = R;
                 c_new = hash_to_scalar(c_to_hash);
                 CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
+
+                MDEBUG(dbg_prefix << "round[" << i << "]: c_p=" << epee::string_tools::pod_to_hex(c_p)
+                       << " c_c=" << epee::string_tools::pod_to_hex(c_c)
+                       << " L=" << epee::string_tools::pod_to_hex(L)
+                       << " R=" << epee::string_tools::pod_to_hex(R)
+                       << " c_new=" << epee::string_tools::pod_to_hex(c_new));
+
                 copy(c,c_new);
 
                 i = i + 1;
             }
             sc_sub(c_new.bytes,c.bytes,sig.c1.bytes);
+            MDEBUG(dbg_prefix << "final_c=" << epee::string_tools::pod_to_hex(c)
+                   << " c1=" << epee::string_tools::pod_to_hex(sig.c1)
+                   << " diff=" << epee::string_tools::pod_to_hex(c_new));
             return sc_isnonzero(c_new.bytes) == 0;
         }
         catch (...) { return false; }
@@ -1238,8 +1274,19 @@ namespace rct {
 
         key full_message = get_pre_mlsag_hash(rv,hwdev);
 
+        MDEBUG("CLSAGSIGN[rv.message]=" << epee::string_tools::pod_to_hex(rv.message));
+        MDEBUG("CLSAGSIGN[full_message]=" << epee::string_tools::pod_to_hex(full_message));
         for (i = 0 ; i < inamounts.size(); i++)
         {
+            MDEBUG("CLSAGSIGN[input " << i << "]: inSk.dest=" << epee::string_tools::pod_to_hex(inSk[i].dest)
+                   << " inSk.mask=" << epee::string_tools::pod_to_hex(inSk[i].mask)
+                   << " a=" << epee::string_tools::pod_to_hex(a[i])
+                   << " pseudoOut=" << epee::string_tools::pod_to_hex(pseudoOuts[i])
+                   << " index=" << index[i]
+                   << " ring_size=" << rv.mixRing[i].size());
+            MDEBUG("CLSAGSIGN[mixRing " << i << "][" << index[i] << "].dest="
+                   << epee::string_tools::pod_to_hex(rv.mixRing[i][index[i]].dest)
+                   << " mask=" << epee::string_tools::pod_to_hex(rv.mixRing[i][index[i]].mask));
             if (is_rct_clsag(rv.type))
             {
                 if (hwdev.get_mode() == hw::device::TRANSACTION_CREATE_FAKE)
