@@ -1,0 +1,353 @@
+# Piano di Sviluppo — Bilancio Suddiviso per Categoria di Provento
+
+## Data: 2026-07-02
+
+===========================================================================
+# OBIETTIVO
+===========================================================================
+
+Suddividere il bilancio del wallet in categorie basate sul **tipo di
+provenienza dei fondi**, in modo da tenere traccia separata di:
+
+1. Fondi ricevuti dal **conto fondatore** (premine treasury/network fund)
+2. Fondi ricevuti da **mining** (coinbase)
+3. Fondi ricevuti da **trasferimenti normali** (altri wallet)
+4. Altre categorie future
+
+Le categorie con saldo zero NON devono essere mostrate.
+
+===========================================================================
+# ANALISI — SITUAZIONE ATTUALE
+===========================================================================
+
+## Com'è ora
+
+Il wallet (`wallet2.cpp`) ha un unico bilancio aggregato:
+
+- `balance()` / `unlocked_balance()` — somma di TUTTI gli UTXO
+- Suddivisione solo per subaddress (account/minor), non per tipo di fondo
+- Ogni UTXO (`transfer_details`) contiene `m_tx` (il full transaction
+  prefix), da cui si può estrarre `tx.extra` e parsare i tag 0xB0/0xC0
+
+## Cosa manca
+
+1. Nessun campo `fund_category` in `transfer_details`
+2. Nessuna logica di parsing dei tag governance/network in fase di scan
+3. Nessuna API RPC per ottenere il bilancio suddiviso
+4. Nessuna UI (CLI o RPC) che raggruppi per categoria
+
+===========================================================================
+# PROGETTAZIONE
+===========================================================================
+
+## 1. Categorie di Fondo
+
+```
+enum fund_category : uint8_t {
+  FUND_NORMAL         = 0,  // Trasferimenti normali (nessun tag speciale)
+  FUND_GOVERNANCE     = 1,  // 0xB0 — tesoreria governance
+  FUND_NETWORK        = 2,  // 0xC0 — network fund
+  FUND_COINBASE       = 3,  // Coinbase (mining)
+  FUND_ADD_SIGNER     = 4,  // 0xB1 — aggiunta firmatario (fondo trascurabile)
+  FUND_REMOVE_SIGNER  = 5,  // 0xB2 — rimozione firmatario
+};
+```
+
+Ogni UTXO avrà un campo `m_fund_category` popolato durante lo scan.
+
+## 2. Dove Memorizzare
+
+### In `transfer_details` (wallet2.h ~line 333)
+Aggiungere:
+```cpp
+fund_category m_fund_category{FUND_NORMAL};
+```
+
+### Serializzazione
+Aggiungere il campo alla cache del wallet in `wallet2.h` ~line 388
+(section `BEGIN_SERIALIZE_OBJECT_INIT_PARENT` / `SERIALIZE_FIELD`).
+
+Usare un varint per backward compatibilità con vecchi wallet cache
+(valore di default 0 = FUND_NORMAL per wallet vecchi).
+
+---
+
+## 3. Logica di Classificazione
+
+### In `process_new_transaction()` ~line 2507
+
+Dopo aver popolato `td`, aggiungere:
+
+```cpp
+auto& td = m_transfers.back();
+td.m_fund_category = classify_fund(td.m_tx, height);
+```
+
+### Funzione `classify_fund()`
+
+```cpp
+fund_category classify_fund(const transaction_prefix& tx, uint64_t height)
+{
+    // 1. Coinbase?
+    if (tx.vin.size() == 1 && tx.vin[0].type() == typeid(txin_gen))
+        return FUND_COINBASE;
+
+    // 2. Parso tx_extra per tag governance/network
+    std::vector<tx_extra_field> fields;
+    if (!parse_tx_extra(tx.extra, fields))
+        return FUND_NORMAL;
+
+    tx_extra_governance_transfer gov;
+    tx_extra_network_fund_transfer net;
+    tx_extra_governance_add_signer add;
+    tx_extra_governance_remove_signer rem;
+
+    if (find_tx_extra_field_by_type(fields, gov))
+        return FUND_GOVERNANCE;
+    if (find_tx_extra_field_by_type(fields, net))
+        return FUND_NETWORK;
+    if (find_tx_extra_field_by_type(fields, add))
+        return FUND_ADD_SIGNER;
+    if (find_tx_extra_field_by_type(fields, rem))
+        return FUND_REMOVE_SIGNER;
+
+    return FUND_NORMAL;
+}
+```
+
+## 4. API RPC — `get_balance_by_category`
+
+Nuovo metodo RPC in `wallet_rpc_server.cpp`:
+
+### Richiesta
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "0",
+  "method": "get_balance_by_category",
+  "params": {
+    "account_index": 0
+  }
+}
+```
+
+### Risposta
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "0",
+  "result": {
+    "categories": [
+      {
+        "type": "governance",
+        "label": "Tesoro Governance",
+        "balance": 400000000000000,
+        "unlocked_balance": 400000000000000,
+        "num_outputs": 1,
+        "transfers": [
+          {
+            "txid": "abc...",
+            "amount": 400000000000000,
+            "height": 0,
+            "confirmations": 100,
+            "timestamp": 1234567890
+          }
+        ]
+      },
+      {
+        "type": "network",
+        "label": "Network Fund",
+        "balance": 400000000000000,
+        "unlocked_balance": 400000000000000,
+        "num_outputs": 1,
+        "transfers": [
+          {
+            "txid": "def...",
+            "amount": 400000000000000,
+            "height": 0,
+            "confirmations": 100,
+            "timestamp": 1234567890
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Comportamento
+- Include SOLO categorie con `balance > 0` (nessun zero)
+- Ogni categoria elenca i singoli trasferimenti che compongono il saldo
+- Per ogni trasferimento: txid, amount, height, confirmations, timestamp
+
+## 5. Comandi CLI (opzionali, fase 2)
+
+Nel `gov_spend.py`:
+```
+gov_spend.py balance <wallet-rpc-url>
+```
+Mostra il bilancio suddiviso in formato tabellare.
+
+===========================================================================
+# FAQ — TEMPI DI CONFERMA, FEE, VELOCITÀ
+===========================================================================
+
+## Dopo quanti blocchi viene confermato un trasferimento?
+
+Dipende da:
+1. **Mempool + miner**: la tx deve essere inclusa in un blocco. Con fee
+   adeguata, di solito entro 1-3 blocchi (2-6 minuti, target 120s/blocco).
+2. **Spendable age**: DOPO che è in un blocco, servono 10 blocchi (~20 min)
+   prima che l'output possa essere speso (`CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE`)
+3. **Coinbase unlock**: 60 blocchi (~2 ore) per le ricompense di mining
+
+## Aumentando la fee i fondi vanno più veloci?
+
+SÌ. Il mempool ordina le transazioni per `fee / weight` (fee-per-byte).
+Più alta è la fee relativa, prima la tx viene inclusa in un blocco.
+
+Livelli di priorità (2021 scaling):
+- **Unimportant** (default): fee minima dinamica
+- **Normal**: 4× la minima
+- **Elevated**: 16× la minima (o più)
+- **Priority**: 16× mediana / (32 * full_reward_zone) — molto alta
+
+Il wallet sceglie automaticamente `Unimportant` se il traffico è basso,
+altrimenti scala a `Normal`.
+
+## Come aumentare la fee?
+
+Tramite wallet-rpc, parametro `priority`:
+
+```json
+{
+  "method": "transfer",
+  "params": {
+    "destinations": [{"amount": 1000000000000, "address": "M9..."}],
+    "priority": 1,   // 0=default, 1=unimportant, 2=normal, 3=elevated, 4=priority
+    "ring_size": 2
+  }
+}
+```
+
+## La fee a chi va?
+
+- **97% al miner** del blocco che include la tx
+- **3% al MevaTrust pool** (indirizzo deterministico, nessuna chiave privata —
+  fondo bloccato permanentemente)
+- Inoltre, il 3% del pool si accumula per ricompensare i nodi MevaTrust
+  periodicamente
+
+Per il trasferimento fondatore (premine), la fee funziona allo stesso modo:
+va al miner + pool.
+
+===========================================================================
+# PIANO DI IMPLEMENTAZIONE
+===========================================================================
+
+## Fase 1 — Storage + Scan (wallet2)
+
+| # | Cosa | File | Linee |
+|---|------|------|-------|
+| 1 | Aggiungere enum `fund_category` | `wallet2.h` | ~333 (prima di `transfer_details`) |
+| 2 | Aggiungere `m_fund_category` a `transfer_details` | `wallet2.h` | ~388 |
+| 3 | Serializzare `m_fund_category` nella cache | `wallet2.h` | sezione SERIALIZE |
+| 4 | Implementare `classify_fund()` | `wallet2.cpp` | nuova funzione |
+| 5 | Chiamare `classify_fund()` in `process_new_transaction()` | `wallet2.cpp` | ~2589 |
+| 6 | Aggiornare `cryptonote_format_utils.cpp` se serve | — | già ha `parse_tx_extra` |
+
+**Test**: rescan blockchain → verificare che gli UTXO premine abbiano
+categoria corretta.
+
+## Fase 2 — RPC `get_balance_by_category`
+
+| # | Cosa | File | Linee |
+|---|------|------|-------|
+| 1 | Definire struct request/response | `wallet_rpc_server_commands_defs.h` | nuovo blocco |
+| 2 | Implementare `on_get_balance_by_category()` | `wallet_rpc_server.cpp` | nuovo metodo |
+| 3 | Registrare il metodo come `MAP_JON_RPC_WE` | `wallet_rpc_server.h` | ~110 |
+
+**Test**: chiamare RPC → verificare categorie corrette, nessun zero,
+confirmations corrette.
+
+## Fase 3 — CLI (gov_spend.py, opzionale)
+
+| # | Cosa | File |
+|---|------|------|
+| 1 | Comando `balance` che chiama `get_balance_by_category` | `gov_spend.py` |
+| 2 | Formattazione tabellare con categorie e trasferimenti | `gov_spend.py` |
+
+## Fase 4 — Backward Compatibility
+
+- Wallet vecchi (senza `m_fund_category` nel cache): default = FUND_NORMAL
+- Serve rescan blockchain per popolare le categorie sui wallet esistenti
+- `m_fund_category` deve essere un varint nella serializzazione,
+  valore assente → 0 (FUND_NORMAL)
+
+===========================================================================
+# RISCHI E NOTE
+===========================================================================
+
+1. **tx_extra non sempre presente**: trasferimenti normali non hanno tag
+   0xB0/0xC0 → FUND_NORMAL. Corretto.
+
+2. **Output变化 (change)**: Il change di una transazione di spesa premine
+   NON ha il tag 0xB0/0xC0 (solo la tx originale ce l'ha). Il change
+   sarà quindi FUND_NORMAL, come Monero standard.
+
+3. **Double-counting**: Una transazione in entrata può avere SOLO un
+   tag speciale. Nessun rischio di doppia categoria.
+
+4. **Coinbase con ring_size**: Le coinbase sono sempre tx v1/v2 con
+   `txin_gen` → classificate correttamente.
+
+5. **Mempool**: Le tx in mempool non hanno ancora un UTXO nel wallet →
+   non compaiono nel bilancio suddiviso finché non sono in un blocco.
+   Per vedere le tx in arrivo in tempo reale, serve estendere anche
+   `m_unconfirmed_payments` con la categoria, ma è fase successiva.
+
+===========================================================================
+# DIAGRAMMA — FLUSSO DATI
+===========================================================================
+
+```
+Daemon (blockchain)
+  │
+  ▼ process_new_transaction()  ← scan wallet
+  │
+  ├─ classifica: td.m_fund_category = classify_fund(td.m_tx, height)
+  │
+  ▼
+Cache wallet (m_transfers[])
+  │
+  ▼ on_get_balance_by_category()
+  │
+  ├─ itera m_transfers[]
+  ├─ filtra !m_spent, !m_frozen
+  ├─ accumula per fund_category
+  ├─ skip categorie con saldo 0
+  └─ restituisce JSON strutturato
+```
+
+===========================================================================
+# STIMA SFORZO
+===========================================================================
+
+| Fase | File | Difficoltà | Tempo stimato |
+|------|------|-----------|---------------|
+| Fase 1: Storage + Scan | wallet2.h/cpp | Media | 2-3 ore |
+| Fase 2: RPC | wallet_rpc_server.cpp/h, defs.h | Media | 2-3 ore |
+| Fase 3: CLI (opzionale) | gov_spend.py | Bassa | 1 ora |
+| **Totale** | | | **5-7 ore** |
+
+===========================================================================
+# DOMANDE RISPOSTE (RIEPILOGO VELOCE)
+===========================================================================
+
+| Domanda | Risposta |
+|---------|----------|
+| Dopo quanti blocchi va a buon fine? | 1-3 blocchi (~2-6 min) con fee normale per inclusione; +10 blocchi (~20 min) per spendibilità |
+| Aumentando fee va più veloce? | Sì — priorità più alta = prima nel mempool |
+| Stessa risposta per wallet normali? | Sì, stesso meccanismo per TUTTE le tx |
+| Come aumentare fee? | `priority` da 1 (unimportant) a 4 (priority) in wallet-rpc |
+| Fee a chi va? | 97% al miner, 3% al pool MevaTrust (bloccato) |

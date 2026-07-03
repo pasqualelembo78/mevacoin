@@ -271,6 +271,14 @@ namespace rct {
                << " a=" << epee::string_tools::pod_to_hex(a)
                << " aG=" << epee::string_tools::pod_to_hex(aG)
                << " aH=" << epee::string_tools::pod_to_hex(aH));
+        {
+            // Verify: I == p*H and D == z*H
+            key checkI, checkD;
+            rct::scalarmultKey(checkI, H, p);
+            rct::scalarmultKey(checkD, H, z);
+            MDEBUG("CLSAGSIGN_DBG: verify I==" << (checkI == sig.I ? "OK" : "MISMATCH")
+                   << " D==" << (checkD == D ? "OK" : "MISMATCH"));
+        }
 
         geDsmp I_precomp;
         geDsmp D_precomp;
@@ -302,6 +310,20 @@ namespace rct {
         mu_C_to_hash[2*n+1] = sig.I;
         mu_C_to_hash[2*n+2] = sig.D;
         mu_C_to_hash[2*n+3] = C_offset;
+        {
+            std::ostringstream oss;
+            oss << "CLSAGSIGN_DBG[mu_hash]: mu_P_to_hash[0]=" << epee::string_tools::pod_to_hex(mu_P_to_hash[0]);
+            for (size_t di = 1; di < mu_P_to_hash.size(); ++di)
+                oss << " mu_P_to_hash[" << di << "]=" << epee::string_tools::pod_to_hex(mu_P_to_hash[di]);
+            MDEBUG(oss.str());
+        }
+        {
+            std::ostringstream oss;
+            oss << "CLSAGSIGN_DBG[mu_hash]: mu_C_to_hash[0]=" << epee::string_tools::pod_to_hex(mu_C_to_hash[0]);
+            for (size_t di = 1; di < mu_C_to_hash.size(); ++di)
+                oss << " mu_C_to_hash[" << di << "]=" << epee::string_tools::pod_to_hex(mu_C_to_hash[di]);
+            MDEBUG(oss.str());
+        }
         key mu_P, mu_C;
         mu_P = hash_to_scalar(mu_P_to_hash);
         mu_C = hash_to_scalar(mu_C_to_hash);
@@ -970,6 +992,20 @@ namespace rct {
             mu_C_to_hash[2*n+1] = sig.I;
             mu_C_to_hash[2*n+2] = sig.D;
             mu_C_to_hash[2*n+3] = C_offset;
+            {
+                std::ostringstream oss;
+                oss << dbg_prefix << "mu_P_to_hash[0]=" << epee::string_tools::pod_to_hex(mu_P_to_hash[0]);
+                for (size_t di = 1; di < mu_P_to_hash.size(); ++di)
+                    oss << " mu_P_to_hash[" << di << "]=" << epee::string_tools::pod_to_hex(mu_P_to_hash[di]);
+                MDEBUG(oss.str());
+            }
+            {
+                std::ostringstream oss;
+                oss << dbg_prefix << "mu_C_to_hash[0]=" << epee::string_tools::pod_to_hex(mu_C_to_hash[0]);
+                for (size_t di = 1; di < mu_C_to_hash.size(); ++di)
+                    oss << " mu_C_to_hash[" << di << "]=" << epee::string_tools::pod_to_hex(mu_C_to_hash[di]);
+                MDEBUG(oss.str());
+            }
             key mu_P, mu_C;
             mu_P = hash_to_scalar(mu_P_to_hash);
             mu_C = hash_to_scalar(mu_C_to_hash);

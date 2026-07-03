@@ -383,50 +383,110 @@ def select_option(prompt, options):
 
 # ── Wallet management ────────────────────────────────────────────────────
 
+def get_daemon_height():
+    """Get current daemon blockchain height."""
+    info = daemon_rpc("get_info")
+    return info.get("height", 0)
+
+def get_wallet_height():
+    """Get wallet's scanned height."""
+    info = wallet_rpc("get_height")
+    return info.get("height", 0)
+
+def flush_stale_pool_tx():
+    """Flush any failed transactions from daemon mempool so the UTXO
+    isn't falsely marked as spent on retry.  Idempotent — no-op if pool
+    is already clean."""
+    pending = wallet_rpc("get_transfers", {"pending": True, "account_index": 0})
+    txids = [t["txid"] for t in pending.get("pending", [])]
+    if not txids:
+        return
+    print(f"  Flushing {len(txids)} stale tx(s) from daemon pool...")
+    daemon_rpc("flush_txpool", {"txid": txids})
+
 def ensure_wallet(filename, address, spendkey, viewkey, password="govspend"):
-    """Create or switch to a wallet with given keys via wallet RPC.
-    Close any currently open wallet first."""
+    """Open an existing wallet, or create one from keys if it doesn't exist.
+    Idempotent — opening an existing wallet preserves its cache & history."""
     try:
         wallet_rpc("close_wallet")
     except RuntimeError:
         pass
 
+    # Try to open existing wallet first (preserves cache).
     try:
-        result = wallet_rpc("generate_from_keys", {
+        result = wallet_rpc("open_wallet", {
             "filename": filename,
-            "address": address,
-            "spendkey": spendkey,
-            "viewkey": viewkey,
-            "password": password,
-            "restore_height": 0,
-            "autosave_current": False,
-            "language": "English"
+            "password": password
         })
-        print(f"  Wallet '{filename}' created: {result['address']}")
-        return result["address"]
-    except RuntimeError as e:
-        err = str(e).lower()
-        if "already exists" in err:
-            result = wallet_rpc("open_wallet", {
-                "filename": filename,
-                "password": password
-            })
-            print(f"  Wallet '{filename}' opened.")
-            return address
-        raise
+        print(f"  Wallet '{filename}' opened.")
+        return address
+    except RuntimeError:
+        pass
+
+    # Wallet doesn't exist — create from keys.
+    result = wallet_rpc("generate_from_keys", {
+        "filename": filename,
+        "address": address,
+        "spendkey": spendkey,
+        "viewkey": viewkey,
+        "password": password,
+        "restore_height": 0,
+        "autosave_current": False,
+        "language": "English"
+    })
+    print(f"  Wallet '{filename}' created: {result['address']}")
+    return result["address"]
 
 def refresh_wallet():
-    """Rescan blockchain from scratch to ensure correct balance and spent state."""
-    if VERBOSE:
-        print("  Refreshing wallet (rescan_blockchain)...")
-    result = wallet_rpc("rescan_blockchain")
-    print("  Wallet rescanned from height 0.")
+    """Reset wallet to a clean state: flush mempool, rescan from genesis.
+    This is idempotent: after a failed/abandoned tx in the mempool, the
+    wallet cache marks UTXOs as spent and change outputs as locked.
+    Flushing + rescanning restores the correct state (original UTXOs
+    reappear as unspent if no block was mined)."""
+    # 1. Remove all unconfirmed tx from daemon pool first
+    flush_stale_pool_tx()
+    # 2. Rescan from genesis — wallet rebuilds cache from clean pool
+    print(f"  Rescanning blockchain from genesis...")
+    wallet_rpc("rescan_blockchain")
+    # 3. Flush again in case a tx snuck in during rescan
+    flush_stale_pool_tx()
     if VERBOSE:
         try:
             bal = wallet_rpc("get_balance")
-            print(f"    balance: {bal.get('unlocked_balance', 0) / COIN:.4f} MVC unlocked / {bal.get('balance', 0) / COIN:.4f} MVC total")
+            print(f"    balance: {bal.get('unlocked_balance', 0) / COIN:.4f} MVC unlocked "
+                  f"/ {bal.get('balance', 0) / COIN:.4f} MVC total")
         except Exception:
             pass
+
+def check_balance(min_atomic):
+    """Verify sufficient unlocked balance before attempting a transfer.
+    Raises RuntimeError with a clear message if balance is insufficient."""
+    bal = wallet_rpc("get_balance")
+    unlocked = bal.get("unlocked_balance", 0)
+    total = bal.get("balance", 0)
+    num_utxos = bal.get("per_subaddress", [{}])[0].get("num_unspent_outputs", 0)
+
+    print(f"    Balance: {unlocked / COIN:.4f} unlocked / {total / COIN:.4f} total MVC "
+          f"({num_utxos} UTXO(s))")
+
+    if unlocked < min_atomic:
+        if total >= min_atomic:
+            raise RuntimeError(
+                f"Insufficient unlocked balance ({unlocked / COIN:.4f} MVC). "
+                f"Total balance is {total / COIN:.4f} MVC but outputs are still locked."
+            )
+        raise RuntimeError(
+            f"Insufficient balance ({unlocked / COIN:.4f} unlocked / {total / COIN:.4f} total MVC). "
+            f"Need at least {min_atomic / COIN:.4f} MVC."
+        )
+    if num_utxos == 0 and total == 0:
+        raise RuntimeError(
+            "Wallet has no outputs.  Make sure you are using the correct wallet "
+            "for this fund type and the premine outputs have been unlocked."
+        )
+    if unlocked >= min_atomic:
+        return True
+    return False
 
 # ── Fund type operations ─────────────────────────────────────────────────
 
@@ -438,9 +498,9 @@ def do_team_lock(amount, dest_addr):
     print(f"  Recipient:  {dest_addr}")
     print(f"{'='*60}")
 
-    # Auto-create/open the founder wallet
     ensure_wallet("founder", FOUNDER_ADDRESS, FOUNDER_SPENDKEY, FOUNDER_VIEWKEY, FOUNDER_PASSWORD)
     refresh_wallet()
+    check_balance(amount)
 
     if VERBOSE:
         print(f"  ring_size={MIN_RING_SIZE}")
@@ -478,16 +538,14 @@ def do_network_fund(amount, dest_addr):
     if VERBOSE:
         print(f"  Derived keys: spend_sec={wallet_info['spend_sec'][:16]}... view_sec={wallet_info['view_sec'][:16]}...")
 
-    # Ensure wallet exists in wallet RPC
     ensure_wallet(
         "network_fund",
         wallet_info["address"],
         wallet_info["spend_sec"],
         wallet_info["view_sec"]
     )
-
-    # Refresh to scan for outputs
     refresh_wallet()
+    check_balance(amount)
 
     # Build tx_extra via gov_spend.py
     if VERBOSE:
@@ -615,6 +673,7 @@ def do_treasury(amount, dest_addr):
         wallet_info["view_sec"]
     )
     refresh_wallet()
+    check_balance(amount)
 
     print(f"    Calling wallet_rpc transfer (do_not_relay=True)...")
     if VERBOSE:
@@ -885,7 +944,34 @@ def main():
             print(f"Unknown fund type: {fund_type}")
             sys.exit(1)
     except Exception as e:
-        print(f"\n✗ ERROR: {e}")
+        err_str = str(e)
+        print(f"\n✗ ERROR: {err_str}")
+        if "invalid input" in err_str or "verRctCLSAGSimple" in err_str:
+            print()
+            print("  ⚠ The CLSAG signature fix might not be active in the running wallet-rpc.")
+            print("  Run these commands to rebuild and restart:")
+            print()
+            print("    cd /root/mevacoin/build/Linux/mevacoin/release && make -j1")
+            print("    kill $(pgrep mevacoin-wallet-rpc)")
+            print("    nohup ./bin/mevacoin-wallet-rpc --rpc-bind-ip 127.0.0.1 \\")
+            print("      --rpc-bind-port 18087 --wallet-dir /root/mevacoin/tools/wallet_rpc_data \\")
+            print("      --daemon-address 127.0.0.1:18081 --trusted-daemon \\")
+            print("      --disable-rpc-login --rpc-ssl disabled > /tmp/wallet-rpc.log 2>&1 &")
+        elif "not enough unlocked money" in err_str or "not enough money" in err_str:
+            print()
+            print("  ⚠ Wallet has insufficient unlocked balance.  Flush pool + rescan:")
+            print()
+            print("    # Flush stale failed txs from daemon pool")
+            print("    curl -s http://127.0.0.1:18081/json_rpc \\")
+            print("      -d '{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"flush_txpool\",")
+            print("           \"params\":{\"txid\":[\"*\"]}}'")
+            print("    # Close, delete cache, reopen, rescan")
+            print("    rm /root/mevacoin/tools/wallet_rpc_data/founder")
+            print("    curl -s http://127.0.0.1:18087/json_rpc \\")
+            print("      -d '{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"open_wallet\",")
+            print("           \"params\":{\"filename\":\"founder\",\"password\":\"pass_new_founder\"}}'")
+            print("    curl -s http://127.0.0.1:18087/json_rpc \\")
+            print("      -d '{\"jsonrpc\":\"2.0\",\"id\":\"0\",\"method\":\"rescan_blockchain\"}'")
         sys.exit(1)
 
     print(f"\n✓ Done! Funds will arrive at {dest_addr} after the tx is mined.")

@@ -2842,5 +2842,62 @@ namespace wallet_rpc
     };
     typedef epee::misc_utils::struct_init<response_t> response;
   };
+
+  struct COMMAND_RPC_GET_BALANCE_BY_CATEGORY
+  {
+    struct request_t
+    {
+      uint32_t account_index;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(account_index)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct transfer_entry
+    {
+      std::string txid;
+      uint64_t amount;
+      uint64_t height;
+      uint64_t confirmations;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(txid)
+        KV_SERIALIZE(amount)
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(confirmations)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct category_entry
+    {
+      std::string type;
+      std::string label;
+      uint64_t balance;
+      uint64_t unlocked_balance;
+      uint64_t num_outputs;
+      std::vector<transfer_entry> transfers;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(type)
+        KV_SERIALIZE(label)
+        KV_SERIALIZE(balance)
+        KV_SERIALIZE(unlocked_balance)
+        KV_SERIALIZE(num_outputs)
+        KV_SERIALIZE(transfers)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t
+    {
+      std::vector<category_entry> categories;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(categories)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
 }
 }

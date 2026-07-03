@@ -194,6 +194,7 @@ namespace
   const char* USAGE_START_MINING("start_mining [<number_of_threads>] [bg_mining] [ignore_battery]");
   const char* USAGE_SET_DAEMON("set_daemon <host>[:<port>] [trusted|untrusted|this-is-probably-a-spy-node]");
   const char* USAGE_SHOW_BALANCE("balance [detail]");
+  const char* USAGE_BALANCE_BY_CATEGORY("balance_by_category [detail]");
   const char* USAGE_INCOMING_TRANSFERS("incoming_transfers [available|unavailable] [verbose] [uses] [index=<N1>[,<N2>[,...]]]");
   const char* USAGE_PAYMENTS("payments <PID_1> [<PID_2> ... <PID_N>]");
   const char* USAGE_PAYMENT_ID("payment_id");
@@ -3202,6 +3203,10 @@ simple_wallet::simple_wallet()
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_balance, _1),
                            tr(USAGE_SHOW_BALANCE),
                            tr("Show the wallet's balance of the currently selected account."));
+  m_cmd_binder.set_handler("balance_by_category",
+                           boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_balance_by_category, _1),
+                           tr(USAGE_BALANCE_BY_CATEGORY),
+                           tr("Show the wallet's balance broken down by fund category (normal, governance, network, coinbase, etc.)."));
   m_cmd_binder.set_handler("incoming_transfers",
                            boost::bind(&simple_wallet::on_command, this, &simple_wallet::show_incoming_transfers,_1),
                            tr(USAGE_INCOMING_TRANSFERS),
@@ -6089,6 +6094,36 @@ bool simple_wallet::show_balance_unlocked(bool detailed)
     unlock_time_message = (boost::format(" (%s to unlock)") % get_human_readable_timespan(time_to_unlock)).str();
   success_msg_writer() << tr("Balance: ") << print_money(m_wallet->balance(m_current_subaddress_account, false)) << ", "
     << tr("unlocked balance: ") << print_money(unlocked_balance) << unlock_time_message << extra;
+
+  {
+    static const std::map<uint8_t, std::pair<const char*, const char*>> cat_labels = {
+      {tools::wallet2::FUND_NORMAL,        {"normal",        tr("Normali")}},
+      {tools::wallet2::FUND_GOVERNANCE,    {"governance",    tr("Tesoro Governance")}},
+      {tools::wallet2::FUND_NETWORK,       {"network",       tr("Network Fund")}},
+      {tools::wallet2::FUND_COINBASE,      {"coinbase",      tr("Ricompense Mining")}},
+      {tools::wallet2::FUND_ADD_SIGNER,    {"add_signer",    tr("Aggiunta Firmatario")}},
+      {tools::wallet2::FUND_REMOVE_SIGNER, {"remove_signer", tr("Rimozione Firmatario")}},
+    };
+
+    auto by_cat = m_wallet->balance_per_category(m_current_subaddress_account, false);
+    if (!by_cat.empty())
+    {
+      success_msg_writer() << tr("Balance per category:");
+      for (const auto& kv : by_cat)
+      {
+        auto lit = cat_labels.find(kv.first);
+        const char* label = lit != cat_labels.end() ? lit->second.second : tr("Sconosciuto");
+        const auto& entry = kv.second;
+        success_msg_writer() << (boost::format("  %s: %s (%s %s), %u %s")
+          % label
+          % print_money(entry.balance)
+          % print_money(entry.unlocked_balance) % tr("unlocked")
+          % (unsigned)entry.num_outputs % tr("output(s)")
+        ).str();
+      }
+    }
+  }
+
   std::map<uint32_t, uint64_t> balance_per_subaddress = m_wallet->balance_per_subaddress(m_current_subaddress_account, false);
   std::map<uint32_t, std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> unlocked_balance_per_subaddress = m_wallet->unlocked_balance_per_subaddress(m_current_subaddress_account, false);
   if (!detailed || balance_per_subaddress.empty())
@@ -6116,6 +6151,66 @@ bool simple_wallet::show_balance(const std::vector<std::string>& args/* = std::v
   }
   LOCK_IDLE_SCOPE();
   show_balance_unlocked(args.size() == 1);
+  return true;
+}
+//----------------------------------------------------------------------------------------------------
+bool simple_wallet::show_balance_by_category(const std::vector<std::string>& args/* = std::vector<std::string>()*/)
+{
+  if (args.size() > 1 || (args.size() == 1 && args[0] != "detail"))
+  {
+    PRINT_USAGE(USAGE_BALANCE_BY_CATEGORY);
+    return true;
+  }
+  LOCK_IDLE_SCOPE();
+  const bool detail = (args.size() == 1 && args[0] == "detail");
+
+  static const std::map<uint8_t, std::pair<const char*, const char*>> cat_labels = {
+    {tools::wallet2::FUND_NORMAL,        {"normal",        tr("Trasferimenti Normali")}},
+    {tools::wallet2::FUND_GOVERNANCE,    {"governance",    tr("Tesoro Governance")}},
+    {tools::wallet2::FUND_NETWORK,       {"network",       tr("Network Fund")}},
+    {tools::wallet2::FUND_COINBASE,      {"coinbase",      tr("Ricompense Mining")}},
+    {tools::wallet2::FUND_ADD_SIGNER,    {"add_signer",    tr("Aggiunta Firmatario")}},
+    {tools::wallet2::FUND_REMOVE_SIGNER, {"remove_signer", tr("Rimozione Firmatario")}},
+  };
+
+  auto by_cat = m_wallet->balance_per_category(m_current_subaddress_account, false);
+  if (by_cat.empty())
+  {
+    success_msg_writer() << tr("No balance.");
+    return true;
+  }
+
+  success_msg_writer() << tr("Balance by category:");
+  for (const auto& kv : by_cat)
+  {
+    auto lit = cat_labels.find(kv.first);
+    const char* label = lit != cat_labels.end() ? lit->second.second : tr("Sconosciuto");
+    const char* type  = lit != cat_labels.end() ? lit->second.first : "unknown";
+
+    const auto& entry = kv.second;
+    std::string line = (boost::format("  %s (%s): %s (%s %s), %u %s")
+      % label % type
+      % print_money(entry.balance)
+      % print_money(entry.unlocked_balance) % tr("unlocked")
+      % (unsigned)entry.num_outputs % tr("output(s)")
+    ).str();
+    success_msg_writer() << line;
+
+    if (detail)
+    {
+      for (const auto& txi : entry.transfers)
+      {
+        std::string txid_str = epee::string_tools::pod_to_hex(txi.txid);
+        std::string tx_line = (boost::format("    tx %s  %s  %s %u  %s %u")
+          % txid_str
+          % print_money(txi.amount)
+          % tr("height=") % (unsigned)txi.height
+          % tr("confirmations=") % (unsigned)txi.confirmations
+        ).str();
+        success_msg_writer() << tx_line;
+      }
+    }
+  }
   return true;
 }
 //----------------------------------------------------------------------------------------------------
