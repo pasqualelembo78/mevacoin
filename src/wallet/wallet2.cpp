@@ -2925,6 +2925,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
       payment.m_timestamp    = ts;
       payment.m_coinbase     = miner_tx;
       payment.m_subaddr_index = i.first;
+      payment.m_extra        = tx.extra;
       if (pool) {
         if (emplace_or_replace(m_unconfirmed_payments, payment_id, pool_payment_details{payment, double_spend_seen}))
           all_same = false;
@@ -7069,6 +7070,153 @@ boost::optional<wallet2::cache_file_data> wallet2::get_cache_file_data()
   }
 }
 //----------------------------------------------------------------------------------------------------
+wallet2::fund_category wallet2::classify_fund(const cryptonote::transaction_prefix& tx)
+{
+  // Check tx_extra FIRST — coinbase txs (like genesis) can carry governance/network tags
+  std::vector<cryptonote::tx_extra_field> fields;
+  if (cryptonote::parse_tx_extra(tx.extra, fields))
+  {
+    cryptonote::tx_extra_governance_transfer gov;
+    cryptonote::tx_extra_network_fund_transfer net;
+    cryptonote::tx_extra_governance_add_signer add;
+    cryptonote::tx_extra_governance_remove_signer rem;
+
+    if (cryptonote::find_tx_extra_field_by_type(fields, gov))
+      return FUND_GOVERNANCE;
+    if (cryptonote::find_tx_extra_field_by_type(fields, net))
+      return FUND_NETWORK;
+    if (cryptonote::find_tx_extra_field_by_type(fields, add))
+      return FUND_ADD_SIGNER;
+    if (cryptonote::find_tx_extra_field_by_type(fields, rem))
+      return FUND_REMOVE_SIGNER;
+  }
+
+  // Only then fall back to coinbase detection
+  if (tx.vin.size() == 1 && tx.vin[0].type() == typeid(cryptonote::txin_gen))
+    return FUND_COINBASE;
+
+  return FUND_NORMAL;
+}
+//----------------------------------------------------------------------------------------------------
+// Classify fund from raw tx_extra bytes + coinbase flag (for unconfirmed payments)
+// that don't have a full transaction_prefix
+static wallet2::fund_category classify_fund_extra(const std::vector<uint8_t>& extra, bool coinbase)
+{
+  std::vector<cryptonote::tx_extra_field> fields;
+  if (cryptonote::parse_tx_extra(extra, fields))
+  {
+    cryptonote::tx_extra_governance_transfer gov;
+    cryptonote::tx_extra_network_fund_transfer net;
+    cryptonote::tx_extra_governance_add_signer add;
+    cryptonote::tx_extra_governance_remove_signer rem;
+
+    if (cryptonote::find_tx_extra_field_by_type(fields, gov))
+      return wallet2::FUND_GOVERNANCE;
+    if (cryptonote::find_tx_extra_field_by_type(fields, net))
+      return wallet2::FUND_NETWORK;
+    if (cryptonote::find_tx_extra_field_by_type(fields, add))
+      return wallet2::FUND_ADD_SIGNER;
+    if (cryptonote::find_tx_extra_field_by_type(fields, rem))
+      return wallet2::FUND_REMOVE_SIGNER;
+  }
+
+  if (coinbase)
+    return wallet2::FUND_COINBASE;
+
+  return wallet2::FUND_NORMAL;
+}
+//----------------------------------------------------------------------------------------------------
+std::map<uint8_t, wallet2::category_balance_entry> wallet2::balance_per_category(uint32_t account_index, bool strict)
+{
+  const uint64_t blockchain_height = get_blockchain_current_height();
+  std::map<uint8_t, category_balance_entry> result;
+
+  for (const auto& td : m_transfers)
+  {
+    if (td.amount() > m_ignore_outputs_above || td.amount() < m_ignore_outputs_below)
+      continue;
+    if (td.m_subaddr_index.major != account_index)
+      continue;
+    if (td.m_frozen)
+      continue;
+    if (is_spent(td, strict))
+      continue;
+
+    fund_category cat = classify_fund(td.m_tx);
+    auto& entry = result[(uint8_t)cat];
+    entry.balance += td.amount();
+    if (is_transfer_unlocked(td))
+      entry.unlocked_balance += td.amount();
+    entry.num_outputs++;
+
+    category_balance_entry::tx_info info;
+    info.txid = td.m_txid;
+    info.amount = td.amount();
+    info.height = td.m_block_height;
+    info.confirmations = td.m_block_height < blockchain_height ? blockchain_height - td.m_block_height : 0;
+    info.timestamp = 0; // not stored per-transfer in m_transfers
+    entry.transfers.push_back(std::move(info));
+  }
+
+  // Include unconfirmed outgoing tx change and to-self transfers (matches balance())
+  if (!strict)
+  {
+    for (const auto& utx : m_unconfirmed_txs)
+    {
+      if (utx.second.m_subaddr_account != account_index || utx.second.m_state == wallet2::unconfirmed_transfer_details::failed)
+        continue;
+
+      fund_category cat = classify_fund(utx.second.m_tx);
+      auto& entry = result[(uint8_t)cat];
+      entry.balance += utx.second.m_change;
+      entry.num_outputs++;
+
+      for (const auto& dest : utx.second.m_dests)
+      {
+        auto index = get_subaddress_index(dest.addr);
+        if (index && (*index).major == account_index)
+        {
+          fund_category dest_cat = classify_fund(utx.second.m_tx);
+          auto& dest_entry = result[(uint8_t)dest_cat];
+          dest_entry.balance += dest.amount;
+          dest_entry.num_outputs++;
+        }
+      }
+    }
+
+    for (const auto& utx : m_unconfirmed_payments)
+    {
+      if (utx.second.m_pd.m_subaddr_index.major != account_index)
+        continue;
+
+      fund_category cat = classify_fund_extra(utx.second.m_pd.m_extra, utx.second.m_pd.m_coinbase);
+      auto& entry = result[(uint8_t)cat];
+      entry.balance += utx.second.m_pd.m_amount;
+      entry.unlocked_balance += utx.second.m_pd.m_amount;
+      entry.num_outputs++;
+
+      category_balance_entry::tx_info info;
+      info.txid = utx.second.m_pd.m_tx_hash;
+      info.amount = utx.second.m_pd.m_amount;
+      info.height = utx.second.m_pd.m_block_height;
+      info.confirmations = 0;
+      info.timestamp = utx.second.m_pd.m_timestamp;
+      entry.transfers.push_back(std::move(info));
+    }
+  }
+
+  // Remove categories with zero balance
+  for (auto it = result.begin(); it != result.end(); )
+  {
+    if (it->second.balance == 0)
+      it = result.erase(it);
+    else
+      ++it;
+  }
+
+  return result;
+}
+//----------------------------------------------------------------------------------------------------
 uint64_t wallet2::balance(uint32_t index_major, bool strict) const
 {
   uint64_t amount = 0;
@@ -9706,6 +9854,8 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         LOG_PRINT_L2("Index " << i << "/" << requested_outputs_count << ": idx " << req.outputs[i].index << " (real " << td.m_global_output_index << "), unlocked " << daemon_resp.outs[i].unlocked << ", key " << daemon_resp.outs[i].key);
         tx_add_fake_output(outs, req.outputs[i].index, daemon_resp.outs[i].key, daemon_resp.outs[i].mask, td.m_global_output_index, daemon_resp.outs[i].unlocked, valid_public_keys_cache);
       }
+      // sort the subsection, so any spares are reset in order
+      std::sort(outs.back().begin(), outs.back().end(), [](const get_outs_entry &a, const get_outs_entry &b) { return std::get<0>(a) < std::get<0>(b); });
       if (outs.back().size() < fake_outputs_count + 1)
       {
         // If the output doesn't have enough instances on chain to form the
@@ -9720,11 +9870,6 @@ void wallet2::get_outs(std::vector<std::vector<tools::wallet2::get_outs_entry>> 
         {
           MDEBUG("Unmixable output, accepting ring of size " << outs.back().size());
         }
-      }
-      else
-      {
-        // sort the subsection, so any spares are reset in order
-        std::sort(outs.back().begin(), outs.back().end(), [](const get_outs_entry &a, const get_outs_entry &b) { return std::get<0>(a) < std::get<0>(b); });
       }
       base += requested_outputs_count;
     }

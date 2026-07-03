@@ -650,6 +650,56 @@ namespace tools
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool wallet_rpc_server::on_get_balance_by_category(const wallet_rpc::COMMAND_RPC_GET_BALANCE_BY_CATEGORY::request& req, wallet_rpc::COMMAND_RPC_GET_BALANCE_BY_CATEGORY::response& res, epee::json_rpc::error& er, const connection_context *ctx)
+  {
+    if (!m_wallet) return not_open(er);
+    try
+    {
+      auto by_cat = m_wallet->balance_per_category(req.account_index, false);
+
+      static const std::map<uint8_t, std::pair<std::string, std::string>> cat_labels = {
+        {tools::wallet2::FUND_NORMAL,        {"normal",        "Trasferimenti Normali"}},
+        {tools::wallet2::FUND_GOVERNANCE,    {"governance",    "Tesoro Governance"}},
+        {tools::wallet2::FUND_NETWORK,       {"network",       "Network Fund"}},
+        {tools::wallet2::FUND_COINBASE,      {"coinbase",      "Ricompense Mining"}},
+        {tools::wallet2::FUND_ADD_SIGNER,    {"add_signer",    "Aggiunta Firmatario"}},
+        {tools::wallet2::FUND_REMOVE_SIGNER, {"remove_signer", "Rimozione Firmatario"}},
+      };
+
+      for (const auto& kv : by_cat)
+      {
+        auto lit = cat_labels.find(kv.first);
+        const std::string& type = lit != cat_labels.end() ? lit->second.first : "unknown";
+        const std::string& label = lit != cat_labels.end() ? lit->second.second : "Sconosciuto";
+
+        wallet_rpc::COMMAND_RPC_GET_BALANCE_BY_CATEGORY::category_entry ce;
+        ce.type = type;
+        ce.label = label;
+        ce.balance = kv.second.balance;
+        ce.unlocked_balance = kv.second.unlocked_balance;
+        ce.num_outputs = kv.second.num_outputs;
+
+        for (const auto& txi : kv.second.transfers)
+        {
+          wallet_rpc::COMMAND_RPC_GET_BALANCE_BY_CATEGORY::transfer_entry te;
+          te.txid = epee::string_tools::pod_to_hex(txi.txid);
+          te.amount = txi.amount;
+          te.height = txi.height;
+          te.confirmations = txi.confirmations;
+          ce.transfers.push_back(std::move(te));
+        }
+
+        res.categories.push_back(std::move(ce));
+      }
+    }
+    catch (const std::exception& e)
+    {
+      handle_rpc_exception(std::current_exception(), er, WALLET_RPC_ERROR_CODE_UNKNOWN_ERROR);
+      return false;
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool wallet_rpc_server::on_getaddress(const wallet_rpc::COMMAND_RPC_GET_ADDRESS::request& req, wallet_rpc::COMMAND_RPC_GET_ADDRESS::response& res, epee::json_rpc::error& er, const connection_context *ctx)
   {
     if (!m_wallet) return not_open(er);

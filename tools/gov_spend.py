@@ -42,6 +42,9 @@ Usage:
   # Verify governance signatures in a tx_extra blob
   ./gov_spend.py verify <tx_extra_hex> <tx_prefix_hash_hex>
 
+  # Show balance grouped by category
+  ./gov_spend.py balance [wallet_rpc_url] [account_index]
+
 Environment:
   GOV_CRYPTO_BIN  — path to gov_crypto binary (default: ./gov_crypto)
 """
@@ -50,6 +53,7 @@ import sys
 import os
 import subprocess
 import json
+import urllib.request
 
 GOV_CRYPTO = os.environ.get("GOV_CRYPTO_BIN", os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "gov_crypto"
@@ -407,6 +411,51 @@ def cmd_verify(tx_extra_hex, hash_hex):
         print(f"  #{i}: key={sig['signer_key'][:16]}... {result}")
 
 
+# ── Balance by category ────────────────────────────────────────────────
+
+RPC_URL = "http://127.0.0.1:18087/json_rpc"
+
+
+def _wallet_rpc(method, params=None):
+    data = json.dumps({"jsonrpc": "2.0", "id": "0", "method": method, "params": params or {}}).encode()
+    req = urllib.request.Request(RPC_URL, data=data, headers={"Content-Type": "application/json"})
+    resp = urllib.request.urlopen(req)
+    return json.loads(resp.read())
+
+
+def cmd_balance(*args):
+    global RPC_URL
+    if args:
+        RPC_URL = args[0].rstrip("/")
+        if not RPC_URL.endswith("/json_rpc"):
+            RPC_URL += "/json_rpc"
+    account_index = int(args[1]) if len(args) > 1 else 0
+
+    result = _wallet_rpc("get_balance_by_category", {"account_index": account_index})
+    categories = result.get("result", {}).get("categories", [])
+    if "error" in result:
+        print(f"Error: {result['error']}", file=sys.stderr)
+        sys.exit(1)
+
+    if not categories:
+        print("No balance.")
+        return
+
+    for cat in categories:
+        bal = int(cat["balance"])
+        unlocked = int(cat["unlocked_balance"])
+        outputs = int(cat["num_outputs"])
+        print(f"\n── {cat['label']} ({cat['type']}) ──")
+        print(f"  Balance:  {bal / 1e12:.4f} MVC ({'unlocked' if bal == unlocked else f'{unlocked / 1e12:.4f} unlocked'})")
+        print(f"  Outputs:  {outputs}")
+        for tx in cat.get("transfers", []):
+            txid = tx["txid"][:16] + "..."
+            amt = int(tx["amount"]) / 1e12
+            conf = int(tx["confirmations"])
+            h = int(tx["height"])
+            print(f"    tx {txid}  {amt:.4f} MVC  height={h}  confirmations={conf}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────
 
 COMMANDS = {
@@ -422,6 +471,7 @@ COMMANDS = {
     "remove-signer-build": lambda args: cmd_remove_signer_build(*args),
     "sign":                lambda args: cmd_sign(*args),
     "verify":              lambda args: cmd_verify(*args),
+    "balance":             lambda args: cmd_balance(*args),
 }
 
 

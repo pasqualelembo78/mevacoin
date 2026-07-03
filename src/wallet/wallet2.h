@@ -330,6 +330,16 @@ private:
       tx_scan_info_t(): amount(0), money_transfered(0), error(true) {}
     };
 
+    enum fund_category : uint8_t
+    {
+      FUND_NORMAL         = 0,
+      FUND_GOVERNANCE     = 1,
+      FUND_NETWORK        = 2,
+      FUND_COINBASE       = 3,
+      FUND_ADD_SIGNER     = 4,
+      FUND_REMOVE_SIGNER  = 5,
+    };
+
     struct transfer_details
     {
       uint64_t m_block_height;
@@ -440,9 +450,10 @@ private:
       uint64_t m_timestamp;
       bool m_coinbase;
       cryptonote::subaddress_index m_subaddr_index;
+      std::vector<uint8_t> m_extra;
 
       BEGIN_SERIALIZE_OBJECT()
-        VERSION_FIELD(0)
+        VERSION_FIELD(1)
         FIELD(m_tx_hash)
         VARINT_FIELD(m_amount)
         FIELD(m_amounts)
@@ -452,6 +463,8 @@ private:
         VARINT_FIELD(m_timestamp)
         FIELD(m_coinbase)
         FIELD(m_subaddr_index)
+        if (version >= 1)
+          FIELD(m_extra)
       END_SERIALIZE()
     };
 
@@ -1166,6 +1179,24 @@ private:
     // all locked & unlocked balances of all subaddress accounts
     uint64_t balance_all(bool strict) const;
     uint64_t unlocked_balance_all(bool strict, uint64_t *blocks_to_unlock = NULL, uint64_t *time_to_unlock = NULL);
+    // fund category classification
+    static fund_category classify_fund(const cryptonote::transaction_prefix& tx);
+    struct category_balance_entry
+    {
+      uint64_t balance;
+      uint64_t unlocked_balance;
+      uint64_t num_outputs;
+      struct tx_info
+      {
+        crypto::hash txid;
+        uint64_t amount;
+        uint64_t height;
+        uint64_t confirmations;
+        uint64_t timestamp;
+      };
+      std::vector<tx_info> transfers;
+    };
+    std::map<uint8_t, category_balance_entry> balance_per_category(uint32_t account_index, bool strict);
     template<typename T>
     void transfer_selected(const std::vector<cryptonote::tx_destination_entry>& dsts, const std::vector<size_t>& selected_transfers, size_t fake_outputs_count,
       std::vector<std::vector<tools::wallet2::get_outs_entry>> &outs, std::unordered_set<crypto::public_key> &valid_public_keys_cache,
