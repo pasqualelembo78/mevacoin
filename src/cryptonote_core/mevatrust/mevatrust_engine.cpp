@@ -327,10 +327,20 @@ static uint32_t read_u32(std::ifstream& f) { uint32_t v{}; f.read(reinterpret_ca
 static uint8_t  read_u8(std::ifstream& f)  { uint8_t v{};  f.read(reinterpret_cast<char*>(&v), sizeof(v));  return v; }
 static float    read_float(std::ifstream& f) { float v{}; f.read(reinterpret_cast<char*>(&v), sizeof(v)); return v; }
 static bool     read_bool(std::ifstream& f)  { uint8_t b{}; f.read(reinterpret_cast<char*>(&b), sizeof(b)); return b != 0; }
+// ── Disk-read sanity (defense-in-depth: file corrotto/vecchio/attaccato ═
+//    NON deve mai causare allocazioni bomba (len=0xFFFFFFFF → OOM) né
+//    letture che restituiscono dati spazzatura. Il FORMATO su disco resta
+//    immutato: stessa dimensione, stesso no. di campi — solo validazione
+//    in lettura prima di ogni allocazione guidata dal file. ─────────────
+static constexpr uint32_t kMaxDiskStringLen = 1u << 20;   // 1 MiB: sanity floor per read_str
+static constexpr uint32_t kMaxDiskEntryCount = 1u << 22;  // 4M: sanity floor per vector-loop
+
 static std::string read_str(std::ifstream& f) {
     uint32_t len = read_u32(f);
+    if (len > kMaxDiskStringLen) { f.setstate(std::ios::failbit); return {}; }
     std::string s(len, '\0');
     f.read(s.data(), len);
+    if (static_cast<size_t>(f.gcount()) != len) f.setstate(std::ios::failbit);
     return s;
 }
 
@@ -396,11 +406,13 @@ bool MevaTrustEngine::load_from_disk() {
             else {
                 uptime_history_.clear();
                 uint32_t count = read_u32(f);
+                if (count > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
                 for (uint32_t i = 0; i < count; ++i) {
                     uint8_t klen = read_u8(f);
                     std::string key(klen, '\0');
                     f.read(key.data(), klen);
                     uint32_t evcount = read_u32(f);
+                    if (evcount > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
                     std::vector<UptimeEvent> events(evcount);
                     for (uint32_t j = 0; j < evcount; ++j) {
                         UptimeEvent ev;
@@ -424,6 +436,7 @@ bool MevaTrustEngine::load_from_disk() {
             else {
                 score_cache_.clear();
                 uint32_t count = read_u32(f);
+                if (count > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
                 for (uint32_t i = 0; i < count; ++i) {
                     uint8_t klen = read_u8(f);
                     std::string key(klen, '\0');
