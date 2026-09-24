@@ -95,50 +95,15 @@ echo "    Peer bootstrap: ${PEER_OPTS}"
 # ============================================
 # STEP 2.5 — SELEZIONE VARIANTE BUILD
 # ============================================
+BUILD_VARIANT="full"
+echo -e "${CYAN}>>> [2.5/8] Configurazione nodo MevaCoin...${NC}"
 echo ""
-echo -e "${CYAN}>>> [2.5/8] Selezione variante di compilazione...${NC}"
+echo -e "    ${GREEN}✅ Binario Completo (unico binario: monolite MevaCoin)${NC}"
+echo -e "       Peso binario: ~18MB — compilato localmente dallo stesso sourceset"
+echo -e "       Nota: niente varianti lite/ultra-lite — il binario è un monolite,"
+echo -e "       il risparmio disco/RAM si ottiene via FLAG RUNTIME, non rebuild."
 echo ""
-echo -e "    Scegli la versione di MevaCoin da installare:"
-echo -e "    ${YELLOW}1) Ultra-Lite${NC}  — 5-10GB disco, 512MB RAM, 1 core CPU"
-echo -e "       Sincronizzazione: 24-48 ore, 2 connessioni P2P"
-echo -e "    ${YELLOW}2) Lite${NC}        — 15-30GB disco, 1GB RAM, 1-2 core CPU"
-echo -e "       Sincronizzazione: 10-20 ore, 4 connessioni P2P"
-echo -e "    ${GREEN}3) Completa${NC}    — 50-100GB disco, 2GB+ RAM, 2+ core CPU"
-echo -e "       Sincronizzazione: 2-4 ore, 12+ connessioni P2P"
-echo ""
-echo -n "    Scelta [1-3] (default: 3): "
-read -r VARIANT_CHOICE
-
-case "$VARIANT_CHOICE" in
-    1)
-        BUILD_VARIANT="ultra-lite"
-        echo -e "    ${YELLOW}✅ Variante Ultra-Lite selezionata${NC}"
-        ;;
-    2)
-        BUILD_VARIANT="lite"
-        echo -e "    ${YELLOW}✅ Variante Lite selezionata${NC}"
-        ;;
-    3|"")
-        BUILD_VARIANT="full"
-        echo -e "    ${GREEN}✅ Variante Completa selezionata${NC}"
-        ;;
-    *)
-        echo -e "    ${RED}❌ Scelta non valida. Uso variante Completa.${NC}"
-        BUILD_VARIANT="full"
-        ;;
-esac
-
-case "${BUILD_VARIANT}" in
-    ultra-lite)
-        DAEMON="/root/mevacoin/build/${BUILD_DIR}/ultra-lite/release/bin/mevacoind"
-        ;;
-    lite)
-        DAEMON="/root/mevacoin/build/${BUILD_DIR}/lite/release/bin/mevacoind"
-        ;;
-    *)
-        DAEMON="/root/mevacoin/build/${BUILD_DIR}/release/bin/mevacoind"
-        ;;
-esac
+DAEMON="/root/mevacoin/build/${BUILD_DIR}/release/bin/mevacoind"
 
 # ============================================
 # STEP 3 — DIPENDENZE
@@ -360,21 +325,8 @@ echo "    Directory dati: ${DATA_DIR}"
 # ============================================
 # PARAMETRI SPECIFICI PER VARIANTE
 # ============================================
-VARIANT_OPTS=""
-case "${BUILD_VARIANT}" in
-    ultra-lite)
-        VARIANT_OPTS="--prune-blockchain --max-txpool-weight 50000000 --block-sync-size 5 --batch-max-weight 5 --mining-threads 1 --rpc-max-connections 10"
-        echo -e "    ${YELLOW}Configurazione Ultra-Lite: pruning attivo, risorse minimizzate${NC}"
-        ;;
-    lite)
-        VARIANT_OPTS="--prune-blockchain --max-txpool-weight 100000000 --block-sync-size 10 --batch-max-weight 8 --mining-threads 2 --rpc-max-connections 20"
-        echo -e "    ${YELLOW}Configurazione Lite: pruning attivo, risorse ridotte${NC}"
-        ;;
-    *)
-        VARIANT_OPTS="--max-txpool-weight 648000000 --rpc-max-connections 100"
-        echo -e "    ${GREEN}Configurazione Completa: tutte le funzionalità${NC}"
-        ;;
-esac
+VARIANT_OPTS="--max-txpool-weight 648000000 --rpc-max-connections 100"
+echo -e "    ${GREEN}Configurazione Completa: tutte le funzionalità (variante unica 'full')${NC}"
 
 cat > "${SERVICE_FILE}" <<EOF
 [Unit]
