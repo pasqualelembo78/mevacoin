@@ -188,11 +188,15 @@ void MevaTrustManager::set_proposer_keypairs(
     std::lock_guard<std::mutex> lk(m_lock);
     m_proposer_keypairs = kp;
     m_has_proposer_keys = true;
-    // Wire FrostBroadcaster with the first proposer key (index 0 as default coordinator)
+    // Wire FrostBroadcaster with our own share.  set_node_key matches the
+    // pubkey against CONSENSUS_PROPOSER_PUBKEYS to derive the true share index
+    // (1..N).  We use the first available share (kp[0]) — matches the
+    // coordinator-as-first-proposer convention.
     if (m_frost_broadcaster) {
-      m_frost_broadcaster->set_node_key(kp[0].sec, kp[0].pub, 0);
-      MINFO("[FROST:P2P] FrostBroadcaster key set: index=0 pub="
-            << epee::string_tools::pod_to_hex(kp[0].pub));
+      m_frost_broadcaster->set_node_key(kp[0].sec, kp[0].pub, 1);
+      MINFO("[FROST:P2P] FrostBroadcaster key set: index="
+            << (int)m_frost_broadcaster->node_index()
+            << " pub=" << epee::string_tools::pod_to_hex(kp[0].pub));
     }
     MINFO("[FROST] Proposer keypairs set (" << mevatrust::frost::FROST_N << " keys)");
 }
@@ -323,6 +327,10 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
   m_resolved_pool_balance = pool_balance;
   if (pool_balance == 0) return;
 
+  // Sync the on-chain pool balance into the distributor so distribute_rewards
+  // does not early-return on a stale zero member.
+  m_reward_distributor->set_pool_balance(pool_balance);
+
   // Process welcome bonuses  
   auto welcome_outputs = m_reward_distributor->process_welcome_bonuses(height);
   if (!m_reward_distributor->is_distribution_due(height) && welcome_outputs.empty()) return;
@@ -361,80 +369,113 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
   
   // Build FROST-authorized pool distribution blob (0xAA) for consensus validation
   cryptonote::mevatrust::frost::FrostSignature frost_sig;
+  auto outputs = cryptonote::mevatrust::build_distribution_outputs(
+      m_resolved_rewards, pool_balance);
   if (m_has_proposer_keys) {
-    // Real FROST signing using proposer keypairs
-    // We need at least FROST_T (3) signers. Use all available proposers.
-    std::vector<uint8_t> signer_indices;
-    for (uint8_t i = 0; i < mevatrust::frost::FROST_N; ++i) signer_indices.push_back(i);
+    // Real FROST signing using proposer keypairs (correct CFRG-FROST).
+    // Use the FIRST FROST_T signers 1..3 (indices 1,2,3; Shamir x-coords never 0).
+    std::vector<uint8_t> signer_indices = {1, 2, 3};
+    const size_t USE_SIGNERS = signer_indices.size();
 
-    // Compute Lagrange coefficients for the signer set
-    cryptonote::mevatrust::frost::PublicKeyPackage pkg;
-    {
-        crypto::public_key pk_array[mevatrust::frost::FROST_N];
-        for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
-            pk_array[i] = m_proposer_keypairs[i].pub;
-            pkg.signer_pubkeys[i] = m_proposer_keypairs[i].pub;
-        }
-        pkg.agg_pubkey = cryptonote::mevatrust::frost::sum_public_keys(
-            pk_array, mevatrust::frost::FROST_N);
+    // Sanity: the local keypairs must match the consensus ceremony set.
+    bool keys_match = true;
+    for (size_t i = 0; i < USE_SIGNERS; ++i) {
+      if (memcmp(&m_proposer_keypairs[i].pub,
+                 &cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i], 32) != 0) {
+        keys_match = false; break;
+      }
     }
-    cryptonote::mevatrust::frost::compute_lagrange_coeffs(signer_indices, pkg.lagrange_coeffs);
+    if (!keys_match) {
+      MERROR("[FROST] Local proposer keypairs do NOT match CONSENSUS ceremony keys");
+      memset(&frost_sig, 0, sizeof(frost_sig));
+    } else {
+      // Message hash over spend-key pairs (exactly what 0xAA stores on-chain)
+      std::vector<std::pair<crypto::public_key, uint64_t>> spend_outputs;
+      spend_outputs.reserve(outputs.size());
+      for (const auto& [addr, amt] : outputs)
+        spend_outputs.emplace_back(addr.m_spend_public_key, amt);
+      crypto::hash msg_hash = cryptonote::mevatrust::frost::create_distribution_message_hash(
+          height, static_cast<uint32_t>(height / m_period_length), spend_outputs);
 
-    // Build distribution outputs to get the message hash
-    auto outputs = cryptonote::mevatrust::build_distribution_outputs(
-        m_resolved_rewards, pool_balance);
-    crypto::hash msg_hash = cryptonote::mevatrust::frost::create_distribution_message_hash(
-        height, static_cast<uint32_t>(height / m_period_length), outputs);
+      // Lagrange coefficients for indices {1,2,3}
+      std::vector<crypto::ec_scalar> lambdas;
+      if (!cryptonote::mevatrust::frost::compute_lagrange_coeffs(signer_indices, lambdas)
+          || lambdas.size() < USE_SIGNERS) {
+        MERROR("[FROST] compute_lagrange_coeffs failed");
+        memset(&frost_sig, 0, sizeof(frost_sig));
+      } else {
+        // Round 1: nonces + commitments
+        std::vector<cryptonote::mevatrust::frost::NoncePair> nonces(USE_SIGNERS);
+        std::vector<std::pair<crypto::public_key, crypto::public_key>> comms(USE_SIGNERS);
+        for (size_t i = 0; i < USE_SIGNERS; ++i) {
+          cryptonote::mevatrust::frost::generate_nonces(nonces[i]);
+          cryptonote::mevatrust::frost::nonce_commitments(
+              nonces[i], comms[i].first, comms[i].second);
+        }
 
-    // Round 1: each signer generates nonces
-    std::array<cryptonote::mevatrust::frost::NoncePair, mevatrust::frost::FROST_N> nonces;
-    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i)
-        cryptonote::mevatrust::frost::generate_nonces(nonces[i]);
-
-    // Compute aggregate R = sum(R_i)
-    crypto::ec_scalar R;
-    {
-        bool first = true;
-        ge_p3 R_sum;
-        for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
-            ge_p3 R_i;
-            unsigned char r_bytes[32];
-            memcpy(r_bytes, &nonces[i].hiding, 32);
-            ge_scalarmult_base(&R_i, r_bytes);
-            if (first) {
-                R_sum = R_i;
-                first = false;
-            } else {
-                ge_cached cached;
-                ge_p3_to_cached(&cached, &R_i);
-                ge_p1p1 p1;
-                ge_add(&p1, &R_sum, &cached);
-                ge_p1p1_to_p3(&R_sum, &p1);
+        // Binding factors
+        std::vector<crypto::ec_scalar> rho;
+        if (!cryptonote::mevatrust::frost::compute_binding_factors(
+              signer_indices, msg_hash, comms, rho) || rho.size() < USE_SIGNERS) {
+          MERROR("[FROST] compute_binding_factors failed");
+          memset(&frost_sig, 0, sizeof(frost_sig));
+        } else {
+          // Aggregate nonce R = sum(D + rho*E)
+          crypto::public_key R;
+          if (!cryptonote::mevatrust::frost::compute_aggregate_r(comms, rho, R)) {
+            MERROR("[FROST] compute_aggregate_r failed");
+            memset(&frost_sig, 0, sizeof(frost_sig));
+          } else {
+            // Round 2: partial signatures + per-partial verification
+            std::vector<cryptonote::mevatrust::frost::PartialSignature> partials;
+            for (size_t i = 0; i < USE_SIGNERS; ++i) {
+              cryptonote::mevatrust::frost::PartialSignature ps;
+              ps.signer_index = signer_indices[i];
+              if (!cryptonote::mevatrust::frost::sign_partial(
+                    msg_hash, nonces[i], m_proposer_keypairs[i].sec,
+                    lambdas[i], rho[i], R,
+                    cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY, ps)) {
+                MERROR("[FROST] sign_partial failed idx=" << (int)signer_indices[i]);
+                memset(&frost_sig, 0, sizeof(frost_sig)); break;
+              }
+              std::string perr;
+              if (!cryptonote::mevatrust::frost::verify_partial(
+                    msg_hash, ps, lambdas[i], rho[i], R,
+                    cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY,
+                    cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[signer_indices[i]-1],
+                    perr)) {
+                MERROR("[FROST] verify_partial failed idx=" << (int)signer_indices[i]
+                      << ": " << perr);
+                memset(&frost_sig, 0, sizeof(frost_sig)); break;
+              }
+              partials.push_back(std::move(ps));
             }
+
+            // Aggregate
+            if (partials.size() == USE_SIGNERS &&
+                cryptonote::mevatrust::frost::aggregate_signatures(
+                  msg_hash, signer_indices, partials, rho,
+                  cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY, frost_sig)) {
+              // Final sanity: verify aggregate against ceremony group key
+              cryptonote::mevatrust::frost::PublicKeyPackage vpkg;
+              vpkg.agg_pubkey = cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY;
+              vpkg.signer_pubkeys = cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS;
+              std::string verr;
+              if (!cryptonote::mevatrust::frost::verify_signature(frost_sig, vpkg, verr)) {
+                MERROR("[FROST] Final signature FAILED verification: " << verr);
+                memset(&frost_sig, 0, sizeof(frost_sig));
+              } else {
+                MINFO("[FROST] Real FROST signature valid h=" << height
+                      << " signers=" << partials.size());
+              }
+            } else {
+              MERROR("[FROST] aggregate_signatures failed");
+              memset(&frost_sig, 0, sizeof(frost_sig));
+            }
+          }
         }
-        crypto::public_key R_pk;
-        ge_p3_tobytes(reinterpret_cast<unsigned char*>(&R_pk), &R_sum);
-        memcpy(&R, &R_pk, 32);
+      }
     }
-
-    // Round 2: each signer creates partial signature
-    std::vector<cryptonote::mevatrust::frost::PartialSignature> partials;
-    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i) {
-        cryptonote::mevatrust::frost::PartialSignature ps;
-        ps.signer_index = i;
-        ps.hiding_nonce = nonces[i].hiding;
-        ps.binding_nonce = nonces[i].binding;
-        cryptonote::mevatrust::frost::sign_partial(
-            msg_hash, nonces[i], m_proposer_keypairs[i].sec,
-            pkg.lagrange_coeffs[i], R, pkg.agg_pubkey, ps);
-        partials.push_back(std::move(ps));
-    }
-
-    // Aggregate into final FROST signature
-    cryptonote::mevatrust::frost::aggregate_signatures(
-        msg_hash, partials, pkg, frost_sig);
-    MINFO("[FROST] Real FROST signature produced for h=" << height
-          << " signers=" << partials.size());
   } else {
     // No proposer keys available — produce a placeholder (will fail validation)
     memset(&frost_sig, 0, sizeof(frost_sig));
@@ -459,12 +500,16 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
   // This allows a real multi-proposer signature to replace the local one
   // for subsequent blocks in this period.
   if (m_frost_broadcaster && m_has_proposer_keys) {
-    auto outputs = cryptonote::mevatrust::build_distribution_outputs(
+    auto outpairs = cryptonote::mevatrust::build_distribution_outputs(
         m_resolved_rewards, pool_balance);
+    std::vector<std::pair<crypto::public_key, uint64_t>> spend_outputs;
+    spend_outputs.reserve(outpairs.size());
+    for (const auto& [addr, amt] : outpairs)
+      spend_outputs.emplace_back(addr.m_spend_public_key, amt);
     (void)m_frost_broadcaster->propose_distribution(
         height,
         static_cast<uint32_t>(height / m_period_length),
-        outputs);
+        spend_outputs);
     MINFO("[FROST:P2P] Asynchronous round started h=" << height);
   }
 
@@ -1472,22 +1517,13 @@ uint64_t MevaTrustManager::compute_pool_balance_from_chain(uint64_t up_to_height
         if (block_reward > 0) {
             total_contributions += block_reward * 3 / 100;
         }
-        
-        // 2. Check for distribution transactions in this block (identifiable by tag 0xAA)
-        for (const auto& tx_hash : bl.tx_hashes) {
-            transaction tx;
-            if (!m_get_tx_func(tx_hash, tx)) continue;
 
-            // Check if this TX has a pool distribution extra tag (0xAA)
-            tx_extra_mevatrust_pool_distribution dist;
-            if (mevatrust::parse_mevatrust_pool_distribution_from_tx(tx, dist)) {
-                // Sum all outputs — these are rewards distributed to nodes
-                uint64_t tx_total = 0;
-                for (const auto& out : tx.vout) {
-                    tx_total += out.amount;
-                }
-                total_distributions += tx_total;
-            }
+        // 2. Distribution at a period boundary is embedded in the MINER_TX extra
+        //    (tag 0xAA) — NOT in bl.tx_hashes.  The 0xAA record carries the
+        //    total_amount distributed; subtract it from the pool balance.
+        tx_extra_mevatrust_pool_distribution dist;
+        if (mevatrust::parse_mevatrust_pool_distribution_from_tx(bl.miner_tx, dist)) {
+            total_distributions += dist.total_distributed;
         }
     }
     

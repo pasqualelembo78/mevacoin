@@ -840,34 +840,14 @@ namespace cryptonote
                 }
 
                 if (!prop_loaded) {
-                  // First run: genera proposer keys deterministiche
-                  // SECURITY: Replace with ceremony-generated keys before mainnet.
-                  // The deterministic keys match CONSENSUS_PROPOSER_PUBKEYS.
-                  auto pubkeys = cryptonote::mevatrust::frost::
-                      derive_proposer_pubkeys(m_nettype);
-                  for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
-                    std::string domain = "mevatrust_proposer_"
-                                       + std::to_string(i);
-                    domain.push_back(static_cast<char>(m_nettype));
-                    crypto::hash h = crypto::cn_fast_hash(
-                        domain.data(), domain.size());
-                    crypto::hash_to_scalar(h.data, 32, prop_kp[i].sec);
-                    prop_kp[i].pub = pubkeys[i];
-                  }
-                  // Persiste su disco per startup successivi
-                  FILE* wf = fopen(prop_file.c_str(), "wb");
-                  if (wf) {
-                    for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i)
-                      fwrite(prop_kp[i].sec.data, 1,
-                             sizeof(prop_kp[i].sec.data), wf);
-                    fclose(wf);
-                    chmod(prop_file.c_str(), 0600);
-                    MINFO("[FROST] Proposer keys generate e salvate: "
-                          << prop_file);
-                  } else {
-                    MERROR("[FROST] Impossibile salvare proposer keys: "
-                           << prop_file);
-                  }
+                  // No proposer keys on disk.  The ceremony private shares are
+                  // NOT derived in-binary (they would be a consensus-level
+                  // backdoor).  They must be provisioned out-of-band into
+                  // <data_dir>/mevatrust/proposer_keys (5 * 32-byte secrets,
+                  // concatenated) or via --mevatrust-proposer-key.
+                  MWARNING("[FROST] Proposer keys non trovate: " << prop_file
+                           << " - pool distribution NON firmera' finche' "
+                              "le share non sono provisionate");
                 }
 
                 // CLI override: se --mevatrust-proposer-key e' specificato,
@@ -927,23 +907,46 @@ namespace cryptonote
               // ── Fase 7: wire FrostBroadcaster broadcast function ──────────
               pm_r3->set_frost_broadcast_func(
                 [this](const std::vector<uint8_t>& data) -> bool {
-                  // Blob format: type(1) + height(8) + period(4) + idx(1) + payload(32) = 46
-                  if (data.size() < 46) return false;
+                  // Blob format:
+                  //   type(1) height(8) period(4) idx(1) [payload]
+                  //   type 0 (nonce):     D(32) E(32)
+                  //   type 2 (sign req):  agg_R(32) outputs_blob indices_blob
+                  if (data.size() < 14) return false;
                   uint8_t msg_type = data[0];
                   uint64_t height;
                   uint32_t period;
                   uint8_t proposer_index;
-                  crypto::public_key R_key;
+                  crypto::public_key D_key, E_key, R_key;
                   memcpy(&height, data.data() + 1, 8);
                   memcpy(&period, data.data() + 9, 4);
                   memcpy(&proposer_index, data.data() + 13, 1);
-                  memcpy(&R_key, data.data() + 14, 32);
                   if (msg_type == 0) {
+                    if (data.size() < 78) return false;
+                    memcpy(&D_key, data.data() + 14, 32);
+                    memcpy(&E_key, data.data() + 46, 32);
                     return m_pprotocol->broadcast_frost_nonce(
-                        height, period, proposer_index, R_key);
+                        height, period, proposer_index, D_key, E_key);
                   }
-                  return m_pprotocol->broadcast_frost_sign_request(
-                      height, period, proposer_index, R_key);
+                  if (msg_type == 2) {
+                    if (data.size() < 46) return false;
+                    memcpy(&R_key, data.data() + 14, 32);
+                    std::string outputs_data, indices_blob;
+                    outputs_data.assign(data.begin() + 46, data.end());
+                    // split: outputs blob = u8 count + count*(32+8); indices = rest
+                    if (!outputs_data.empty()) {
+                      size_t n = (uint8_t)outputs_data[0];
+                      size_t olen = 1 + n * 40;
+                      if (olen <= outputs_data.size()) {
+                        indices_blob = outputs_data.substr(olen);
+                        outputs_data.resize(olen);
+                        return m_pprotocol->broadcast_frost_sign_request(
+                            height, period, proposer_index, R_key,
+                            outputs_data, indices_blob);
+                      }
+                    }
+                    return false;
+                  }
+                  return false;
                 }
               );
               MINFO("FrostBroadcaster: broadcast function wired [Fase 7]");

@@ -36,7 +36,6 @@ No sigs needed. `gov_spend.py network <amount> <addr>` → tx_extra blob.
 
 ## Next Steps
 - Test all premine spend flows (treasury, add-signer, remove-signer)
-- Fix `gov_crypto` to use shared derivation from `foundation_vesting.h` (stale `derive-wallet`)
 - Write functional/integration tests
 - Build and test network fund spend via wallet-rpc `transfer` (e.g., 10 MVC to `M8viv...`)
 
@@ -69,3 +68,10 @@ No sigs needed. `gov_spend.py network <amount> <addr>` → tx_extra blob.
 - **Why**: For unmixable outputs (ring smaller than requested), `get_outs() at `wallet2.cpp:9727` **skipped sorting** `outs[...]` by global index (the sort was inside `if (outs.back().size() >= fake_outputs_count+1)`). But `absolute_output_offsets_to_relative()` at `cryptonote_format_utils.cpp:1510` **always** sorts absolute indices ascending before computing relative offsets for the tx. The verifier rebuilt the ring in sorted order from the sorted key_offsets, but the signer used the unsorted mixRing order → mu_P/mu_C differed → CLSAG round hash chain diverged.
 - **Fix** (`wallet2.cpp:9709-9728`): Moved `std::sort(...)` outside the ring-size guard so the ring is **always sorted by global index** regardless of ring size.
 - **Verification**: Network fund transfer (non-RCT, 400k MVC, 0xC0 extra, ring_size=2) succeeds. Signer: `mu_P=eeee4a49...`, Verifier: `mu_P=eeee4a49...` (match). Daemon log: `final_c == c1, diff=0`. Tx `2a30a040b012d93895407cb12ecd45ef866a374a1e4bc63993b389a142f2b8f9` accepted to mempool.
+
+## Verification bugs fixed (Sep 23 2026)
+- **BUG 1 — restore bug in `tx_verification_utils.cpp`**: `exp (line 103) saved_extra = tx.extra;` happened AFTER `zero_governance_sigs_in_extra(tx.extra)` mutated it, so the "restore original extra" restored the ZEROED extra → `check_premine_spend` (blockchain.cpp:3720) always saw zeroed sigs → 0xB0/0xB1/0xB2 txs always rejected via the RCT path (only passed on verID-cache hit at blockchain.cpp:3684 — nondeterministic). Fixed in both `expand_tx_and_ver_rct_non_sem` and `expand_tx_and_ver_full_rct_non_sem`: save original extra BEFORE zeroing, clear saved copy if no governance fields found.
+- **BUG 2 — v1/legacy path never zeroed governance sigs**: `tx_ver_legacy_ring_sigs` (tx_verification_utils.cpp:241) hashed the REAL extra while the non-RCT wallet signs over the zero-sig prefix hash → premine spends (v1 txs, unmixable outputs) always failed Schnorr ring check. Fixed: zero governance sigs for hash computation and restore the original extra, mirroring the RCT paths.
+- **BUG 3 — `tools/auto.py` 4-arg `treasury-build`**: call passed `actual_signer_pubs[0]` as a 4th arg but `cmd_treasury_build` (gov_spend.py:314) takes only `amount address sigs.json` → TypeError at step 5/7. Removed the bogus arg.
+- Verified: `ver_input_proofs_rings` takes `transaction&` (non-const) → the restore propagates to `check_premine_spend`, and verID at blockchain.cpp:3711 stays stable over the real extra.
+- **Correction**: `gov_crypto.cpp derive-wallet` is NOT stale — its formula matches `foundation_vesting.h` (cn_fast_hash(domain+nettype) → hash_to_scalar → secret_key_to_public_key, spend==view). The old AGENTS note "fix stale derive-wallet" was wrong; removed from Next Steps. Remaining real hazards: `auto.py` hardcodes nettype=0 in `derive_wallet` (broken for --testnet; genesis also hardcodes MAINNET at cryptonote_tx_utils.cpp:692), premine-output mismatch only MERROR-logs (blockchain.cpp:5892-5897, should be fatal), and test signer private keys live in foundation_vesting.h:67-69 (mainnet governance backdoor).

@@ -249,7 +249,7 @@ private:
   // In-memory caches
   std::map<std::string, std::vector<UptimeEvent>> uptime_history_;
   std::map<std::string, MevaTrustScoreSnapshot> score_cache_;
-  mutable std::mutex cache_lock_;
+  mutable std::recursive_mutex cache_lock_;
 
   // Configuration
   ScoringWeights scoring_weights_;

@@ -60,6 +60,7 @@ public:
   std::vector<RewardRecord> get_reward_history(const crypto::hash& node_id, uint64_t limit = 100);
   std::vector<DistributionEvent> get_distribution_history(uint64_t limit = 50) const;
   uint64_t get_pool_balance();
+  void set_pool_balance(uint64_t b) { std::lock_guard<std::mutex> lk(m_pool_lock); m_pool_balance = b; }
   uint64_t get_total_distributed() const;
   uint64_t get_last_distribution_height() const;
   bool     is_distribution_due(uint64_t current_height) const;

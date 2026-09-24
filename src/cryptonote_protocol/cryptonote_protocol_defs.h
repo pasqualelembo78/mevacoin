@@ -459,15 +459,17 @@ namespace cryptonote
       uint64_t           height;
       uint32_t           period;
       uint8_t            msg_type;        // 0=broadcast(coordinator), 1=reply(signer)
-      uint8_t            proposer_index;  // 0-4
-      crypto::public_key R_commit;
+      uint8_t            proposer_index;  // 1..FROST_N
+      crypto::public_key D_commit;        // hiding commitment d_i*G
+      crypto::public_key E_commit;        // binding commitment e_i*G
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
         KV_SERIALIZE(period)
         KV_SERIALIZE(msg_type)
         KV_SERIALIZE(proposer_index)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(R_commit)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(D_commit)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(E_commit)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -483,18 +485,22 @@ namespace cryptonote
     {
       uint64_t           height;
       uint32_t           period;
-      uint8_t            msg_type;        // 0=coordinator broadcast(agg_R), 1=signer reply(s_i)
-      uint8_t            proposer_index;  // 0-4
-      crypto::public_key R_hiding;        // signer's R_i (for verification)
-      std::string        sig_data;        // agg_R (msg_type=0) or s_i (msg_type=1), raw 32 bytes
+      uint8_t            msg_type;        // 0=coordinator broadcast(agg_R+outputs), 1=signer reply(s_i+D+E)
+      uint8_t            proposer_index;  // 1..FROST_N
+      crypto::public_key agg_R;           // aggregate nonce commitment (round 2)
+      std::string        sig_data;        // msg_type=1: s_i || D || E (96 bytes raw)
+      std::string        outputs_data;    // msg_type=0: serialized outputs (u8 count || spend_key(32)||amount(8)*)
+      std::string        signer_indices;  // msg_type=0: participating indices (u8 count || u8*)  — same order as commitments used for binding factors
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
         KV_SERIALIZE(period)
         KV_SERIALIZE(msg_type)
         KV_SERIALIZE(proposer_index)
-        KV_SERIALIZE_VAL_POD_AS_BLOB(R_hiding)
+        KV_SERIALIZE_VAL_POD_AS_BLOB(agg_R)
         KV_SERIALIZE(sig_data)
+        KV_SERIALIZE(outputs_data)
+        KV_SERIALIZE(signer_indices)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;

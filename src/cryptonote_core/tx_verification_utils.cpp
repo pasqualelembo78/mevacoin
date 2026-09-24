@@ -98,10 +98,12 @@ static bool expand_tx_and_ver_rct_non_sem(transaction& tx, const rct::ctkeyM& mi
     VER_ASSERT(!tx.pruned, "Pruned transaction will not pass verRctNonSemanticsSimple");
 
     // Zero governance sigs in a copy of tx.extra so that tx_prefix_hash
-    // matches the one used during CLSAG signing
-    std::vector<uint8_t> saved_extra;
-    if (zero_governance_sigs_in_extra(tx.extra))
-        saved_extra = tx.extra;
+    // matches the one used during CLSAG signing. Save the ORIGINAL extra
+    // first so it can be restored below once the hash is consumed.
+    std::vector<uint8_t> saved_extra = tx.extra;
+    const bool govern_zeroed = zero_governance_sigs_in_extra(tx.extra);
+    if (!govern_zeroed)
+        saved_extra.clear();
     // (saved_extra is empty if no governance fields were found)
 
     // Calculate prefix hash (with zeroed governance sigs if applicable)
@@ -159,10 +161,12 @@ static bool expand_tx_and_ver_full_rct_non_sem(transaction& tx, const rct::ctkey
         "Non-full (simple) RingCT transaction will not pass rct::verRct");
 
     // Zero governance sigs in a copy of tx.extra so that tx_prefix_hash
-    // matches the one used during CLSAG signing
-    std::vector<uint8_t> saved_extra;
-    if (zero_governance_sigs_in_extra(tx.extra))
-        saved_extra = tx.extra;
+    // matches the one used during CLSAG signing. Save the ORIGINAL extra
+    // first so it can be restored below once the hash is consumed.
+    std::vector<uint8_t> saved_extra = tx.extra;
+    const bool govern_zeroed = zero_governance_sigs_in_extra(tx.extra);
+    if (!govern_zeroed)
+        saved_extra.clear();
 
     // Calculate prefix hash (with zeroed governance sigs if applicable)
     const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
@@ -244,8 +248,20 @@ static bool tx_ver_legacy_ring_sigs(transaction& tx, const rct::ctkeyM& mix_ring
     // This shape checks should be implied as part of serialization, but we re-check them here anyways
     VER_ASSERT(tx.signatures.size() == tx.vin.size(), "Wrong number of v1 ring signatures");
 
+    // v1 (legacy) ring signatures are signed over the same zeroed-governance
+    // prefix hash used for RCT txs, so zero the sigs here too (mirroring the
+    // expand_* paths above), then restore the original extra once the hash is computed.
+    std::vector<uint8_t> saved_extra = tx.extra;
+    const bool govern_zeroed = zero_governance_sigs_in_extra(tx.extra);
+    if (!govern_zeroed)
+        saved_extra.clear();
+
     // Calculate prefix hash
     const crypto::hash tx_prefix_hash = get_transaction_prefix_hash(tx);
+
+    // Restore original tx.extra after the prefix hash consumed the zeroed copy
+    if (!saved_extra.empty())
+        tx.extra = saved_extra;
 
     // Define job to run one call of crypto::check_ring_signature()
     std::atomic_flag fail_occurred{};

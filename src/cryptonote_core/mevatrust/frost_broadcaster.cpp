@@ -10,19 +10,65 @@
 #undef MEVACOIN_DEFAULT_LOG_CATEGORY
 #define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.frost.p2p"
 
-extern "C" {
-#include "crypto/crypto-ops.h"
-}
-
 namespace cryptonote {
 
-// ── Helpers ─────────────────────────────────────────────────────────────
-static crypto::hash calc_msg_hash(uint64_t height, uint32_t period,
-    const std::vector<std::pair<account_public_address, uint64_t>>& outputs)
+// ── Serialization helpers ────────────────────────────────────────────────
+// outputs blob:  u8 count || (spend_key(32) || amount LE64)*
+static bool serialize_outputs(
+    const std::vector<std::pair<crypto::public_key, uint64_t>>& outputs,
+    std::string& out)
 {
-  return mevatrust::frost::create_distribution_message_hash(height, period, outputs);
+  out.clear();
+  if (outputs.size() > 255) return false;
+  out.push_back(static_cast<char>(outputs.size()));
+  for (const auto& [pk, amt] : outputs) {
+    out.append(reinterpret_cast<const char*>(&pk), 32);
+    out.append(reinterpret_cast<const char*>(&amt), 8);
+  }
+  return true;
 }
 
+static bool deserialize_outputs(
+    const std::string& in,
+    std::vector<std::pair<crypto::public_key, uint64_t>>& outputs)
+{
+  outputs.clear();
+  if (in.size() < 1) return false;
+  const size_t n = static_cast<uint8_t>(in[0]);
+  const size_t need = 1 + n * 40;
+  if (in.size() != need) return false;
+  for (size_t i = 0; i < n; ++i) {
+    crypto::public_key pk;
+    uint64_t amt;
+    memcpy(&pk, in.data() + 1 + i * 40, 32);
+    memcpy(&amt, in.data() + 1 + i * 40 + 32, 8);
+    outputs.emplace_back(pk, amt);
+  }
+  return true;
+}
+
+// indices blob:  u8 count || u8 index*  (each in 1..N, ascending)
+static bool serialize_indices(const std::vector<uint8_t>& indices, std::string& out)
+{
+  out.clear();
+  if (indices.size() > 255) return false;
+  out.push_back(static_cast<char>(indices.size()));
+  for (uint8_t i : indices) out.push_back(static_cast<char>(i));
+  return true;
+}
+
+static bool deserialize_indices(const std::string& in, std::vector<uint8_t>& indices)
+{
+  indices.clear();
+  if (in.size() < 1) return false;
+  const size_t n = static_cast<uint8_t>(in[0]);
+  if (in.size() != 1 + n) return false;
+  for (size_t i = 0; i < n; ++i)
+    indices.push_back(static_cast<uint8_t>(in[1 + i]));
+  return true;
+}
+
+// ── Ballot helpers ─────────────────────────────────────────────────────
 std::string FrostBroadcaster::make_ballot_key(uint64_t height, uint32_t period) const
 {
   std::string raw;
@@ -45,103 +91,93 @@ FrostBroadcaster::Ballot* FrostBroadcaster::get_or_create_ballot(
   return &e;
 }
 
-// ── propose_distribution ────────────────────────────────────────────────
-// Called by the coordinator proposer at period boundary.
+// ── propose_distribution (coordinator, round 1) ──────────────────────────
 bool FrostBroadcaster::propose_distribution(uint64_t height, uint32_t period,
-    const std::vector<std::pair<account_public_address, uint64_t>>& outputs)
+    const std::vector<std::pair<crypto::public_key, uint64_t>>& outputs)
 {
   if (!m_has_key) { MWARNING("[FROST:P2P] No proposer key set"); return false; }
-  
+
   mevatrust::frost::NoncePair nonces;
   if (!mevatrust::frost::generate_nonces(nonces)) { MERROR("[FROST:P2P] generate_nonces failed"); return false; }
-  
-  // Compute R_commit = hiding_nonce * G
-  ge_p3 R_point;
-  unsigned char r_bytes[32];
-  memcpy(r_bytes, &nonces.hiding, 32);
-  ge_scalarmult_base(&R_point, r_bytes);
-  crypto::public_key R_commit;
-  ge_p3_tobytes(reinterpret_cast<unsigned char*>(&R_commit), &R_point);
+  crypto::public_key D_commit, E_commit;
+  mevatrust::frost::nonce_commitments(nonces, D_commit, E_commit);
 
-  std::lock_guard<std::mutex> lk(ballot_mutex_);
-  Ballot* b = get_or_create_ballot(height, period);
-  b->outputs = outputs;
-  b->coordinator_index = m_node_index;
-  b->my_R = nonces.hiding;
-  b->my_hiding_scalar = nonces.hiding;
-  b->my_binding_scalar = nonces.binding;
-  
-  // Store own nonce as received
-  NonceEntry ne;
-  ne.R_hiding = R_commit;
-  b->nonces[m_node_index] = ne;
+  std::string outputs_blob;
+  if (!serialize_outputs(outputs, outputs_blob)) { MERROR("[FROST:P2P] serialize_outputs failed"); return false; }
 
-  MINFO("[FROST:P2P] Coordinator proposing h=" << height
-        << " period=" << period << " index=" << (int)m_node_index);
+  {
+    std::lock_guard<std::mutex> lk(ballot_mutex_);
+    Ballot* b = get_or_create_ballot(height, period);
+    if (b->round1_done) return true;
+    b->outputs = outputs;
+    b->outputs_blob = outputs_blob;
+    b->coordinator_index = m_node_index;
+    b->my_nonces = nonces;
+    b->my_D = D_commit;
+    b->my_E = E_commit;
+    b->nonces[m_node_index] = NonceEntry{D_commit, E_commit};
+    MINFO("[FROST:P2P] Coordinator proposing h=" << height
+          << " period=" << period << " index=" << (int)m_node_index
+          << " outputs=" << outputs.size());
+  }
 
-  // Broadcast nonce commit via P2P
+  // Broadcast nonce commit (msg_type=0, blob: type(1) height(8) period(4) idx(1) D(32) E(32))
   if (m_broadcast_fn) {
     std::vector<uint8_t> blob;
-    blob.reserve(46);
-    blob.push_back(0); // msg_type = nonce_commit
+    blob.reserve(78);
+    blob.push_back(0);
     blob.insert(blob.end(), reinterpret_cast<const char*>(&height),
                 reinterpret_cast<const char*>(&height) + 8);
     blob.insert(blob.end(), reinterpret_cast<const char*>(&period),
                 reinterpret_cast<const char*>(&period) + 4);
     blob.push_back(m_node_index);
-    blob.insert(blob.end(), reinterpret_cast<const char*>(&R_commit),
-                reinterpret_cast<const char*>(&R_commit) + 32);
+    blob.insert(blob.end(), reinterpret_cast<const char*>(&D_commit),
+                reinterpret_cast<const char*>(&D_commit) + 32);
+    blob.insert(blob.end(), reinterpret_cast<const char*>(&E_commit),
+                reinterpret_cast<const char*>(&E_commit) + 32);
     m_broadcast_fn(blob);
   }
   return true;
 }
 
-// ── on_receive_nonce ────────────────────────────────────────────────────
-// Called by protocol handler when a NONCE message arrives.
-// If we're a signer, generates our own nonce and sets reply_R_out.
+// ── on_receive_nonce (signer, round 1) ───────────────────────────────────
 bool FrostBroadcaster::on_receive_nonce(uint64_t height, uint32_t period,
-    uint8_t proposer_index, const crypto::public_key& R_commit,
-    crypto::public_key& reply_R_out)
+    uint8_t proposer_index, const crypto::public_key& D_commit,
+    const crypto::public_key& E_commit,
+    crypto::public_key& reply_D, crypto::public_key& reply_E)
 {
   if (!m_has_key) return false;
+  if (proposer_index < 1 || proposer_index > mevatrust::frost::FROST_N) return false;
 
   std::lock_guard<std::mutex> lk(ballot_mutex_);
   Ballot* b = get_or_create_ballot(height, period);
-  
-  // Store the received nonce
-  NonceEntry ne;
-  ne.R_hiding = R_commit;
-  b->nonces[proposer_index] = ne;
 
-  // If we haven't contributed yet, generate our nonce
+  // Store the received commitment
+  b->nonces[proposer_index] = NonceEntry{D_commit, E_commit};
+
+  // If we haven't contributed yet, generate our own nonce and reply
   if (b->nonces.find(m_node_index) == b->nonces.end()) {
     mevatrust::frost::NoncePair my_nonces;
     if (!mevatrust::frost::generate_nonces(my_nonces)) { MERROR("[FROST:P2P] generate_nonces failed"); return false; }
-    
-    ge_p3 R_point;
-    unsigned char r_bytes[32];
-    memcpy(r_bytes, &my_nonces.hiding, 32);
-    ge_scalarmult_base(&R_point, r_bytes);
-    ge_p3_tobytes(reinterpret_cast<unsigned char*>(&reply_R_out), &R_point);
-    
-    NonceEntry my_ne;
-    my_ne.R_hiding = reply_R_out;
-    b->nonces[m_node_index] = my_ne;
-    b->my_hiding_scalar = my_nonces.hiding;
-    b->my_binding_scalar = my_nonces.binding;
+    crypto::public_key my_D, my_E;
+    mevatrust::frost::nonce_commitments(my_nonces, my_D, my_E);
+    b->my_nonces = my_nonces;
+    b->my_D = my_D;
+    b->my_E = my_E;
+    b->nonces[m_node_index] = NonceEntry{my_D, my_E};
+    b->coordinator_index = proposer_index;
+    reply_D = my_D;
+    reply_E = my_E;
 
     MINFO("[FROST:P2P] Signer replying to h=" << height
-          << " proposer=" << (int)proposer_index
+          << " coordinator=" << (int)proposer_index
           << " our_index=" << (int)m_node_index);
-    return true;  // caller will unicast reply_R_out back
+    return true;  // caller will unicast reply back
   }
-
   return false;
 }
 
-// ── request_signatures ──────────────────────────────────────────────────
-// Called when coordinator has enough nonces (>= FROST_THRESHOLD).
-// Computes aggregate R = sum(R_i) and broadcasts sign request.
+// ── request_signatures (coordinator, round 2 broadcast) ──────────────────
 bool FrostBroadcaster::request_signatures(uint64_t height, uint32_t period)
 {
   std::lock_guard<std::mutex> lk(ballot_mutex_);
@@ -152,139 +188,237 @@ bool FrostBroadcaster::request_signatures(uint64_t height, uint32_t period)
     return false;
   }
 
-  // Compute aggregate R = sum(R_i) for all received nonces
-  bool first = true;
-  ge_p3 R_sum;
-  for (const auto& [idx, ne] : b->nonces) {
-    ge_p3 R_i;
-    if (ge_frombytes_vartime(&R_i, reinterpret_cast<const unsigned char*>(&ne.R_hiding)) != 0)
-      continue;
-    if (first) {
-      R_sum = R_i;
-      first = false;
-    } else {
-      ge_cached cached;
-      ge_p3_to_cached(&cached, &R_i);
-      ge_p1p1 p1;
-      ge_add(&p1, &R_sum, &cached);
-      ge_p1p1_to_p3(&R_sum, &p1);
-    }
-  }
+  // Participant set: of the indices that committed, keep those in 1..N (already validated)
+  std::vector<uint8_t> participants;
+  for (const auto& [idx, ne] : b->nonces) participants.push_back(idx);
+  std::sort(participants.begin(), participants.end());
 
-  crypto::public_key R_pubkey;
-  ge_p3_tobytes(reinterpret_cast<unsigned char*>(&R_pubkey), &R_sum);
-  memcpy(&b->agg_R, &R_pubkey, 32);
+  // Message hash from our stored outputs
+  crypto::hash msg_hash = mevatrust::frost::create_distribution_message_hash(
+      height, period, b->outputs);
+  if (msg_hash == crypto::null_hash) { MERROR("[FROST:P2P] null msg hash"); return false; }
+
+  // Binding factors (sorted by index internally)
+  std::vector<std::pair<crypto::public_key, crypto::public_key>> comms;
+  for (uint8_t idx : participants) {
+    auto it = b->nonces.find(idx);
+    if (it == b->nonces.end()) return false;
+    comms.emplace_back(it->second.D, it->second.E);
+  }
+  std::vector<crypto::ec_scalar> rho;
+  if (!mevatrust::frost::compute_binding_factors(participants, msg_hash, comms, rho))
+    return false;
+
+  // Aggregate R = sum(D_i + rho_i*E_i)
+  crypto::public_key agg_R;
+  if (!mevatrust::frost::compute_aggregate_r(comms, rho, agg_R)) return false;
+
+  b->agg_R = agg_R;
   b->has_agg_R = true;
   b->round1_done = true;
+  b->participants = participants;
+  b->rho = rho;
 
   MINFO("[FROST:P2P] Aggregate R computed h=" << height
-        << " nonces=" << b->nonces.size());
+        << " participants=" << participants.size());
 
-  // Broadcast sign request via P2P
+  // Broadcast sign request (msg_type=2):
+  //   type(1) height(8) period(4) idx(1) agg_R(32) outputs_blob indices_blob
   if (m_broadcast_fn) {
+    std::string indices_blob;
+    if (!serialize_indices(participants, indices_blob)) return false;
     std::vector<uint8_t> blob;
-    blob.reserve(46);
-    blob.push_back(1); // msg_type = sign_request
+    blob.reserve(46 + b->outputs_blob.size() + indices_blob.size());
+    blob.push_back(2);
     blob.insert(blob.end(), reinterpret_cast<const char*>(&height),
                 reinterpret_cast<const char*>(&height) + 8);
     blob.insert(blob.end(), reinterpret_cast<const char*>(&period),
                 reinterpret_cast<const char*>(&period) + 4);
     blob.push_back(m_node_index);
-    blob.insert(blob.end(), reinterpret_cast<const char*>(R_pubkey.data),
-                reinterpret_cast<const char*>(R_pubkey.data) + 32);
+    blob.insert(blob.end(), reinterpret_cast<const char*>(&agg_R),
+                reinterpret_cast<const char*>(&agg_R) + 32);
+    blob.insert(blob.end(), b->outputs_blob.begin(), b->outputs_blob.end());
+    blob.insert(blob.end(), indices_blob.begin(), indices_blob.end());
     m_broadcast_fn(blob);
   }
   return true;
 }
 
-// ── on_receive_partial ──────────────────────────────────────────────────
-// Called when a partial signature message arrives.
-// Aggregate verification happens in try_finalize; individual partial verification
-// would require an exported per-signer verify function from frost_threshold.
-bool FrostBroadcaster::on_receive_partial(uint64_t height, uint32_t period,
-    uint8_t proposer_index, const crypto::public_key& R_hiding,
-    const crypto::ec_scalar& partial_sig)
+// ── on_receive_sign_request (signer, round 2) ────────────────────────────
+bool FrostBroadcaster::on_receive_sign_request(uint64_t height, uint32_t period,
+    const crypto::public_key& agg_R,
+    const std::string& outputs_blob,
+    const std::string& signer_indices_blob,
+    mevatrust::frost::PartialSignature& my_partial_out)
 {
+  if (!m_has_key) return false;
+
+  std::vector<std::pair<crypto::public_key, uint64_t>> outputs;
+  if (!deserialize_outputs(outputs_blob, outputs)) return false;
+  std::vector<uint8_t> participants;
+  if (!deserialize_indices(signer_indices_blob, participants)) return false;
+  if (participants.size() < FROST_THRESHOLD) return false;
+
   std::lock_guard<std::mutex> lk(ballot_mutex_);
   Ballot* b = get_or_create_ballot(height, period);
+  if (b->partials.find(m_node_index) != b->partials.end()) return false;  // already signed
 
-  if (b->partials.find(proposer_index) != b->partials.end())
-    return true;  // already received
+  // Store what the coordinator decided (authoritative participant set + R)
+  b->outputs = outputs;
+  b->outputs_blob = outputs_blob;
+  b->agg_R = agg_R;
+  b->has_agg_R = true;
+  b->participants = participants;
 
-  // Verify we have a nonce from this signer
-  auto it = b->nonces.find(proposer_index);
-  if (it == b->nonces.end()) return false;
+  // We must already hold commitments for every participant from round 1
+  std::vector<std::pair<crypto::public_key, crypto::public_key>> comms;
+  for (uint8_t idx : participants) {
+    auto it = b->nonces.find(idx);
+    if (it == b->nonces.end()) {
+      MINFO("[FROST:P2P] Missing commitment for participant " << (int)idx
+            << " — retry after round 1 completes");
+      return false;
+    }
+    comms.emplace_back(it->second.D, it->second.E);
+  }
 
-  b->partials[proposer_index] = partial_sig;
-  MINFO("[FROST:P2P] Partial sig received from proposer " << (int)proposer_index
+  crypto::hash msg_hash = mevatrust::frost::create_distribution_message_hash(
+      height, period, outputs);
+
+  std::vector<crypto::ec_scalar> rho;
+  if (!mevatrust::frost::compute_binding_factors(participants, msg_hash, comms, rho))
+    return false;
+  b->rho = rho;
+
+  // Sanity: recompute R from this viewpoint — must equal the coordinator's
+  crypto::public_key local_R;
+  if (!mevatrust::frost::compute_aggregate_r(comms, rho, local_R)) return false;
+  if (memcmp(&local_R, &agg_R, 32) != 0) {
+    MERROR("[FROST:P2P] R mismatch between coordinator and local view");
+    return false;
+  }
+
+  // Lagrange coefficient for our own index over this participant set
+  std::vector<crypto::ec_scalar> lambdas;
+  if (!mevatrust::frost::compute_lagrange_coeffs(participants, lambdas)) return false;
+  size_t own_pos = std::find(participants.begin(), participants.end(), m_node_index)
+                   - participants.begin();
+  if (own_pos >= participants.size()) return false;
+
+  // Sign
+  mevatrust::frost::PartialSignature ps;
+  ps.signer_index = m_node_index;
+  if (!mevatrust::frost::sign_partial(
+          msg_hash, b->my_nonces, m_node_sk,
+          lambdas[own_pos], rho[own_pos], agg_R,
+          mevatrust::frost::CONSENSUS_GROUP_PUBKEY, ps)) {
+    MERROR("[FROST:P2P] sign_partial failed");
+    return false;
+  }
+
+  my_partial_out = ps;
+  b->partials[m_node_index] = ps;
+  MINFO("[FROST:P2P] Partial sig created idx=" << (int)m_node_index
+        << " h=" << height);
+  return true;
+}
+
+// ── on_receive_partial (coordinator, round 2 reply) ──────────────────────
+bool FrostBroadcaster::on_receive_partial(uint64_t height, uint32_t period,
+    uint8_t signer_index, const mevatrust::frost::PartialSignature& partial)
+{
+  if (signer_index < 1 || signer_index > mevatrust::frost::FROST_N) return false;
+
+  std::lock_guard<std::mutex> lk(ballot_mutex_);
+  Ballot* b = get_or_create_ballot(height, period);
+  if (b->finalized) return true;
+  if (b->partials.find(signer_index) != b->partials.end()) return true;  // already received
+  if (!b->has_agg_R || b->participants.empty()) return false;
+
+  // Verify we received this signer's commitments in round 1
+  auto nit = b->nonces.find(signer_index);
+  if (nit == b->nonces.end()) return false;
+  if (memcmp(&nit->second.D, &partial.D, 32) != 0 ||
+      memcmp(&nit->second.E, &partial.E, 32) != 0) {
+    MERROR("[FROST:P2P] Partial D/E mismatch with round-1 commitment");
+    return false;
+  }
+
+  // Verify the partial immediately using its own stored commitments
+  std::vector<crypto::ec_scalar> lambdas;
+  if (!mevatrust::frost::compute_lagrange_coeffs(b->participants, lambdas)) return false;
+  size_t pos = std::find(b->participants.begin(), b->participants.end(), signer_index)
+               - b->participants.begin();
+  if (pos >= b->participants.size()) return false;
+
+  crypto::hash msg_hash = mevatrust::frost::create_distribution_message_hash(
+      height, period, b->outputs);
+  std::string err;
+  if (!mevatrust::frost::verify_partial(
+          msg_hash, partial, lambdas[pos], b->rho[pos], b->agg_R,
+          mevatrust::frost::CONSENSUS_GROUP_PUBKEY,
+          mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[signer_index - 1], err)) {
+    MERROR("[FROST:P2P] Partial from signer " << (int)signer_index
+           << " INVALID: " << err);
+    return false;
+  }
+
+  b->partials[signer_index] = partial;
+  MINFO("[FROST:P2P] Partial sig verified from signer " << (int)signer_index
         << " total=" << b->partials.size() << "/" << FROST_THRESHOLD);
   return true;
 }
 
-// ── get_own_R ─────────────────────────────────────────────────────────────
-// Returns this node's R_hiding for the given ballot.
-bool FrostBroadcaster::get_own_R(uint64_t height, uint32_t period,
-    crypto::public_key& R_out) const
+// ── try_finalize ───────────────────────────────────────────────────────
+bool FrostBroadcaster::try_finalize(uint64_t height, uint32_t period)
+{
+  mevatrust::frost::FrostSignature final_sig;
+  {
+    std::lock_guard<std::mutex> lk(ballot_mutex_);
+    Ballot* b = get_or_create_ballot(height, period);
+    if (b->finalized) return true;
+    if (b->partials.size() < FROST_THRESHOLD) return false;
+    if (!b->has_agg_R || b->participants.empty()) return false;
+
+    // Order partials by participant order
+    std::vector<mevatrust::frost::PartialSignature> partials;
+    for (uint8_t idx : b->participants) {
+      auto it = b->partials.find(idx);
+      if (it == b->partials.end()) continue;
+      partials.push_back(it->second);
+    }
+    if (partials.size() < FROST_THRESHOLD) return false;
+
+    crypto::hash msg_hash = mevatrust::frost::create_distribution_message_hash(
+        height, period, b->outputs);
+
+    std::string err;
+    if (!mevatrust::frost::aggregate_signatures(
+            msg_hash, b->participants, partials, b->rho,
+            mevatrust::frost::CONSENSUS_GROUP_PUBKEY, final_sig)) {
+      MERROR("[FROST:P2P] aggregate_signatures failed");
+      return false;
+    }
+    b->finalized = true;
+    MINFO("[FROST:P2P] Final signature ready h=" << height
+          << " partials=" << partials.size());
+  }
+
+  // Apply OUTSIDE the ballot lock (avoids AB-BA deadlock with manager locks)
+  if (m_apply_fn)
+    m_apply_fn(final_sig);
+  return true;
+}
+
+// ── get_own_commit ───────────────────────────────────────────────────────
+bool FrostBroadcaster::get_own_commit(uint64_t height, uint32_t period,
+    crypto::public_key& D, crypto::public_key& E) const
 {
   std::lock_guard<std::mutex> lk(ballot_mutex_);
   auto it = ballot_box_.find(make_ballot_key(height, period));
   if (it == ballot_box_.end()) return false;
-  auto nit = it->second.nonces.find(m_node_index);
-  if (nit == it->second.nonces.end()) return false;
-  R_out = nit->second.R_hiding;
-  return true;
-}
-
-// ── on_receive_sign_request ─────────────────────────────────────────────
-// Called by protocol handler when sign request (round 2) with agg_R arrives.
-bool FrostBroadcaster::on_receive_sign_request(uint64_t height, uint32_t period,
-    const crypto::ec_scalar& agg_R, crypto::ec_scalar& my_sig_out)
-{
-  if (!m_has_key) return false;
-  std::lock_guard<std::mutex> lk(ballot_mutex_);
-  Ballot* b = get_or_create_ballot(height, period);
-  if (b->partials.find(m_node_index) != b->partials.end())
-    return false;  // already signed
-
-  b->has_agg_R = true;
-  memcpy(&b->agg_R, &agg_R, 32);
-
-  // Compute message hash from stored outputs
-  crypto::hash msg_hash = calc_msg_hash(height, period, b->outputs);
-
-  // Build public key package
-  cryptonote::mevatrust::frost::PublicKeyPackage pkg;
-  auto pubkeys = cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS;
-  for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i)
-    pkg.signer_pubkeys[i] = pubkeys[i];
-  pkg.agg_pubkey = cryptonote::mevatrust::frost::sum_public_keys(
-      pubkeys.data(), cryptonote::mevatrust::frost::FROST_N);
-
-  // Compute Lagrange coefficient for our index
-  std::vector<uint8_t> all_indices;
-  for (uint8_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i)
-    all_indices.push_back(i);
-  cryptonote::mevatrust::frost::compute_lagrange_coeffs(
-      all_indices, pkg.lagrange_coeffs);
-
-  // Build nonce pair
-  cryptonote::mevatrust::frost::NoncePair nonce;
-  nonce.hiding = b->my_hiding_scalar;
-  nonce.binding = b->my_binding_scalar;
-
-  // Sign
-  cryptonote::mevatrust::frost::PartialSignature ps;
-  ps.signer_index = m_node_index;
-  cryptonote::mevatrust::frost::sign_partial(
-      msg_hash, nonce, m_node_sk,
-      pkg.lagrange_coeffs[m_node_index],
-      agg_R, pkg.agg_pubkey, ps);
-
-  my_sig_out = ps.sig_share;
-  b->partials[m_node_index] = ps.sig_share;
-
-  MINFO("[FROST:P2P] Partial sig created idx=" << (int)m_node_index
-        << " h=" << height);
+  D = it->second.my_D;
+  E = it->second.my_E;
   return true;
 }
 
@@ -296,61 +430,22 @@ bool FrostBroadcaster::get_agg_R(uint64_t height, uint32_t period,
   auto it = ballot_box_.find(make_ballot_key(height, period));
   if (it == ballot_box_.end()) return false;
   if (!it->second.has_agg_R) return false;
-  memcpy(&agg_R_out, &it->second.agg_R, 32);
+  agg_R_out = it->second.agg_R;
   return true;
 }
 
-// ── try_finalize ────────────────────────────────────────────────────────
-bool FrostBroadcaster::try_finalize(uint64_t height, uint32_t period)
+// ── get_sign_request_data ───────────────────────────────────────────────
+bool FrostBroadcaster::get_sign_request_data(uint64_t height, uint32_t period,
+    crypto::public_key& agg_R_out, std::string& outputs_data, std::string& signer_indices) const
 {
   std::lock_guard<std::mutex> lk(ballot_mutex_);
-  Ballot* b = get_or_create_ballot(height, period);
-  if (b->finalized) return true;
-  if (b->partials.size() < FROST_THRESHOLD) return false;
-  if (!b->has_agg_R) return false;
-
-  // Build the final FROST signature
-  // Compute message hash
-  crypto::hash msg_hash = calc_msg_hash(height, period, b->outputs);
-
-  // Aggregate R
-  mevatrust::frost::FrostSignature sig;
-  memcpy(&sig.R, &b->agg_R, 32);
-  
-  // Aggregate z = sum(s_i)
-  unsigned char z[32] = {};
-  memset(z, 0, 32);
-  for (const auto& [idx, s] : b->partials) {
-    unsigned char tmp[32];
-    unsigned char s_bytes[32];
-    memcpy(s_bytes, &s, 32);
-    sc_add(tmp, z, s_bytes);
-    memcpy(z, tmp, 32);
-  }
-  memcpy(&sig.z, z, 32);
-  sig.msg_hash = msg_hash;
-
-  // Verify the aggregate signature before accepting
-  auto pubkeys = cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS;
-  crypto::public_key agg_pubkey = cryptonote::mevatrust::frost::sum_public_keys(pubkeys.data(), cryptonote::mevatrust::frost::FROST_N);
-  
-  cryptonote::mevatrust::frost::PublicKeyPackage pkg;
-  for (size_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i)
-    pkg.signer_pubkeys[i] = pubkeys[i];
-  pkg.agg_pubkey = agg_pubkey;
-
-  if (!cryptonote::mevatrust::frost::verify_signature(sig, pkg)) {
-    MERROR("[FROST:P2P] Aggregate signature VERIFICATION FAILED");
-    return false;
-  }
-
-  b->finalized = true;
-  MINFO("[FROST:P2P] Final signature ready h=" << height
-        << " partials=" << b->partials.size());
-
-  if (m_apply_fn)
-    m_apply_fn(sig);
-
+  auto it = ballot_box_.find(make_ballot_key(height, period));
+  if (it == ballot_box_.end()) return false;
+  const Ballot& b = it->second;
+  if (!b.has_agg_R || b.round1_done == false) return false;
+  agg_R_out = b.agg_R;
+  outputs_data = b.outputs_blob;
+  if (!serialize_indices(b.participants, signer_indices)) return false;
   return true;
 }
 
