@@ -63,6 +63,8 @@ set(unit_tests_sources
   long_term_block_weight.cpp
   lmdb.cpp
   main.cpp
+  mevatrust_frost_test.cpp
+  mevatrust_reward_distribution_test.cpp
   mevatrust_store_validation.cpp
   memwipe.cpp
   mlocker.cpp

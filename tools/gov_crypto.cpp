@@ -10,6 +10,7 @@
 #include "string_tools.h"
 #include "common/base58.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/mevatrust/frost_threshold.h"
 extern "C" {
 #include "crypto/keccak.h"
 }
@@ -58,7 +59,9 @@ static void print_usage(const char* prog)
               << "  verify <pubkey_hex> <sig_hex> <hash_hex>        Verify signature\n"
               << "  derive-wallet <domain> <nettype>                Derive deterministic wallet keys\n"
               << "    domain: \"mevacoin_governance\" or \"mevacoin_network_fund\"\n"
-              << "    nettype: 0=mainnet 1=testnet 2=stagenet\n";
+              << "    nettype: 0=mainnet 1=testnet 2=stagenet\n"
+              << "  frost-keygen                                     Generate MevaTrust pool distribution FROST ceremony set\n"
+              << "  frost-verify <R> <z> <msg_hash> <group_pubkey>   Verify a FROST aggregate signature\n";
 }
 
 int main(int argc, char* argv[])
@@ -238,6 +241,117 @@ int main(int argc, char* argv[])
         std::cout << "spend_pub: " << hex(pk.data, 32) << std::endl;
         std::cout << "view_pub: " << hex(pk.data, 32) << std::endl;
         std::cout << "address: " << address << std::endl;
+        return 0;
+    }
+
+    if (cmd == "frost-keygen")
+    {
+        using namespace cryptonote::mevatrust::frost;
+        FrostKeyPackage pkg;
+        if (!frost_keygen(pkg)) { std::cerr << "frost_keygen failed\n"; return 1; }
+        std::cout << "group_public_key: " << hex(&pkg.group_public_key, 32) << "\n";
+        for (int i = 0; i < FROST_N; ++i)
+            std::cout << "signer_pub[" << (int)pkg.signer_keypairs[i].index << "]: "
+                      << hex(&pkg.signer_keypairs[i].pub, 32) << "\n";
+        std::cout << "--- private shares (ceremony secret, do not distribute in public logs) ---\n";
+        for (int i = 0; i < FROST_N; ++i)
+            std::cout << "signer_sec[" << (int)pkg.signer_keypairs[i].index << "]: "
+                      << hex(&pkg.signer_keypairs[i].sec, 32) << "\n";
+        return 0;
+    }
+
+    if (cmd == "frost-verify")
+    {
+        if (argc != 6) { std::cerr << "Usage: gov_crypto frost-verify <R> <z> <msg_hash> <group_pubkey>\n"; return 1; }
+        using namespace cryptonote::mevatrust::frost;
+        FrostSignature sig;
+        std::vector<uint8_t> rv, zv, mv, yv;
+        if (!from_hex(argv[2], rv) || !from_hex(argv[3], zv) || !from_hex(argv[4], mv) || !from_hex(argv[5], yv))
+        { std::cerr << "bad hex\n"; return 1; }
+        if (rv.size() != 32 || zv.size() != 32 || mv.size() != 32 || yv.size() != 32)
+        { std::cerr << "bad length\n"; return 1; }
+        memcpy(&sig.R, rv.data(), 32);
+        memcpy(&sig.z, zv.data(), 32);
+        memcpy(sig.msg_hash.data, mv.data(), 32);
+        PublicKeyPackage pkg;
+        pkg.agg_pubkey = *reinterpret_cast<crypto::public_key*>(yv.data());
+        pkg.signer_pubkeys = CONSENSUS_PROPOSER_PUBKEYS;
+        std::string err;
+        if (!verify_signature(sig, pkg, err)) { std::cerr << "INVALID: " << err << "\n"; return 1; }
+        std::cout << "VALID\n";
+        return 0;
+    }
+
+    if (cmd == "frost-test")
+    {
+        using namespace cryptonote::mevatrust::frost;
+        if (argc < 4) { std::cerr << "Usage: gov_crypto frost-test <sec1> <sec2> <sec3>\n"; return 1; }
+        std::vector<uint8_t> s1, s2, s3;
+        if (!from_hex(argv[2], s1) || !from_hex(argv[3], s2) || !from_hex(argv[4], s3)) { std::cerr << "bad hex\n"; return 1; }
+        crypto::secret_key k1, k2, k3;
+        memcpy(&k1, s1.data(), 32); memcpy(&k2, s2.data(), 32); memcpy(&k3, s3.data(), 32);
+
+        // message
+        crypto::public_key rp; memset(rp.data, 7, 32);
+        std::vector<std::pair<crypto::public_key, uint64_t>> outs = { {rp, 12345}, {rp, 42} };
+        crypto::hash msg = create_distribution_message_hash(1000, 5, outs);
+
+        // signer indices: 1,2,3
+        std::vector<uint8_t> indices = {1, 2, 3};
+        std::vector<crypto::ec_scalar> lambdas;
+        if (!compute_lagrange_coeffs(indices, lambdas)) { std::cerr << "lagrange failed\n"; return 1; }
+
+        // round 1: nonces + commitments
+        NoncePair n1, n2, n3;
+        generate_nonces(n1); generate_nonces(n2); generate_nonces(n3);
+        crypto::public_key D1, E1, D2, E2, D3, E3;
+        nonce_commitments(n1, D1, E1);
+        nonce_commitments(n2, D2, E2);
+        nonce_commitments(n3, D3, E3);
+
+        // binding factors
+        std::vector<std::pair<crypto::public_key, crypto::public_key>> comms = {{D1,E1},{D2,E2},{D3,E3}};
+        std::vector<crypto::ec_scalar> rho;
+        if (!compute_binding_factors(indices, msg, comms, rho)) { std::cerr << "rho failed\n"; return 1; }
+
+        // aggregate R
+        crypto::public_key R;
+        if (!compute_aggregate_r(comms, rho, R)) { std::cerr << "aggregate_r failed\n"; return 1; }
+
+        // round 2: sign partials
+        PartialSignature p1, p2, p3;
+        p1.signer_index = 1; p2.signer_index = 2; p3.signer_index = 3;
+        if (!sign_partial(msg, n1, k1, lambdas[0], rho[0], R, CONSENSUS_GROUP_PUBKEY, p1)) { std::cerr << "sign1 failed\n"; return 1; }
+        if (!sign_partial(msg, n2, k2, lambdas[1], rho[1], R, CONSENSUS_GROUP_PUBKEY, p2)) { std::cerr << "sign2 failed\n"; return 1; }
+        if (!sign_partial(msg, n3, k3, lambdas[2], rho[2], R, CONSENSUS_GROUP_PUBKEY, p3)) { std::cerr << "sign3 failed\n"; return 1; }
+
+        // verify each partial
+        std::string err;
+        if (!verify_partial(msg, p1, lambdas[0], rho[0], R, CONSENSUS_GROUP_PUBKEY, CONSENSUS_PROPOSER_PUBKEYS[0], err)) { std::cerr << "verify p1: " << err << "\n"; return 1; }
+        if (!verify_partial(msg, p2, lambdas[1], rho[1], R, CONSENSUS_GROUP_PUBKEY, CONSENSUS_PROPOSER_PUBKEYS[1], err)) { std::cerr << "verify p2: " << err << "\n"; return 1; }
+        if (!verify_partial(msg, p3, lambdas[2], rho[2], R, CONSENSUS_GROUP_PUBKEY, CONSENSUS_PROPOSER_PUBKEYS[2], err)) { std::cerr << "verify p3: " << err << "\n"; return 1; }
+        std::cout << "partial verify: OK\n";
+
+        // also check that an INVALID partial is caught
+        PartialSignature bad = p1;
+        bad.sig_share.data[0] ^= 1;
+        if (verify_partial(msg, bad, lambdas[0], rho[0], R, CONSENSUS_GROUP_PUBKEY, CONSENSUS_PROPOSER_PUBKEYS[0], err)) { std::cerr << "BAD: corrupted partial verified\n"; return 1; }
+        std::cout << "negative partial: OK (" << err << ")\n";
+
+        // aggregate (recomputes R from commitments)
+        FrostSignature sig;
+        std::vector<PartialSignature> partials = {p1, p2, p3};
+        if (!aggregate_signatures(msg, indices, partials, rho, CONSENSUS_GROUP_PUBKEY, sig)) { std::cerr << "aggregate failed\n"; return 1; }
+
+        // full verify against hardcoded ceremony Y
+        PublicKeyPackage pkg;
+        pkg.agg_pubkey = CONSENSUS_GROUP_PUBKEY;
+        pkg.signer_pubkeys = CONSENSUS_PROPOSER_PUBKEYS;
+        if (!verify_signature(sig, pkg, err)) { std::cerr << "final verify FAIL: " << err << "\n"; return 1; }
+        std::cout << "final verify (vs compact Y): OK\n";
+        std::cout << "R: " << hex(&sig.R, 32) << "\n";
+        std::cout << "z: " << hex(&sig.z, 32) << "\n";
+        std::cout << "msg: " << hex(&sig.msg_hash, 32) << "\n";
         return 0;
     }
 

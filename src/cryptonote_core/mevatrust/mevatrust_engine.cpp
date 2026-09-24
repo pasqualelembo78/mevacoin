@@ -51,7 +51,7 @@ MevaTrustScoreSnapshot MevaTrustEngine::calculate_node_score(
     const crypto::hash& node_id,
     uint64_t current_height)
 {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     std::string key = hk(node_id);
 
     MevaTrustScoreSnapshot score;
@@ -111,7 +111,7 @@ bool MevaTrustEngine::get_historical_score(
     uint64_t,
     MevaTrustScoreSnapshot& score)
 {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = score_cache_.find(hk(node_id));
     if (it == score_cache_.end()) return false;
     score = it->second;
@@ -126,7 +126,7 @@ bool MevaTrustEngine::record_uptime_event(
     const crypto::hash& node_id,
     const UptimeEvent& event)
 {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     uptime_history_[hk(node_id)].push_back(event);
     if (node_registry_)
         node_registry_->record_uptime_event(node_id, event.online,
@@ -144,7 +144,7 @@ float MevaTrustEngine::get_sync_percentage(
 }
 
 uint64_t MevaTrustEngine::get_consecutive_uptime_seconds(const crypto::hash& node_id) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = uptime_history_.find(hk(node_id));
     if (it == uptime_history_.end()) return 0;
     uint64_t seconds = 0, last_online = 0;
@@ -168,7 +168,7 @@ uint64_t MevaTrustEngine::get_total_uptime_seconds(const crypto::hash& node_id) 
 bool MevaTrustEngine::record_challenge_response(
     const crypto::hash& node_id, uint32_t response_time_ms, bool success)
 {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     UptimeEvent ev;
     ev.timestamp        = static_cast<uint64_t>(std::time(nullptr));
     ev.online           = success;
@@ -181,7 +181,7 @@ bool MevaTrustEngine::record_challenge_response(
 }
 
 float MevaTrustEngine::get_average_response_time(const crypto::hash& node_id) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = uptime_history_.find(hk(node_id));
     if (it == uptime_history_.end()) return 0.0f;
     float total = 0.0f; uint32_t count = 0;
@@ -191,7 +191,7 @@ float MevaTrustEngine::get_average_response_time(const crypto::hash& node_id) {
 }
 
 float MevaTrustEngine::get_challenge_success_rate(const crypto::hash& node_id) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = uptime_history_.find(hk(node_id));
     if (it == uptime_history_.end()) return 0.0f;
     uint32_t passed = 0, total = 0;
@@ -207,7 +207,7 @@ float MevaTrustEngine::get_challenge_success_rate(const crypto::hash& node_id) {
 bool MevaTrustEngine::increment_activity_counter(
     const crypto::hash& node_id, const std::string&)
 {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     UptimeEvent ev;
     ev.timestamp = static_cast<uint64_t>(std::time(nullptr));
     ev.online = true; ev.block_height = 0; ev.peer_count = 1; ev.response_time_ms = 0;
@@ -295,16 +295,16 @@ MevaTrustEngine::get_top_nodes(uint32_t count, uint64_t current_height) {
 // ============================================================================
 
 void MevaTrustEngine::set_scoring_weights(const ScoringWeights& w) {
-    std::lock_guard<std::mutex> lock(cache_lock_); scoring_weights_ = w;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_); scoring_weights_ = w;
 }
 MevaTrustEngine::ScoringWeights MevaTrustEngine::get_scoring_weights() const {
-    std::lock_guard<std::mutex> lock(cache_lock_); return scoring_weights_;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_); return scoring_weights_;
 }
 void MevaTrustEngine::set_parameters(const MevaTrustParameters& p) {
-    std::lock_guard<std::mutex> lock(cache_lock_); parameters_ = p;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_); parameters_ = p;
 }
 MevaTrustEngine::MevaTrustParameters MevaTrustEngine::get_parameters() const {
-    std::lock_guard<std::mutex> lock(cache_lock_); return parameters_;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_); return parameters_;
 }
 
 // ============================================================================
@@ -335,7 +335,7 @@ static std::string read_str(std::ifstream& f) {
 }
 
 bool MevaTrustEngine::save_to_disk() const {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     try {
         // Save uptime_history_
         {
@@ -386,7 +386,7 @@ bool MevaTrustEngine::save_to_disk() const {
 }
 
 bool MevaTrustEngine::load_from_disk() {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     try {
         // Load uptime_history_
         {
@@ -457,7 +457,7 @@ bool MevaTrustEngine::load_uptime_history(const crypto::hash&) { return true; }
 bool MevaTrustEngine::save_uptime_history(const crypto::hash&) { return true; }
 
 bool MevaTrustEngine::prune_old_data(uint64_t keep_before_height) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
     const uint64_t max_age_secs = 90 * 86400; // 90 days
     for (auto& kv : uptime_history_) {

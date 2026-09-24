@@ -18,36 +18,37 @@ build_distribution_outputs(
     const std::vector<NodeCoinbaseReward>& rewards,
     uint64_t total_pool_balance)
 {
+    // Proportional split with pure integer arithmetic (deterministic across
+    // platforms, unlike the float version).  The LAST qualifying reward absorbs
+    // the rounding remainder so sum(outputs) == total_pool_balance exactly.
     std::vector<std::pair<account_public_address, uint64_t>> outputs;
-    
+
     if (rewards.empty() || total_pool_balance == 0) return outputs;
-    
-    // Calculate total scores for proportional distribution
-    float total_score = 0.0f;
+
+    // Score is each reward's amount; skip zero-amount entries.
+    std::vector<std::pair<account_public_address, uint64_t>> q;
+    uint64_t total_score = 0;
     for (const auto& r : rewards) {
-        // Each reward's amount represents their share proportion
-        total_score += static_cast<float>(r.amount);
+        if (r.amount == 0) continue;
+        q.emplace_back(r.address, r.amount);
+        total_score += r.amount;
     }
-    
-    if (total_score <= 0.0f) return outputs;
-    
-    // Proportional split
+    if (q.empty()) return outputs;
+
     uint64_t allocated = 0;
-    for (size_t i = 0; i < rewards.size(); ++i) {
+    for (size_t i = 0; i < q.size(); ++i) {
         uint64_t share;
-        if (i == rewards.size() - 1) {
-            // Last node gets remainder (avoids rounding errors)
+        if (i == q.size() - 1) {
             share = total_pool_balance > allocated ? total_pool_balance - allocated : 0;
         } else {
-            share = static_cast<uint64_t>(
-                static_cast<double>(total_pool_balance) * rewards[i].amount / total_score);
+            share = (total_pool_balance * q[i].second) / total_score;
         }
-        if (share > 0) {
-            outputs.emplace_back(rewards[i].address, share);
+        if (share > 0 || outputs.empty()) {
+            outputs.emplace_back(q[i].first, share);
             allocated += share;
         }
     }
-    
+
     return outputs;
 }
 
@@ -79,7 +80,8 @@ bool construct_pool_distribution_extra(
     dist.period = period;
     dist.total_pool_balance = total_pool_balance;
     dist.total_distributed = total_distributed;
-    dist.frost_R = signature.R;
+    // frost_R is stored as raw 32-byte point bytes; FrostSignature.R is a point.
+    memcpy(&dist.frost_R, &signature.R, sizeof(dist.frost_R));
     dist.frost_z = signature.z;
     
     for (const auto& [addr, amt] : outputs) {
@@ -150,31 +152,37 @@ bool verify_distribution_signature(
     const tx_extra_mevatrust_pool_distribution& dist,
     const ProposerState& proposers)
 {
+    // Consensus verification MUST use the ceremony keys.  If the runtime
+    // proposer set doesn't match the ceremony set we refuse (they are not the
+    // authorized signers).
+    for (size_t i = 0; i < frost::FROST_N; ++i) {
+        if (memcmp(&proposers.pubkeys[i],
+                   &frost::CONSENSUS_PROPOSER_PUBKEYS[i], 32) != 0) {
+            MERROR("[PoolDist] Proposer set does NOT match ceremony keys "
+                   "- refusing to verify");
+            return false;
+        }
+    }
+
     frost::PublicKeyPackage pkg;
-    for (size_t i = 0; i < frost::FROST_N && i < proposers.pubkeys.size(); ++i) {
-        pkg.signer_pubkeys[i] = proposers.pubkeys[i];
-    }
-    // Real aggregate pubkey: Y = sum(pk_i) for all proposers
-    pkg.agg_pubkey = frost::sum_public_keys(
-        pkg.signer_pubkeys.data(), frost::FROST_N);
-    
+    pkg.signer_pubkeys = frost::CONSENSUS_PROPOSER_PUBKEYS;
+    pkg.agg_pubkey = frost::CONSENSUS_GROUP_PUBKEY;
+
     frost::FrostSignature sig;
-    sig.R = dist.frost_R;
+    sig.R = {};
+    memcpy(&sig.R, &dist.frost_R, sizeof(dist.frost_R));  // scalar bytes -> point bytes
     sig.z = dist.frost_z;
-    
-    // Recreate message hash from distribution data
-    std::vector<std::pair<account_public_address, uint64_t>> outputs;
-    for (const auto& [pk, amt] : dist.outputs) {
-        account_public_address addr;
-        addr.m_spend_public_key = pk;
-        addr.m_view_public_key = pk; // pool-style: view=spend
-        outputs.emplace_back(addr, amt);
-    }
-    
+
+    // Message hash over the spend-key output list (0xAA stores spend keys only)
+    std::vector<std::pair<crypto::public_key, uint64_t>> spend_outputs;
+    for (const auto& [pk, amt] : dist.outputs)
+        spend_outputs.emplace_back(pk, amt);
+
     sig.msg_hash = frost::create_distribution_message_hash(
-        dist.height, dist.period, outputs);
-    
-    return frost::verify_signature(sig, pkg);
+        dist.height, dist.period, spend_outputs);
+
+    std::string error_out;
+    return frost::verify_signature(sig, pkg, error_out);
 }
 
 } // namespace mevatrust

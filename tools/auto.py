@@ -735,8 +735,7 @@ def do_treasury(amount, dest_addr):
 
     # Use treasury-build command
     result = subprocess.run(
-        [GOV_SPEND, "treasury-build", str(amount), dest_addr,
-         actual_signer_pubs[0], sigs_json],
+        [GOV_SPEND, "treasury-build", str(amount), dest_addr, sigs_json],
         capture_output=True, text=True
     )
     if result.returncode != 0:

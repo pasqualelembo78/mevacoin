@@ -4987,13 +4987,14 @@ bool core_rpc_server::on_get_proposer_status(
   auto fb = pm->frost_broadcaster();
     if (fb) {
       res.my_index = fb->node_index();
-      if (pm->has_proposer_keys()) {
+if (pm->has_proposer_keys()) {
         for (uint8_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
         rpc::COMMAND_RPC_GET_PROPOSER_STATUS::proposer_entry_t pe;
-        pe.index = i;
-        pe.pubkey = epee::string_tools::pod_to_hex(pm->get_node_pk());  // approximate
+        pe.index = i + 1;
+        pe.pubkey = epee::string_tools::pod_to_hex(
+            cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i]);
         pe.active = true;  // all local proposers are active
-        pe.is_me = (i == res.my_index);
+        pe.is_me = (i + 1 == res.my_index);
         res.proposers.push_back(std::move(pe));
       }
     }
