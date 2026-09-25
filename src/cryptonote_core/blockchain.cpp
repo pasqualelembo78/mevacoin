@@ -5874,7 +5874,9 @@ bool Blockchain::init_premine_state()
     auto addr_info_from_str = [this](const std::string& addr_str) -> account_public_address
     {
         address_parse_info info;
-        if (!get_account_address_from_str(info, m_nettype, addr_str))
+        // FOUNDATION_ADDRESS is stored as a mainnet-prefix address string and
+        // is nettype-independent (same on mainnet/testnet/stagenet).
+        if (!get_account_address_from_str(info, MAINNET, addr_str))
         {
             MERROR("Failed to parse FOUNDATION_ADDRESS: " << addr_str);
             return account_public_address{};

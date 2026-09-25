@@ -686,19 +686,13 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
     add_tx_pub_key_to_extra(bl.miner_tx, foundation_txkey.pub);
 
     // Helper lambda to create a genesis output for a given address + amount
-    auto add_genesis_output = [&](const std::string& addr_str, uint64_t amount, const char* label) -> bool
+    auto add_genesis_output = [&](const account_public_address& recipient, uint64_t amount, const char* label) -> bool
     {
-      cryptonote::address_parse_info info;
-      if (!cryptonote::get_account_address_from_str(info, cryptonote::MAINNET, addr_str))
-      {
-        MERROR("Failed to decode " << label << " address: " << addr_str);
-        return false;
-      }
       crypto::key_derivation derivation;
       crypto::public_key out_eph_public_key;
-      r = crypto::generate_key_derivation(info.address.m_view_public_key, foundation_txkey.sec, derivation);
+      r = crypto::generate_key_derivation(recipient.m_view_public_key, foundation_txkey.sec, derivation);
       CHECK_AND_ASSERT_MES(r, false, "genesis " << label << ": failed key derivation");
-      r = crypto::derive_public_key(derivation, bl.miner_tx.vout.size(), info.address.m_spend_public_key, out_eph_public_key);
+      r = crypto::derive_public_key(derivation, bl.miner_tx.vout.size(), recipient.m_spend_public_key, out_eph_public_key);
       CHECK_AND_ASSERT_MES(r, false, "genesis " << label << ": failed derive public key");
       tx_out out;
       set_tx_out(amount, out_eph_public_key, false, crypto::view_tag{}, out);
@@ -707,25 +701,26 @@ bool construct_miner_tx(size_t height, size_t median_weight, uint64_t already_ge
       return true;
     };
 
-    // Output 1: Team lock (200k MVC) — vested for 24 months
-    if (!add_genesis_output(FOUNDATION_ADDRESS, TEAM_LOCK_ALLOCATION, "team_lock (200k MVC)"))
-      return false;
+    // Output 1: Team lock (200k MVC) — vested for 24 months.
+    // FOUNDATION_ADDRESS is a version-independent (mainnet) address string.
+    {
+      cryptonote::address_parse_info foundation_info;
+      if (!cryptonote::get_account_address_from_str(foundation_info, cryptonote::MAINNET, FOUNDATION_ADDRESS))
+      {
+        MERROR("Failed to decode FOUNDATION_ADDRESS: " << FOUNDATION_ADDRESS);
+        return false;
+      }
+      if (!add_genesis_output(foundation_info.address, TEAM_LOCK_ALLOCATION, "team_lock (200k MVC)"))
+        return false;
+    }
 
     // Output 2: Treasury governance (400k MVC) — multisig controlled
-    {
-      account_public_address gov_addr = get_governance_address(nettype);
-      std::string gov_addr_str = cryptonote::get_account_address_as_str(nettype, false, gov_addr);
-      if (!add_genesis_output(gov_addr_str, TREASURY_ALLOCATION, "treasury (400k MVC)"))
-        return false;
-    }
+    if (!add_genesis_output(get_governance_address(nettype), TREASURY_ALLOCATION, "treasury (400k MVC)"))
+      return false;
 
     // Output 3: Network fund (400k MVC) — rate-limited to 10k/month
-    {
-      account_public_address net_addr = get_network_fund_address(nettype);
-      std::string net_addr_str = cryptonote::get_account_address_as_str(nettype, false, net_addr);
-      if (!add_genesis_output(net_addr_str, NETWORK_FUND_ALLOCATION, "network_fund (400k MVC)"))
-        return false;
-    }
+    if (!add_genesis_output(get_network_fund_address(nettype), NETWORK_FUND_ALLOCATION, "network_fund (400k MVC)"))
+      return false;
 
     // ────────────────────────────────────────────────────────────────
 
