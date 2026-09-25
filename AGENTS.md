@@ -2,6 +2,21 @@
 
 ## Completed
 
+### Nettype-Correct Genesis Build (Sep 25 2026) — commit 9a1583383
+- **Root cause**: `add_genesis_output` in `generate_genesis_block` decoded addresses as `MAINNET` while treasury/network were round-tripped through a **nettype-prefixed address string** → on testnet/stagenet the decode failed, genesis creation aborted. Verified end-to-end that stagenet mainnet→ founder sees 200k team, unlock at height 60, on-chain transfer to a second wallet succeeds.
+- **Changes**:
+  - `cryptonote_tx_utils.cpp`: lambda now takes `const account_public_address&` directly; `FOUNDATION_ADDRESS` parsed once as `MAINNET` (nettype-independent); treasury/network passed from `get_governance_address(nettype)` / `get_network_fund_address(nettype)` (no string round-trip).
+  - `wallet2.cpp:15373` (`wallet2::generate_genesis`): now passes `m_nettype` (was defaulting to `MAINNET`, causing genesis block mismatch on non-mainnet nets: wallet computed a different genesis than the daemon).
+  - `blockchain.cpp:5877` (`addr_info_from_str`): parse `FOUNDATION_ADDRESS` as `MAINNET`, not `m_nettype` (previously spurious "Premine output keys mismatch" MERROR on non-mainnet).
+- **Mainnet safety verified**: genesis hash unchanged = `33772d0925cf4853e0a421b376ad34608ea040fb68a24682bca75ceaad6807b7` (matches checkpoint).
+- **Stagenet test caveats**: start daemon with `--fixed-difficulty 1` for fast mining; `wallet2 load_json` requires JSON field `"version":1`; unused `mevacoin-wallet-rpc` must be built from `tools/governance_spend` keys (spend 3b50617a... / view 28c5124b...).
+
+### premine.md Updated to Active Signer Keys (commit 30efa14e8)
+- Replaced STALE ceremony keys (priv 6c90f4fc/a6c9c210/90137ff7, pub d12e9908/dfeb3f3c/0e88576a, addrs MD5VJc/MDdsyR/M5hfHu) with ACTIVE (foundation_vesting.h): spend pubs 2b4bc2ec/5ffc6b4d/590bedad, view pubs 942b2b10/3de711d4/e28d65f1, addrs M6nt4T/M8nh1z/M8XSNr. Private keys NOT in the file; they live in `/root/mvc_mainnet_keys/signer_{0,1,2}.txt`.
+- Corrected false claims: team is NOT derived from `mevacoin_team_lock` (it goes to real wallet `FOUNDATION_ADDRESS` M5MxXAn9...); team NOT locked 24mo by consensus (`TEAM_LOCK_BLOCKS` unused; real unlock = height 60); network fund requires NO signatures; wallet paths point to `/root/mvc_mainnet_keys`.
+
+## Legacy (below) remains historical record.
+
 ### Circular Dependency Fix
 - **`src/cryptonote_core/blockchain.cpp:5983-6036`**: `check_premine_spend()` now zeroes governance sigs in a parsed copy of `tx_extra` before computing `tx_prefix_hash` for verification. Breaks the circular dependency (governance sigs in tx_extra → tx_prefix_hash → need sigs to verify).
 
