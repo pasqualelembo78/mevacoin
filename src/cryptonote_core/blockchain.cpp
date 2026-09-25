@@ -5895,7 +5895,17 @@ bool Blockchain::init_premine_state()
         m_premine_keys.treasury != expected_treasury ||
         m_premine_keys.network != expected_network)
     {
-        MERROR("Premine output keys mismatch — genesis block structure may have changed");
+        // FATAL: a node that initialises with a genesis block whose premine
+        // outputs do not match the consensus addresses is either running
+        // corrupted data or has been fed a forged/altered genesis block.
+        // Refusing to start is the only safe behaviour — a coin whose
+        // premine (team 200k / treasury 400k / network 400k) could silently
+        // redirect the initial supply would be worthless.
+        MERROR("Premine output keys mismatch — genesis block structure may have changed or is corrupted. Refusing to continue.");
+        MERROR("  team     expected=" << expected_team << " got=" << m_premine_keys.team);
+        MERROR("  treasury expected=" << expected_treasury << " got=" << m_premine_keys.treasury);
+        MERROR("  network  expected=" << expected_network << " got=" << m_premine_keys.network);
+        return false;
     }
 
     // ── Compute key images for premine outputs ──────────────────────────
