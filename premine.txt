@@ -1,0 +1,359 @@
+# Spesa Premine — Documentazione Completa
+## Data: 2026-07-01
+
+===========================================================================
+# SITUAZIONE DELLA CHAIN
+===========================================================================
+
+## Catena
+- Altezza ≥ 63, mainnet, HF13 (major_version=13), CLSAG attivo
+- Blocco genesi: unlock_time=60 → tutti gli output premine sbloccati ad altezza ≥60
+- Solo output premine esistono (nessun'altra transazione minata sulla chain)
+
+## Output Premine (miner_tx del genesi)
+| vout | Ammontare | Destinazione | Tipo Chiave |
+|------|-----------|-------------|-------------|
+| vout[0] | coinbase standard (non premine) | — | — |
+| vout[1] | 200.000 MVC (team lock) | FOUNDATION_ADDRESS | Chiave spend regolare (non-deterministica) |
+| vout[2] | 400.000 MVC (tesoreria) | Governance multisig | Deterministica da "mevacoin_governance" |
+| vout[3] | 400.000 MVC (network fund) | Indirizzo network fund | Deterministica da "mevacoin_network_fund" |
+
+Ogni output premine è **non-RCT**: l'ammontare è visibile (non cifrato), niente range proof.
+
+===========================================================================
+# PROBLEMA: TRANSACTION REJECTED — CLSAG VERIFICATION FAILED
+===========================================================================
+
+**SINTOMO**: TUTTE le transazioni di spesa premine non-RCT venivano rifiutate dal daemon.
+```
+Errore wallet-rpc:  "transaction was rejected by daemon: invalid input"
+Log daemon:         "verRctCLSAGSimple failed for input 0"
+                    "final_c != sig.c1"
+```
+
+**COLPISCE**: tutti i wallet (founder, treasury, network fund) e tutte le ring_size.
+
+===========================================================================
+# FIX 1: `inSk.mask` — FATTORE DI BLINDING SBAGLIATO (30 Giu 2026)
+===========================================================================
+
+## Causa
+
+`rct::zeroCommit(amount)` restituisce `1*G + amount*H` — il fattore di blinding è 1
+(lo scalare `rct::identity()` = `{0x01, 0x00, 0x00, ...}`).
+
+Ma il wallet impostava `src.mask = rct::zero()` = **0** per output non-RCT.
+
+Questa incongruenza di 18 righe, ereditata da Monero, non si era mai vista perché
+Monero ha migrato tutti gli output non-RCT a RingCT prima dell'attivazione di CLSAG.
+
+## La Matematica
+
+Output non-RCT con ring_size=1:
+```
+pubs[l].mask = zeroCommit(amount) = 1*G + amount*H   ← blinding factor = 1
+inSk.mask   = 0                                        ← blinding factor = 0
+C_offset    = a*G + amount*H                            ← pseudoOut
+z           = inSk.mask - a_pseudo = 0 - a = -a
+
+C_precomp   = pubs[l].mask - C_offset
+            = (1*G + amount*H) - (a*G + amount*H)
+            = (1-a)*G                                    ← DL = 1-a
+
+Ma z*G = (-a)*G (DL = -a). I logaritmi discreti differiscono di 1:
+C_precomp ha DL = 1-a
+z*G       ha DL = -a
+
+Quindi C_precomp ≠ z*G, e la formula L diventa:
+L = s*G + c_p*P + c_c*C_precomp
+  = aG + c*mu_C*((1-a) - (-a))*G
+  = aG + c*mu_C*G               ← TERMINE EXTRA c*mu_C*G
+```
+
+Il termine extra `c*mu_C*G` corrompe la hash chain → `final_c ≠ c1` → CLSAG fallisce.
+
+## Il Fix
+
+File: `src/wallet/wallet2.cpp:10070`
+```diff
+- src.mask = td.is_rct() ? td.m_mask : rct::zero();
++ src.mask = td.is_rct() ? td.m_mask : rct::identity();  // scalare 1, coincide con zeroCommit
+```
+
+Con `src.mask = 1`:
+```
+z = inSk.mask - a_pseudo = 1 - a
+C_precomp = (1-a)*G = z*G   ✓
+L = aG - c*mu_P*p*G - c*mu_C*(1-a)*G + c*mu_P*p*G + c*mu_C*(1-a)*G = aG   ✓
+```
+
+Questo fix corregge anche il percorso MLSAG in `proveRctMGSimple`.
+
+## Verifica (ring_size=1)
+
+Dopo il fix, la transazione team-lock (ring_size=1, niente decoy) passa:
+```
+CLSAGDBG[1]: final_c=91c8f2b4...  c1=91c8f2b4...  diff=0
+```
+
+**MA** ring_size=2 falliva ancora! → è emerso il secondo bug.
+
+===========================================================================
+# FIX 2: ORDINE ANELLO DIVERSO TRA SIGNER E VERIFIER (1 Lug 2026)
+===========================================================================
+
+## Causa
+
+Per output unmixable (anello più piccolo del minimo richiesto), il wallet **non ordinava**
+i membri dell'anello per indice globale. Lo `std::sort` era dentro un blocco `else`:
+```cpp
+if (outs.back().size() < fake_outputs_count + 1) {
+    // gestione unmixable — NON ordina
+} else {
+    std::sort(...);  // ← ordina solo se l'anello è pieno
+}
+```
+
+La conversione da indici assoluti a relativi (`cryptonote_format_utils.cpp:1510`) **ordina
+sempre** in modo crescente:
+```cpp
+std::sort(res.begin(), res.end());  // "giusto per sicurezza"
+```
+
+Quindi:
+- **Signer (wallet)**: usa l'anello NON ordinato: P[0]=indice_1, P[1]=indice_0
+- **Verifier (daemon)**: ricostruisce l'anello dagli offset (ordinati): P[0]=indice_0, P[1]=indice_1
+
+Stessi elementi, ma in ordine diverso → `mu_P = H("CLSAG_agg_0" || P_0 || P_1 || ...)`
+produce hash diversi → tutta la catena del CLSAG diverge → `final_c ≠ c1`.
+
+## Il Fix
+
+File: `src/wallet/wallet2.cpp:9709-9728`
+Lo `std::sort` viene eseguito **sempre**, indipendentemente dalla dimensione dell'anello.
+
+## Verifica (ring_size=2)
+
+Network fund transfer (400k MVC, extra 0xC0 per network fund):
+```
+Signer:  mu_P = eeee4a49...
+Verifier: mu_P = eeee4a49...   ← IDENTICI!
+final_c == c1, diff = 0
+```
+Tx `2a30a040b012d93895407cb12ecd45ef866a374a1e4bc63993b389a142f2b8f9` accettata nel mempool.
+
+===========================================================================
+# TRAPPOLE e LEZIONI IMPARATE
+===========================================================================
+
+## 1. `zeroCommit` è una mina per output non-RCT
+Restituisce `1*G + amount*H`, non `0*G + amount*H`. Lo scalare 1 implicito deve
+essere RIPRODOTTO OVUNQUE.
+
+## 2. `rct::identity()` ≠ `rct::zero()` (confermato dai sorgenti)
+```cpp
+// identity(): scalare 1
+static const key I = {{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
+// zero():     scalare 0
+static const key Z = {{0x00, ...}};
+```
+
+## 3. Un fix nel sorgente NON significa un fix in esecuzione
+Il wallet-rpc DEVE essere riavviato dopo la ricompilazione. Controllare con `ps aux`.
+Il demone NON serve ricompilarlo (il fix è solo nel wallet, lato produzione firma).
+
+## 4. Transazioni fallite avvelenano il mempool
+Una tx rifiutata resta nel mempool del daemon. Il wallet vede la key_image e marca
+l'UTXO come `spent=true`. Soluzione: `flush_txpool` + rescan wallet.
+
+## 5. Il logging MDEBUG (--log-level 4) è stato essenziale
+Confrontare ogni valore intermedio tra wallet e daemon ha permesso di individuare
+esattamente la discrepanza (L vs aG, e poi l'ordine di P[0]/P[1]).
+
+===========================================================================
+# FEATURE: BILANCIO SUDDIVISO PER CATEGORIA (2 Lug 2026)
+===========================================================================
+
+## Nuova RPC: `get_balance_by_category`
+
+Mostra il saldo suddiviso per tipo di provenienza dei fondi. Ogni categoria
+include la lista dei singoli UTXO con txid, amount, height, confirmations.
+
+**Vantaggi**:
+- Tenere traccia separata dei fondi premine (governance/network fund)
+- Verificare che i trasferimenti siano andati a buon fine
+- Vedere dopo quanti blocchi sono confermati
+- Non servono modifiche alla cache wallet (categoria calcolata da tx.extra)
+
+## Categorie supportate
+
+| Categoria | Tag | Descrizione |
+|-----------|-----|-------------|
+| `normal` | — | Trasferimenti normali tra wallet |
+| `governance` | 0xB0 | Tesoro Governance (400k MVC) |
+| `network` | 0xC0 | Network Fund (400k MVC) |
+| `coinbase` | — | Ricompense di mining |
+| `add_signer` | 0xB1 | Aggiunta firmatario governance |
+| `remove_signer` | 0xB2 | Rimozione firmatario governance |
+
+## Comando CLI
+
+```bash
+# Chiamata RPC diretta
+curl -s http://127.0.0.1:18087/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"get_balance_by_category",
+       "params":{"account_index":0}}' | python3 -m json.tool
+
+# Tramite gov_spend.py (se wallet-rpc in ascolto su 127.0.0.1:18087)
+./gov_spend.py balance
+./gov_spend.py balance http://127.0.0.1:18087 0
+```
+
+## File modificati
+
+| File | Cosa |
+|------|------|
+| `src/wallet/wallet2.h` | `enum fund_category`, `classify_fund()`, `balance_per_category()` |
+| `src/wallet/wallet2.cpp` | Implementazione `classify_fund()` (parsa tx_extra) e `balance_per_category()` |
+| `src/wallet/wallet_rpc_server_commands_defs.h` | Struct `COMMAND_RPC_GET_BALANCE_BY_CATEGORY` |
+| `src/wallet/wallet_rpc_server.h` | Registrazione RPC + dichiarazione handler |
+| `src/wallet/wallet_rpc_server.cpp` | Implementazione `on_get_balance_by_category()` |
+| `tools/gov_spend.py` | Comando `balance` |
+
+===========================================================================
+# FILE MODIFICATI (STORICO COMPLETO)
+===========================================================================
+
+| File | Cosa | Data |
+|------|------|------|
+| `src/cryptonote_basic/cryptonote_format_utils.cpp:619-624` | sort_tx_extra: pick<> per 0xB0/0xB1/0xB2/0xC0 | 30 Giu |
+| `src/wallet/wallet2.cpp:9709-9722` | Gestione anello unmixable | 30 Giu |
+| `src/wallet/wallet2.cpp:10070` | **FIX 1**: mask = identity() invece di zero() | 30 Giu |
+| `src/wallet/wallet2.cpp:9709-9728` | **FIX 2**: std::sort sempre, senza condizioni | 1 Lug |
+| `src/ringct/rctSigs.cpp` | Debug logging in CLSAG_Gen + verRctCLSAGSimple | 1 Lug |
+
+===========================================================================
+# COMANDI UTILI
+===========================================================================
+
+```bash
+# Ricompila tutto (macchina lenta: 1 CPU, ~10 min)
+cd /root/mevacoin/build/Linux/mevacoin/release && make -j1
+
+# Ricompila solo wallet (più veloce)
+touch /root/mevacoin/src/wallet/wallet2.cpp
+make -j1 wallet_rpc_server
+cd /root/mevacoin/build/Linux/mevacoin/release && make -j1 wallet_rpc_server
+
+# Riavvia wallet-rpc
+kill $(pgrep mevacoin-wallet-rpc)
+/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoin-wallet-rpc \
+  --rpc-bind-ip 127.0.0.1 --rpc-bind-port 18087 \
+  --wallet-dir /root/mevacoin/tools/wallet_rpc_data \
+  --daemon-address 127.0.0.1:18081 --trusted-daemon \
+  --disable-rpc-login --rpc-ssl disabled --log-level 4 \
+  > /tmp/wallet-rpc.log 2>&1 &
+
+# Controlla se è partito con la versione giusta
+ps aux | grep wallet-rpc | grep -v grep
+
+# Transazione di test (network fund)
+curl -s http://127.0.0.1:18087/json_rpc -d '{
+  "jsonrpc":"2.0","id":"0","method":"open_wallet",
+  "params":{"filename":"netfund","password":""}
+}'
+curl -s http://127.0.0.1:18087/json_rpc -d '{
+  "jsonrpc":"2.0","id":"0","method":"transfer","params":{
+    "destinations":[{"amount":1000000000000,
+                     "address":"M9RVCJNj6tn8rzoS8es9BjYvLJoSjtgns5rFYQnVav87USNkFfLdEYdHnBA2ugTkSM5CmNt8SRmTgXPriBBYvvWi9TLFkFd"}],
+    "ring_size":1, "priority":0, "get_tx_key":true,
+    "extra":"c080..."  ← hex del blob network fund
+  }
+}'
+
+# Svuota mempool dopo un fallimento
+curl -s http://127.0.0.1:18081/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"flush_txpool", \
+       "params":{"txid":["<tx_hash_fallita>"]}}'
+
+# Rescan wallet
+curl -s http://127.0.0.1:18087/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"rescan_blockchain"}'
+
+# Log del daemon (CLSAG)
+journalctl -u mevacoind --since "5 min ago" --no-pager | grep -E "CLSAG|diff="
+
+# Log del wallet-rpc
+grep -i "CLSAG\|mu_\|reject\|error" /tmp/wallet-rpc.log
+```
+
+===========================================================================
+# DIAGNOSTICA VELOCE
+===========================================================================
+
+| Sintomo | Causa Probabile | Soluzione |
+|---------|----------------|-----------|
+| `verRctCLSAGSimple failed for input 0` | wallet-rpc con vecchio binario (senza i fix) | Ricompila + riavvia wallet-rpc |
+| `not enough unlocked money` | Cache wallet sporca, UTXO marcato speso da tx fallita in mempool | `flush_txpool` + rescan |
+| `invalid input` + log CLSAG fallito | Stessa causa di sopra | Riavvia wallet-rpc col binario nuovo |
+| `invalid input` + NESSUN CLSAG fail | `check_premine_spend` — extra sbagliato/mancante | Usa tag 0xB0 o 0xC0 corretto |
+| `not enough outputs to mix` | ring_size troppo alta (solo 2 output esistono) | Usa `ring_size=2` o lascia fare al wallet |
+| Wallet vede saldo 0 dopo riavvio | Cache cancellata o corrotta | `open_wallet` + `rescan_blockchain` |
+
+===========================================================================
+# PROBLEMA: "double spend" / "0 unlocked" DOPO TRANSAZIONE PRECEDENTE
+===========================================================================
+
+## Sintomo
+Dopo una transazione finita nel mempool (anche se rifiutata o non minata),
+la prossima volta che apri il wallet:
+```
+  Balance: 0.0000 unlocked / 399998.9985 total MVC (0 UTXO(s))
+✗ ERROR: Insufficient unlocked balance
+```
+
+## Causa
+Il wallet registra nella cache locale:
+1. La **key_image** dell'UTXO originale — l'output risulta `spent=true`
+2. Il **change output** della transazione — ma è `locked` perché non minato in un blocco
+
+Né l'uno né l'altro sono spendibili → `unlocked_balance = 0`.
+
+Anche se si svuota il mempool del daemon (`flush_txpool`), la cache del wallet
+rimane sporca — il wallet non sa che la transazione è stata rimossa.
+
+## Soluzione (fixata in auto.py)
+
+`refresh_wallet()` adesso fa **sempre** flush del pool + rescan:
+
+```python
+def refresh_wallet():
+    flush_stale_pool_tx()          # 1. svuota pool
+    wallet_rpc("rescan_blockchain") # 2. ricostruisce cache da zero
+    flush_stale_pool_tx()          # 3. ri-svuota (nel caso sia arrivata altra roba)
+```
+
+Così il wallet riparte sempre da uno stato pulito: UTXO originale = unspent, 0 locked.
+
+## Se il fix non basta (manuale)
+```bash
+# Svuota pool
+curl -s http://127.0.0.1:18081/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"flush_txpool"}'
+
+# Rescan wallet
+curl -s http://127.0.0.1:18087/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"rescan_blockchain"}'
+
+# Verifica saldo
+curl -s http://127.0.0.1:18087/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"get_balance"}' | python3 -m json.tool
+
+# Verifica saldo suddiviso per categoria
+curl -s http://127.0.0.1:18087/json_rpc \
+  -d '{"jsonrpc":"2.0","id":"0","method":"get_balance_by_category",
+       "params":{"account_index":0}}' | python3 -m json.tool
+```
