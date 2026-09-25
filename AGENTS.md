@@ -91,7 +91,8 @@ No sigs needed. `gov_spend.py network <amount> <addr>` → tx_extra blob.
 - Verified: `ver_input_proofs_rings` takes `transaction&` (non-const) → the restore propagates to `check_premine_spend`, and verID at blockchain.cpp:3711 stays stable over the real extra.
 - **Correction**: `gov_crypto.cpp derive-wallet` is NOT stale — its formula matches `foundation_vesting.h` (cn_fast_hash(domain+nettype) → hash_to_scalar → secret_key_to_public_key, spend==view). The old AGENTS note "fix stale derive-wallet" was wrong; removed from Next Steps.
 - **Hazards resolved Sep 25 2026**:
-  - `premine-output mismatch` was only MERROR-logged (`blockchain.cpp:5892-5897`) — now **FATAL** (init_premine_state returns false; node refuses to start) so a node with a forged/corrupted genesis (divergent team/treasury/network keys) cannot silently run. Fix in commit `a59f1900d` base.
+  - `premine-output mismatch` was only MERROR-logged (`blockchain.cpp:5892-5897`) — now **FATAL** (init_premine_state returns false; node refuses to start) so a node with a forged/corrupted genesis (divergent team/treasury/network keys) cannot silently run. Fix in commit `8e9320c13`.
   - nettype-correct genesis build fixed for testnet/stagenet (commit `9a1583383`) — no more MAINNET hardcode in genesis creation.
-  - Remaining hazards: `tools/auto.py` hardcodes nettype=0 in `derive_wallet` (broken for --testnet — a workflow-tool issue only), and the founder spend key remains committed in `tools/auto.py` (see premine.md; user decision to defer rotation).
+  - `tools/auto.py` `derive_wallet` hardcoded nettype=0 — now honours `MEVACOIN_NETTYPE` env (0/1/2) in `do_network_fund`/`do_treasury` (commit `8e9320c13`).
+  - Remaining hazard: the founder spend key remains committed in `tools/auto.py` (see premine.md; user decision to defer rotation).
 - **NOT a hazard**: `foundation_vesting.h:67-69` signers are the **public** active keys (`2b4bc2ec.../5ffc6b4d.../590bedad...`), verified against `/root/mvc_mainnet_keys/signer_{0,1,2}.txt`. The corresponding private keys are NOT in the repo.
