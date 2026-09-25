@@ -30,6 +30,9 @@ import requests
 VERBOSE = os.environ.get("VERBOSE", "").lower() in ("1", "yes", "true", "on")
 
 # ── Configuration ─────────────────────────────────────────────────────────
+# Network type for deterministic treasury/network-fund key derivation:
+# 0=mainnet (default), 1=testnet, 2=stagenet. Override with MEVACOIN_NETTYPE.
+NETTYPE = int(os.environ.get("MEVACOIN_NETTYPE", "0"))
 DAEMON_URL = os.environ.get("MEVACOIND_URL", "http://82.165.218.56:18081")
 # Use a dedicated port so we don't conflict with pool wallet-rpc on 18083
 WALLET_URL = os.environ.get("WALLET_RPC_URL", "http://127.0.0.1:18087")
@@ -532,7 +535,7 @@ def do_network_fund(amount, dest_addr):
     print(f"{'='*60}")
 
     # Derive network fund keys
-    wallet_info = derive_wallet(DOMAIN_NETWORK, 0)
+    wallet_info = derive_wallet(DOMAIN_NETWORK, NETTYPE)
     print(f"  Network fund address: {wallet_info['address']}")
 
     if VERBOSE:
@@ -593,7 +596,7 @@ def do_treasury(amount, dest_addr):
     print(f"{'='*60}")
 
     # Derive treasury keys
-    wallet_info = derive_wallet(DOMAIN_TREASURY, 0)
+    wallet_info = derive_wallet(DOMAIN_TREASURY, NETTYPE)
     print(f"  Treasury address: {wallet_info['address']}")
 
     # Decode recipient address
