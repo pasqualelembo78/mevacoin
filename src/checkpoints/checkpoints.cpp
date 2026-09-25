@@ -209,14 +209,9 @@ namespace cryptonote
       return true;
     }
     
-    // MAINNET - Tutti i checkpoint di Monero sono stati rimossi
-    // Aggiungi qui i tuoi checkpoint personalizzati quando necessario
-    // Formato: ADD_CHECKPOINT2(height, "block_hash", "cumulative_difficulty");
-    //
-    // Esempio di come aggiungere checkpoint:
-    // ADD_CHECKPOINT2(1, "your_block_hash_here", "0x2");
-    // ADD_CHECKPOINT2(100, "your_block_hash_here", "0x35d14b");
-    
+    // MAINNET - Checkpoint del blocco genesis verificato
+    ADD_CHECKPOINT2(0, "33772d0925cf4853e0a421b376ad34608ea040fb68a24682bca75ceaad6807b7", "0x1");
+
     return true;
   }
 
