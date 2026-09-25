@@ -52,6 +52,7 @@ static void print_usage(const char* prog)
               << "  genkey                                          Generate random key pair\n"
               << "  genwallet [nettype]                             Generate full wallet (keys+address)\n"
               << "    nettype: 0=mainnet 1=testnet 2=stagenet (default 0)\n"
+              << "  wallet-from-spend <spend_sec_hex> [nettype]      Build wallet from existing spend key\n"
               << "  pubkey <privkey_hex>                            Derive public key from private\n"
               << "  viewkey <spend_priv_hex>                        Derive view private key from spend private\n"
               << "  decode <address>                                Decode address to spend+view keys\n"
@@ -118,14 +119,65 @@ int main(int argc, char* argv[])
         crypto::generate_keys(spend_pub, spend_sec);
 
         // Derive view private key from spend private key (matching wallet2 derivation)
+        // NOTE: must be reduced mod L, else secret_key_to_public_key (sc_check) fails
+        // and the resulting view_pub is garbage -> unspendable address.
         crypto::secret_key view_sec;
-        keccak((const uint8_t*)spend_sec.data, 32, (uint8_t*)view_sec.data, 32);
+        crypto::hash_to_scalar(spend_sec.data, sizeof(spend_sec), view_sec);
 
         // Compute view public key
         crypto::public_key view_pub;
         crypto::secret_key_to_public_key(view_sec, view_pub);
 
         // Build address: base58(prefix + spend_pub + view_pub)
+        std::string addr_bin;
+        addr_bin.append((const char*)spend_pub.data, sizeof(spend_pub));
+        addr_bin.append((const char*)view_pub.data, sizeof(view_pub));
+        std::string address = tools::base58::encode_addr(addr_prefix, addr_bin);
+
+        std::cout << "address:    " << address << std::endl;
+        std::cout << "spend_sec:  " << hex(spend_sec.data, 32) << std::endl;
+        std::cout << "view_sec:   " << hex(view_sec.data, 32) << std::endl;
+        std::cout << "spend_pub:  " << hex(spend_pub.data, 32) << std::endl;
+        std::cout << "view_pub:   " << hex(view_pub.data, 32) << std::endl;
+        return 0;
+    }
+
+    if (cmd == "wallet-from-spend")
+    {
+        if (argc < 3 || argc > 4)
+        {
+            std::cerr << "Usage: gov_crypto wallet-from-spend <spend_sec_hex> [nettype]\n";
+            return 1;
+        }
+        int nettype = 0;
+        if (argc == 4) nettype = atoi(argv[3]);
+
+        uint64_t addr_prefix;
+        switch (nettype)
+        {
+            case 0: addr_prefix = ::config::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 1: addr_prefix = ::config::testnet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            case 2: addr_prefix = ::config::stagenet::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX; break;
+            default: std::cerr << "Invalid nettype (0=mainnet, 1=testnet, 2=stagenet)\n"; return 1;
+        }
+
+        std::vector<uint8_t> sk_bin;
+        if (!from_hex(argv[2], sk_bin) || sk_bin.size() != 32) { std::cerr << "Invalid spend private key\n"; return 1; }
+
+        crypto::public_key spend_pub;
+        crypto::secret_key spend_sec;
+        memcpy(spend_sec.data, sk_bin.data(), 32);
+        if (!crypto::secret_key_to_public_key(spend_sec, spend_pub))
+        {
+            std::cerr << "Invalid spend private key (not reduced mod L)\n";
+            return 1;
+        }
+
+        crypto::secret_key view_sec;
+        crypto::hash_to_scalar(spend_sec.data, sizeof(spend_sec), view_sec);
+        crypto::public_key view_pub;
+        crypto::secret_key_to_public_key(view_sec, view_pub);
+
         std::string addr_bin;
         addr_bin.append((const char*)spend_pub.data, sizeof(spend_pub));
         addr_bin.append((const char*)view_pub.data, sizeof(view_pub));
@@ -166,7 +218,7 @@ int main(int argc, char* argv[])
         crypto::secret_key sk;
         memcpy(sk.data, sk_bin.data(), 32);
         crypto::secret_key view_sec;
-        keccak((const uint8_t*)sk.data, 32, (uint8_t*)view_sec.data, 32);
+        crypto::hash_to_scalar(sk.data, sizeof(sk), view_sec);
         std::cout << epee::string_tools::pod_to_hex(view_sec) << std::endl;
         return 0;
     }
