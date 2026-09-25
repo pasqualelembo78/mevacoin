@@ -7,7 +7,8 @@ Tools for constructing governance treasury and network fund spend transactions.
 ### `gov_crypto` — C++ crypto helper
 Compiled binary with libcncrypto + libcommon for Ed25519 operations.
 
-Commands: `sign`, `genkey`, `verify`, `pubkey`, `decode`
+Commands: `sign`, `genkey`, `verify`, `pubkey`, `decode`, `frost-keygen`,
+`frost-verify`, `frost-test`
 
 Build (from repo root):
 ```
@@ -30,6 +31,27 @@ g++ -std=c++17 -o tools/governance_spend/gov_crypto \
 
 ### `gov_spend.py` — Python orchestration script
 Wraps `gov_crypto` for higher-level operations. See `--help`.
+
+## FROST Proposer Ceremony (MevaTrust pool distribution)
+
+FROST (2-round threshold signature, t-of-n) is used to sign pool
+distribution txs. Ceremony keys are hardcoded in
+`src/cryptonote_core/mevatrust/frost_threshold.cpp`
+(`CEREMONY_SIGNER_KEYS` = 5 proposer pubkeys, `CEREMONY_GROUP_KEY` = group key).
+
+Regenerate + rotate (do this on ALL nodes atomically before activation):
+
+```
+./gov_crypto frost-keygen        # outputs 5 signer_pub + 5 signer_sec + group_public_key
+./gov_crypto frost-test <sec1> <sec2> <sec3>    # 3-of-5 signing self-test
+```
+
+- The 5 `signer_sec` (PRIVATE shares) must be provisioned to the 5 proposer
+  nodes out-of-band (e.g. `/root/.mevacoin/mevatrust/proposer_keys`), NOT
+  committed to the repo.
+- Update the 5 pubkeys + group key in `frost_threshold.cpp`, rebuild, redeploy.
+- On restart the node loads shares from `proposer_keys` dir; without them it
+  logs `[FROST] Proposer keys non trovate` and does NOT sign pool distributions.
 
 ## Governance Treasury Spend Flow
 
