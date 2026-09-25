@@ -58,18 +58,35 @@ DATA_DIR="/root/.mevacoin"
 echo ""
 echo -e "${CYAN}>>> [1/5] Individuazione binario mevacoind...${NC}"
 
+BUILD_DAEMON="/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_DAEMON="${PWD}/mevacoind"
+SCRIPT_DIR_DAEMON="${SCRIPT_DIR}/mevacoind"
+
 DAEMON=""
-if [ $# -ge 1 ] && [ -n "$1" ] && [ -f "$1" ] && [ -x "$1" ]; then
+if [ $# -ge 1 ] && [ -n "$1" ] && [ -f "$1" ]; then
     DAEMON="$1"
     echo -e "    ${GREEN}✅ Binario fornito esplicitamente:${NC} ${DAEMON}"
-elif [ -f "/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind" ]; then
-    DAEMON="/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind"
-    echo -e "    ${GREEN}✅ Binario trovato nella build locale:${NC} ${DAEMON}"
+elif [ -f "${BUILD_DAEMON}" ]; then
+    DAEMON="${BUILD_DAEMON}"
+    echo -e "    ${GREEN}✅ Binario trovato nella build originale:${NC} ${DAEMON}"
+elif [ -f "${LOCAL_DAEMON}" ]; then
+    DAEMON="${LOCAL_DAEMON}"
+    echo -e "    ${GREEN}✅ Binario trovato nella directory di avvio:${NC} ${DAEMON}"
+elif [ -f "${SCRIPT_DIR_DAEMON}" ]; then
+    DAEMON="${SCRIPT_DIR_DAEMON}"
+    echo -e "    ${GREEN}✅ Binario trovato nella directory dello script:${NC} ${DAEMON}"
 else
-    echo -e "    ${RED}❌ Nessun mevacoind trovato (né argomento né build locale).${NC}"
+    echo -e "    ${RED}❌ Nessun mevacoind trovato (né argomento né build né directory di avvio).${NC}"
     echo "       Copialo su questa macchina via scp da un nodo gia' compilato:"
     echo "         scp root@<nodo-origine>:/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind ."
     exit 1
+fi
+
+# Garantisce il bit di esecuzione (copie via scp/sftp spesso lo perdono)
+if [ ! -x "${DAEMON}" ]; then
+    chmod +x "${DAEMON}"
+    echo -e "    ${YELLOW}⚠️  Bit di esecuzione assente, impostato chmod +x${NC}"
 fi
 
 bin_size=$(du -h "${DAEMON}" | cut -f1)
