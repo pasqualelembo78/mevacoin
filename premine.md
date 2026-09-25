@@ -4,11 +4,11 @@
 
 Al genesis sono stati creati 3 output (1M MVC total):
 
-| Fondo          | MVC    | Atomic units         | Indirizzo (deterministico, nessuno ha la chiave) | Come si spende                          |
-|----------------|--------|----------------------|--------------------------------------------------|-----------------------------------------|
-| **Team Lock**  | 200.000 | 200000000000000      | Derivato da `mevacoin_team_lock`                 | Chiave privata del wallet fondatore. Bloccato 24 mesi (518.400 blocchi). |
-| **Treasury**   | 400.000 | 400000000000000      | Derivato da `mevacoin_governance`                | 2 firme su 3 signer governance in tx_extra. |
-| **Network**    | 400.000 | 400000000000000      | Derivato da `mevacoin_network_fund`              | Nessuna firma. Rate-limited: 10.000 MVC / 30gg. |
+| Fondo          | MVC    | Atomic units         | Indirizzo                                             | Come si spende                          |
+|----------------|--------|----------------------|-------------------------------------------------------|-----------------------------------------|
+| **Team Lock**  | 200.000 | 200000000000000      | `M5MxXAn9DPJfqU9DZBsuuV8f1kfnmnud6iGxtEKPeTFB9YC57RCXaFViMGf11joaAJ9yoXxF49b2C2mBoxdN8u6j1qxDcK2` (FOUNDATION_ADDRESS, wallet REALE) | Chiave privata del wallet fondatore (fuori repo). |
+| **Treasury**   | 400.000 | 400000000000000      | Deterministico da `mevacoin_governance` (NESSUNO ha la chiave) | 2 firme su 3 signer governance in tx_extra. |
+| **Network**    | 400.000 | 400000000000000      | Deterministico da `mevacoin_network_fund` (NESSUNO ha la chiave) | Nessuna firma. Rate-limited: 10.000 MVC / 30gg. |
 
 ---
 
@@ -21,13 +21,12 @@ Servono per firmare transazioni Treasury. Ci vogliono **2 firme su 3** per autor
 |               | Signer 0                                      | Signer 1                                      | Signer 2                                      |
 |---------------|-----------------------------------------------|-----------------------------------------------|-----------------------------------------------|
 | **Password**  | `pass_signer_0`                               | `pass_signer_1`                               | `pass_signer_2`                               |
-| **Indirizzo** | `MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc` | `MDdsyRtQeukfbfJouCU1sNEpX8fm9qjuDYfi1M7WNsUt8ASsWwzibAef9RVoCwuG4McMaChrjbdthLJN3zeSV8snPjXWHaE` | `M5hfHudn48aTGTAdqQ3AXfhoERnZ7wKNpDKy7G5yYXN2W8vyEqqEooAEy93mMLunAAjmmKpqgHVgEJCXjr5wRZP3SiciU2c` |
-| **Priv spend** | `6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402` | `a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c` | `90137ff7a5ea576d2fc39332e792d292823fc0c1f93f18bc549c4ced11be6c03` |
-| **Priv view**  | `7d33dacb480e6ccbbcb7e36a8aad170c71563af24335ff7b5b4bc914ed291601` | `018d92d7442dfc1058829c2d7948dc6ad9210368e22ebb848b20180dc567720d` | `1b9d06e6bf9bf51f748976c5035d698c6d90d75b85784791e5cb763c0e8cd00f` |
-| **Pub spend**  | `d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb` | `dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a` | `0e88576abcefeb9d095a9e4db59376f3e8eed036eae68949b2ce4253444493ae` |
-| **Pub view**   | `0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999` | `d2ef03909ecaefe40e29f668822abed35f36750f49c8d6736222bec5bfbecdc9` | `327811a721183553823883298d1e37ffb742f3b014158366d32a3e7c81c05ee3` |
-| **File wallet** | `test_wallets/signer_0`                      | `test_wallets/signer_1`                      | `test_wallets/signer_2`                      |
-| **File .keys**  | `test_wallets/signer_0.keys`                  | `test_wallets/signer_1.keys`                  | `test_wallets/signer_2.keys`                  |
+| **Indirizzo** | `M6nt4TRn2Rn28qqXQqk2zQ3cAQtd4Fv2ECebLbnKjr4jEUiUjBnTzr8ibVs45h5rtbYdAJqS695kUZTnDTqinbzARkvmbD7` | `M8nh1znTagMgB3X4ykxj9wRdPx4B2BhVtCkPCU1ZEBFG7ZhHvPzvtYuSyX98hbmuhzb4KYgWeUMMthsCYUKVhSus7jExWDc` | `M8XSNr9xaddAmzS3XzQSUUEhQHiNyyvQPeAL2VwnU89eFXtoD2R7VT3EKVppPenFwhUzM9YxaGC695JZi4DkMVKE5tmivR1` |
+| **Pub spend**  | `2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50` | `5ffc6b4dd5960eea337717fe4524f6933cff642eae114b463c8fe7763898eb27` | `590bedada0f2683a71eed813b121a551e2f0f4226c5b60de2b8a0dd052463956` |
+| **Pub view**   | `942b2b108f2145f8add1cb24ed2cf4bd107582678fd919c2136fb810dc9bd3db` | `3de711d40c673e9b4a8f6a69be0259cb9d6b4351708573f451a0f56f2a2afe3b` | `e28d65f10e86e64fa0ea9eb5cc33b4a755733b74f60e3e19b994391ffd1fa12b` |
+| **File wallet** | `/root/mvc_mainnet_keys/signer_0.txt` (fuori repo) | `/root/mvc_mainnet_keys/signer_1.txt` (fuori repo) | `/root/mvc_mainnet_keys/signer_2.txt` (fuori repo) |
+
+NOTA: le chiavi PRIVATE dei signer NON sono nel repository. Sono in `/root/mvc_mainnet_keys/signer_{0,1,2}.txt` (chmod 600). Le spend/view key mostrate in precedenti versioni di questo file erano la VECCHIA cerimonia e non sono piu' valide.
 
 ### Wallet Fondatore (Team Lock)
 
@@ -113,10 +112,10 @@ Il treasury ha 400.000 MVC. Ci vogliono 2 firme su 3 signer.
 
 ```bash
 cd /root/mevacoin/tools/governance_spend
-./gov_spend.py decode "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc"
+./gov_spend.py decode "M6nt4TRn2Rn28qqXQqk2zQ3cAQtd4Fv2ECebLbnKjr4jEUiUjBnTzr8ibVs45h5rtbYdAJqS695kUZTnDTqinbzARkvmbD7"
 # Output:
-#   Spend key: d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb
-#   View key:  0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999
+#   Spend key: 2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50
+#   View key:  942b2b108f2145f8add1cb24ed2cf4bd107582678fd919c2136fb810dc9bd3db
 ```
 
 ### Step 2: Creare il tx_extra con firme zero
@@ -124,16 +123,16 @@ cd /root/mevacoin/tools/governance_spend
 ```bash
 ./gov_spend.py treasury-zero \
   50000000000000 \
-  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc" \
-  "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb" \
-  "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a"
+  "M6nt4TRn2Rn28qqXQqk2zQ3cAQtd4Fv2ECebLbnKjr4jEUiUjBnTzr8ibVs45h5rtbYdAJqS695kUZTnDTqinbzARkvmbD7" \
+  "2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50" \
+  "5ffc6b4dd5960eea337717fe4524f6933cff642eae114b463c8fe7763898eb27"
 ```
 
 **Spiegazione parametri:**
 - `50000000000000` = 50.000 MVC (moltiplicare MVC * 10^9 per atomic units)
-- Indirizzo destinazione MD5VJc...
-- `d12e99...` = chiave pubblica signer 0 (quella che firmera')
-- `dfeb3f...` = chiave pubblica signer 1 (seconda firma)
+- Indirizzo destinazione M6nt4T...
+- `2b4bc2ec...` = chiave pubblica signer 0 (quella che firmera')
+- `5ffc6b4d...` = chiave pubblica signer 1 (seconda firma)
 
 **Output:**
 ```
@@ -183,25 +182,26 @@ cd /root/mevacoin/tools/governance_spend
 
 HASH="ab000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e"
 
+# Le chiavi private attive NON sono nel repo; leggerle da /root/mvc_mainnet_keys
 ./gov_spend.py sign "$HASH" \
-  "6c90f4fc20bde8dbe0eb2a4d8c9948174d5f0cdb85cccaf536752de2285c4402" \
-  "a6c9c2103d56ff0f4971f2c0705310cfc051d7fbd765d640c7ff618b1244d60c"
+  "$(grep -oP 'spend_sec: \\K[0-9a-f]{64}' /root/mvc_mainnet_keys/signer_0.txt)" \
+  "$(grep -oP 'spend_sec: \\K[0-9a-f]{64}' /root/mvc_mainnet_keys/signer_1.txt)"
 ```
 
 **Spiegazione:**
 - `$HASH` = il tx_prefix_hash della transazione
-- Prima chiave privata = signer 0
-- Seconda chiave privata = signer 1
+- Prima chiave privata = signer 0 (leggere da `/root/mvc_mainnet_keys/signer_0.txt`)
+- Seconda chiave privata = signer 1 (leggere da `/root/mvc_mainnet_keys/signer_1.txt`)
 
 **Output** (JSON con le firme):
 ```json
 [
   {
-    "signer_key": "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb",
+    "signer_key": "2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50",
     "sig": "9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06"
   },
   {
-    "signer_key": "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a",
+    "signer_key": "5ffc6b4dd5960eea337717fe4524f6933cff642eae114b463c8fe7763898eb27",
     "sig": "bafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e"
   }
 ]
@@ -214,19 +214,19 @@ cd /root/mevacoin/tools/governance_spend
 
 SIGS='[
   {
-    "signer_key": "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb",
+    "signer_key": "2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50",
     "sig": "9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06"
   },
   {
-    "signer_key": "dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312a",
+    "signer_key": "5ffc6b4dd5960eea337717fe4524f6933cff642eae114b463c8fe7763898eb27",
     "sig": "bafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e"
   }
 ]'
 
 ./gov_spend.py treasury-build \
   50000000000000 \
-  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc" \
-  "d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb" \
+  "M6nt4TRn2Rn28qqXQqk2zQ3cAQtd4Fv2ECebLbnKjr4jEUiUjBnTzr8ibVs45h5rtbYdAJqS695kUZTnDTqinbzARkvmbD7" \
+  "2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50" \
   "$SIGS"
 ```
 
@@ -236,17 +236,17 @@ SIGS='[
 
 ```bash
 ./gov_spend.py verify \
-  "b080a0e5b9c29101d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e399902d12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb9fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc06dfeb3f3ce8c3efe6c28b5670d365d1529ec6032dd2aa3cbd53a8595be9b7312abafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e" \
+  "b080a0e5b9c291012b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50942b2b108f2145f8add1cb24ed2cf4bd107582678fd919c2136fb810dc9bd3db022b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c509fdc646238b5a42354e061bfa233f047ba0ab2346cc85626755a21975be05901c9d08a8d8cbd34569c46aa228442e3a29a36676120114a968fdade3b4155fc065ffc6b4dd5960eea337717fe4524f6933cff642eae114b463c8fe7763898eb27bafac803de30c97b36a9b4f73ee7c3d80d6d8fa5aca3be4ff2bde7926105b20b8b5531cf6731b05d4befc67659d6a93b83140405007d6d56f58521327a53bb0e" \
   "$HASH"
 
 # Output:
 #   Tag:      0xB0
 #   Amount:   50000000000000
-#   To:       spend=d12e990816a51475...
-#             view=0aca48dbce5a0d3a...
+#   To:       spend=2b4bc2ec2ba0c906...
+#             view=942b2b108f2145f8...
 #   Signers:  2
-#     #0: key=d12e990816a51475... VALID
-#     #1: key=dfeb3f3ce8c3efe6... VALID
+#     #0: key=2b4bc2ec2ba0c906... VALID
+#     #1: key=5ffc6b4dd5960eea... VALID
 ```
 
 Entrambe le firme sono VALIDE.
@@ -270,7 +270,7 @@ cd /root/mevacoin/tools/governance_spend
 
 ./gov_spend.py network \
   5000000000000 \
-  "MD5VJcujdh5LhN5tZ3W4c25afTsvWKZh3NVGDtSD1N7iYHYW96nHbFiAjCPmK3KcRVENRFA6NXbhdXXTCyBWBXuSJMUjfLc"
+  "M6nt4TRn2Rn28qqXQqk2zQ3cAQtd4Fv2ECebLbnKjr4jEUiUjBnTzr8ibVs45h5rtbYdAJqS695kUZTnDTqinbzARkvmbD7"
 ```
 
 **Spiegazione:**
@@ -279,7 +279,7 @@ cd /root/mevacoin/tools/governance_spend
 
 **Output:**
 ```
-c080a094a58d1dd12e990816a51475c1151ff04a4dc31b62693fbf2bf2d28076cda44e784699bb0aca48dbce5a0d3a2835b0879574a84fedff620f76705cb67f4b1f8f229e3999
+c080a094a58d1d2b4bc2ec2ba0c906c97630e6bc00bd0f94ec15f85287db45a3c169c3ccf38c50942b2b108f2145f8add1cb24ed2cf4bd107582678fd919c2136fb810dc9bd3db
 ```
 
 Questo hex va copiato nel campo `extra` della transazione.
@@ -287,8 +287,8 @@ Questo hex va copiato nel campo `extra` della transazione.
 Il blob si decompone cosi':
 - `c0` = tag 0xC0 (Network Fund Transfer)
 - `80a094a58d1d` = 5.000 MVC in varint
-- `d12e99...` = recipient spend key (32 byte)
-- `0aca48...` = recipient view key (32 byte)
+- `2b4bc2ec...` = recipient spend key (32 byte)
+- `942b2b10...` = recipient view key (32 byte)
 
 ### Cosa controlla il nodo quando arriva la transazione
 
@@ -303,15 +303,11 @@ Il blob si decompone cosi':
 
 Obiettivo: spostare il Team Lock (200.000 MVC) dopo 24 mesi.
 
-Il Team Lock e' l'unico output del premine che HA UNA CHIAVE PRIVATA. Chi ha generato la genesis transaction ha la chiave privata che controlla l'output.
+Il Team Lock e' l'unico output del premine che HA UNA CHIAVE PRIVATA: va all'indirizzo `FOUNDATION_ADDRESS` (wallet REALE, non deterministico). La chiave privata del wallet fondatore e' tenuta fuori dal repository.
 
 ### Quando si puo' spendere
 
-```
-TEAM_LOCK_BLOCKS = 518.400 blocchi ≈ 24 mesi (a 120 sec/blocco)
-```
-
-Prima di questo altezza, qualsiasi tentativo di spendere viene rifiutato da `check_premine_spend()`.
+ATTENZIONE: il blocco "24 mesi" (TEAM_LOCK_BLOCKS = 518.400) NON e' applicato dal consenso. L'output team viene trattato come un normale output coinbase del genesis: e' spendibile dopo l'unlock window standard (CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW = 60 blocchi). Il verso vesting a 24 mesi e' una responsabilita' della fondazione, non un vincolo di rete.
 
 ### Come costruire la transazione
 
@@ -321,7 +317,7 @@ Prima di questo altezza, qualsiasi tentativo di spendere viene rifiutato da `che
 4. Firmare la transazione con la chiave privata del wallet
 5. Broadcast
 
-Niente tx_extra speciale, niente governance. E' una transazione Monero standard.
+Niente tx_extra speciale, niente governance. E' una transazione Monero standard. NOTA: `check_premine_spend()` NON blocca la spesa dell'output team (controlla solo treasury 0xB0/0xC0); la sicurezza dell'output team dipende esclusivamente dalla custodia della chiave privata del wallet fondatore.
 
 ### Se si vuole forzare manualmente
 
@@ -342,34 +338,36 @@ Niente tx_extra speciale, niente governance. E' una transazione Monero standard.
 
 | Aspetto | Team Lock | Treasury | Network Fund |
 |---------|-----------|----------|--------------|
-| **Chiave privata** | Si (wallet fondatore) | NO (indirizzo deterministico) | NO (indirizzo deterministico) |
+| **Chiave privata** | Si (wallet fondatore, fuori repo) | NO (indirizzo deterministico) | NO (indirizzo deterministico) |
 | **Firme governance** | No | Si, 2/3 signer | No |
 | **tx_extra speciale** | No | Tag 0xB0 + amount + destinazione + firme | Tag 0xC0 + amount + destinazione |
-| **Limite** | Bloccato 24 mesi | Fino a 400.000 MVC totali | 10.000 MVC / 30gg |
+| **Limite** | Nessun lock consensuale (vesting 24 mesi = responsabilita' fondazione) | Fino a 400.000 MVC totali | 10.000 MVC / 30gg |
 | **Strumento** | mevacoin-wallet-rpc normale | `gov_spend.py` | `gov_spend.py` |
 
 ---
 
 ## Test Wallets (solo sviluppo!)
 
-Tutti i file wallet sono in `/root/mevacoin/test_wallets/`:
+ATTENZIONE: le chiavi dei signer governance e del fondatore NON sono nel repository.
+Le uniche copie valide (cerimonia attuale) stanno in `/root/mvc_mainnet_keys/`:
 
 | File | Descrizione |
 |------|-------------|
-| `signer_0` / `signer_0.keys` | Wallet signer 0 |
-| `signer_1` / `signer_1.keys` | Wallet signer 1 |
-| `signer_2` / `signer_2.keys` | Wallet signer 2 |
-| `signer_0.json` | JSON per generare il wallet (mevacoin-wallet-rpc --generate-from-json) |
-| `signer_1.json` | ... |
-| `signer_2.json` | ... |
-| `wallet-keys.txt` | Tabella completa con tutte le chiavi |
-| `wallet.txt` | Copia di wallet-keys.txt |
+| `signer_0.txt` | Wallet signer 0 (fuori repo, chmod 600) |
+| `signer_1.txt` | Wallet signer 1 (fuori repo, chmod 600) |
+| `signer_2.txt` | Wallet signer 2 (fuori repo, chmod 600) |
 
-### Aprire un wallet con mevacoin-wallet-rpc
+I file `wallet/signer_*.keys` e `wallet/*.json` che un tempo esistevano nel repo sono stati
+rimossi dallo storico git (contenevano chiavi della vecchia cerimonia, non piu' valide).
+
+### Aprire un wallet signer con mevacoin-wallet-rpc
+
+I wallet signer vanno creati dai valori in `/root/mvc_mainnet_keys/signer_{0,1,2}.txt`
+tramite `--generate-from-json` o `--generate-from-view-key`, poi:
 
 ```bash
 /root/mevacoin/build/Linux/mevacoin/release/bin/mevacoin-wallet-rpc \
-  --wallet-file /root/mevacoin/test_wallets/signer_0 \
+  --wallet-file /root/mvc_mainnet_keys/signer_0 \
   --password pass_signer_0 \
   --rpc-bind-port 12345 \
   --daemon-address 127.0.0.1:18081
