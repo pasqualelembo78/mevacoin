@@ -598,13 +598,39 @@ std::vector<NodeCoinbaseReward> MevaTrustManager::get_coinbase_rewards(
   //
   // La firma FROST resta a zero perche' nessuna regola di consenso la guarda, e
   // il campo resta nel formato per non dover riprodurre la genesi del blob.
+  //
+  // Il manifesto si scrive dagli importi che sono gia' nella lista, NON
+  // passandoli a construct_pool_distribution_extra().
+  //
+  // construct_pool_distribution_extra() fa una terza divisione: prende
+  // total_pool_balance e lo divide sugli importi ricevuti, con l'ultimo che
+  // assorbe il resto, cosi' la somma torna esattamente al saldo. Sembra
+  // equivalente a compute_expected_payouts() e non lo e': diversa base (il saldo
+  // del pool contro il 3% del blocco), diverso arrotondamento, e un resto che da
+  // una parte finisce all'ultimo nodo e dall'altra resta nel pool.
+  //
+  // Il risultato sarebbe un manifesto con importi diversi da quelli che il
+  // validatore ricalcola, e il blocco del miner onesto respinto al primo confine
+  // di periodo. Non e' un dettaglio: e' il miner e il validatore che parlano due
+  // lingue diverse pur scrivendo la stessa frase.
+  //
+  // Qui si scrive quello che si e' deciso, quindi gli importi del manifesto sono
+  // per costruzione gli stessi che il consenso ha ricalcolato. Il saldo dichiarato
+  // resta nel formato per non dover riprodurre la genesi del blob, ed e' puramente
+  // informativo: la base della distribuzione e' il 3% del blocco, non il saldo.
   const uint64_t pool_balance = compute_pool_balance_from_chain(height);
-  mevatrust::frost::FrostSignature zero_sig;
-  memset(&zero_sig, 0, sizeof(zero_sig));
+  cryptonote::tx_extra_mevatrust_pool_distribution dist;
+  dist.height               = height;
+  dist.period               = static_cast<uint32_t>(height / m_period_length);
+  dist.total_pool_balance   = pool_balance;
+  for (const auto& r : rewards) {
+    dist.outputs.emplace_back(r.address.m_spend_public_key, r.amount);
+    dist.total_distributed += r.amount;
+  }
+  memset(&dist.frost_R, 0, sizeof(dist.frost_R));
+  dist.frost_z = crypto::ec_scalar{};
   std::vector<uint8_t> dist_extra;
-  if (!mevatrust::construct_pool_distribution_extra(height,
-                                        static_cast<uint32_t>(height / m_period_length),
-                                        pool_balance, rewards, zero_sig, dist_extra)) {
+  if (!mevatrust::build_mevatrust_pool_distribution_extra(dist, dist_extra)) {
     MERROR("[MevaTrust] costruzione manifesto 0xAA fallita h=" << height);
     return {};
   }

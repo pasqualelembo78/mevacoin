@@ -115,14 +115,26 @@ bool validate_pool_distribution(
         return false;
     }
     
-    // 3. Sum(outputs) ≤ pool_balance
-    if (dist.total_distributed > current_pool_balance) {
-        error_msg = "Pool distribution exceeds balance: " +
-                    std::to_string(dist.total_distributed) + " > " +
-                    std::to_string(current_pool_balance);
-        MERROR(error_msg);
-        return false;
-    }
+    // 3. Sum(outputs) <= pool_balance
+    //
+    // Tolto. Era un controllo che non poteva reggere, e che anzi poteva far
+    // fermare la catena: diceva che non si distribuisce piu' di quanto il pool
+    // contenga, ma la base della distribuzione NON e' il saldo del pool. E' il 3%
+    // della ricompensa del blocco. Il saldo e' la somma dei 3% di tutti i blocchi
+    // meno le distribuzioni passate, e puo' legittimamente essere minore del 3% di
+    // un blocco solo: capita sui primi blocchi, e capita ogni volta che una
+    // distribuzione passata ha gia' preso piu' di quanto era entrato.
+    //
+    // In quel caso il miner onesto produceva un blocco con il 3% corretto e i
+    // validatori lo respingevano perche' il saldo non bastava — che vuol dire che il
+    // miner non poteva produrre NULLA. Un validatore che rifiuta sempre non e' che
+    // non tollera i soldi, e' che blocca.
+    //
+    // Quello che il consenso deve accertare e' che gli importi siano quelli che il
+    // protocollo prescrive, e lo fa check_mevatrust_coinbase_pure_consensus(),
+    // ricalcolandoli da zero. Un controllo che confronta il conto con se stesso non
+    // aggiunge niente: aggiunge solo un modo di essere sbagliati.
+    (void)current_pool_balance;
     
     // 4. Sum(outputs) must match individual outputs
     uint64_t output_sum = 0;

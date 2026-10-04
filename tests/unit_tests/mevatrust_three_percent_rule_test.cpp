@@ -46,6 +46,7 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include <sys/stat.h>
 
 #include "crypto/crypto.h"
@@ -874,6 +875,126 @@ TEST_F(RuleFixture, the_output_rule_starts_at_the_fork_and_not_before)
     EXPECT_LT(HF_VERSION_MEVATRUST_VALIDATION, HF_VERSION_MEVATRUST_RULE_V2)
         << "l'ordine dei due HF e' invertito: la regola vecchia non puo' venire "
            "dopo quella nuova";
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 12 - LA COINBASE DEL VERO MINER, CONTROLLATA DAL VERO VALIDATORE.
+//
+// Fin qui i test costruivano la coinbase con un helper scritto a mano, e il
+// validatore era quello vero. Funzionavano, ma non rispondevano alla domanda che
+// conta di piu': se il miner produce e il validatore accetta.
+//
+// Sono due funzioni diverse in due file diversi, e nessun test le metteva insieme.
+// Diventano cosi' facili che il costruttore emetta un output nella forma A e il
+// validatore si aspetti la forma B: i test del validatore passano (perche'
+// costruiscono la forma B a mano), i test del costruttore passano (perche'
+// controllano solo le somme), e la catena si ferma al primo blocco vero.
+//
+// Qui il blocco lo costruisce construct_miner_tx_with_mevatrust() — quella vera,
+// con la sua chiave tx, i suoi output derivati, il suo ordine — e lo giudica
+// check_mevatrust_coinbase_pure_consensus(). Se i due non concordano, il miner
+// onesto produce blocchi che i validatori rifiutano, e la rete si ferma al primo
+// confine di periodo.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
+{
+    const uint64_t height = 240;
+    const uint64_t reward = kBlockReward;
+    const uint64_t budget = node_budget_of(reward);
+
+    m_wallet["a"] = addr_of(fresh_key());
+    m_wallet["b"] = addr_of(fresh_key());
+    add_node("a");
+    add_node("b");
+
+    const auto expected = expected_at(height);
+    ASSERT_FALSE(expected.empty());
+
+    // Le quote che il miner riceve dal consenso: la stessa lista che il validatore
+    // ricalcolera'. Nessuna scorciatoia: e' l'interfaccia reale.
+    std::vector<NodeCoinbaseReward> node_rewards;
+    node_rewards.reserve(expected.size());
+    uint64_t node_total = 0;
+    for (const auto& e : expected) {
+        NodeCoinbaseReward ncr{};
+        ncr.address = e.address;
+        ncr.amount  = e.amount;
+        node_rewards.push_back(ncr);
+        node_total += e.amount;
+    }
+    ASSERT_LT(node_total, reward) << "le quote non ci stanno nel blocco";
+
+    m_wallet["miner"] = addr_of(fresh_key());
+
+    // ── Il miner chiede le quote al consenso ────────────────────────────────
+    //
+    // L'ordine non e' decorativo e replica esattamente create_block_template():
+    // prima le quote e il manifesto, poi la coinbase che li contiene. E' il punto
+    // del primo refactor — il miner non calcola nulla, chiede.
+    uint64_t miner_out = 0;
+    const auto claimed = m_manager->get_coinbase_rewards(height, reward, miner_out);
+    ASSERT_EQ(claimed.size(), node_rewards.size());
+    for (size_t i = 0; i < claimed.size(); ++i)
+        ASSERT_EQ(claimed[i].amount, node_rewards[i].amount);
+
+    const std::vector<uint8_t> manifest = m_manager->consume_pending_pool_distribution_extra();
+    ASSERT_FALSE(manifest.empty())
+        << "nessun manifesto 0xAA: il blocco non dichiarerebbe il 3% e il validatore "
+           "lo respingerebbe per motivi che sembrerebbero casuali";
+
+    // ── Il miner vero costruisce ────────────────────────────────────────────
+    transaction coinbase;
+    const bool built = construct_miner_tx_with_mevatrust(
+        height, 500, /*already_generated_coins=*/1, /*current_block_weight=*/0,
+        reward, m_wallet["miner"], claimed, coinbase,
+        /*extra_nonce=*/blobdata(), /*max_outs=*/999,
+        HF_VERSION_MEVATRUST_RULE_V2, manifest,
+        /*custom_unlock_window=*/0, MAINNET, /*desy_additional_reward=*/0);
+    ASSERT_TRUE(built) << "construct_miner_tx_with_mevatrust ha fallito";
+    for (size_t i = 0; i < claimed.size(); ++i)
+        ASSERT_EQ(claimed[i].amount, node_rewards[i].amount);
+
+    // ── Il validatore vero giudica ──────────────────────────────────────────
+    std::string err;
+    const bool ok = check_mevatrust_coinbase_pure_consensus(
+        coinbase, height, reward, HF_VERSION_MEVATRUST_RULE_V2, err);
+    EXPECT_TRUE(ok)
+        << "il miner ha costruito un blocco che il validatore rifiuta: la catena "
+           "si fermerebbe al primo confine di periodo. Motivo: " << err;
+
+    // E il caso furto, sullo stesso blocco: si cambia solo la chiave-output del
+    // nodo, lasciando il manifesto intatto. Il miner non puo' produrre questo
+    // blocco perche' costruisce gli output dai suoi stessi indirizzi, ma un
+    // blocco cosi' puo' arrivare dalla rete, ed e' quello che il consenso deve
+    // respingere.
+    transaction stolen = coinbase;
+    bool diverted = false;
+    //
+    // txout_to_key::key e' const: non si puo' scriverci dentro. Si ricostruisce
+    // l'output da zero con la chiave del miner, che e' quello che farebbe un
+    // attaccante vero: non modifica un output, ne costruisce uno diverso.
+    for (auto& vout : stolen.vout) {
+        const auto* tk = boost::get<txout_to_key>(&vout.target);
+        if (!tk) continue;
+        if (vout.amount == claimed[0].amount &&
+            memcmp(&tk->key, &claimed[0].address.m_spend_public_key,
+                   sizeof(crypto::public_key)) == 0) {
+            tx_out replacement;
+            set_tx_out(vout.amount, m_wallet["miner"].m_spend_public_key,
+                       false, crypto::view_tag{}, replacement);
+            vout = replacement;
+            diverted = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(diverted)
+        << "non ho trovato l'output del nodo da deviare: il test non proverebbe niente";
+
+    std::string err2;
+    EXPECT_FALSE(check_mevatrust_coinbase_pure_consensus(
+        stolen, height, reward, HF_VERSION_MEVATRUST_RULE_V2, err2))
+        << "il 3% e' stato deviato al miner e il blocco e' passato";
 }
 
 } // namespace
