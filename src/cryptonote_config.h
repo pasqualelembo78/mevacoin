@@ -219,6 +219,21 @@
 #define HF_VERSION_MEVATRUST              13  // Participation Incentive System (badge+rewards+PoA, v13 dal blocco 13)
 #define HF_VERSION_EARLY_COINBASE_UNLOCK  16  // Early coinbase unlock for elite miners and new wallets
 
+// La regola del 3% come consensus rule vera e propria.
+//
+// La separazione da HF_VERSION_MEVATRUST (13) non e' pignoleria di versioning. La
+// regola v2 cambia il formato degli output ai nodi: da stealth a piatto sulla chiave
+// pubblica registrata. Un blocco costruito con la regola vecchia NON passa la
+// verifica degli output, e uno costruito con la nuova non passa i controlli della
+// vecchia. Sono due regole incompatibili, quindi devono stare in due epoche
+// diverse.
+//
+// Senza questo gate la regola nuova sarebbe valida retroattivamente: dal primo
+// blocco della catena, e ogni blocco gia' prodotto con il metodo vecchio
+// diventerebbe invalido. Un nodo che riavvia su una catena lunga si troverebbe a
+// rifiutare l'intera storia, e non per colpa di nessuno.
+#define HF_VERSION_MEVATRUST_RULE_V2      17
+
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2
 

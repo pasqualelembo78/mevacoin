@@ -37,6 +37,7 @@
 
 #include "cryptonote_core/mevatrust/mevatrust_coinbase_validator.h"
 #include "cryptonote_core/mevatrust/mevatrust_consensus.h"
+#include "cryptonote_config.h"
 #include "cryptonote_core/mevatrust/mevatrust_manager.h"
 #include "cryptonote_core/mevatrust/reward_distributor.h"
 #include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
@@ -293,7 +294,7 @@ Verdict judge(const transaction& tx, uint64_t height) {
     Verdict v;
     std::string err;
     v.accepted = check_mevatrust_coinbase_pure_consensus(
-        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, err);
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, err);
     v.error = err;
     return v;
 }
@@ -807,6 +808,72 @@ TEST_F(RuleFixture, honest_manifest_but_the_money_goes_to_the_miner_is_rejected)
         << "il rifiuto deve nominare il problema vero (i soldi non sono dove il "
            "protocollo prescrive), non il manifesto, che e' corretto"
         << " (messaggio ricevuto: " << v.error << ")";
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 11 - IL CONFINE DEL FORK.
+//
+// Un test che asserisce che un attacco riesce sembra il test sbagliato da scrivere.
+// Qui e' il test giusto, e vale la pena capire perche'.
+//
+// La regola v2 cambia il formato degli output ai nodi: da stealth a piatto sulla
+// chiave pubblica registrata. Le due regole sono incompatibili, quindi stanno in
+// due epoche diverse (HF_VERSION_MEVATRUST_RULE_V2). I blocchi prodotti prima del
+// fork sono costruiti con il metodo vecchio e non devono essere giudicati con la
+// regola nuova: se lo fossero, ogni blocco gia' in catena diventerebbe invalido e
+// un nodo che riavvia si troverebbe a rifiutare la propria storia.
+//
+// Quindi questo test fissa una cosa che sembra brutta e che e' giusta: il 3% dei
+// blocchi gia' prodotti non aveva il vincolo sugli output. Non e' una concessione,
+// e' il motivo per cui la catena esistente resta valida. La protezione vale da qui
+// in avanti.
+//
+// Se questo test comincia a fallire, il fork e' stato spostato o tolto senza volerlo,
+// e i blocchi vecchi vengono giudicati con regole che non gli appartengono.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_F(RuleFixture, the_output_rule_starts_at_the_fork_and_not_before)
+{
+    const uint64_t height = 240;
+    const uint64_t budget = node_budget_of(kBlockReward);
+
+    m_wallet["a"] = addr_of(fresh_key());
+    add_node("a");
+    const auto expected = expected_at(height);
+    ASSERT_FALSE(expected.empty());
+
+    const account_public_address thief = addr_of(fresh_key());
+    ASSERT_TRUE(memcmp(&thief.m_spend_public_key,
+                       &expected[0].address.m_spend_public_key,
+                       sizeof(crypto::public_key)) != 0);
+    std::vector<crypto::public_key> thief_keys;
+    thief_keys.reserve(expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        thief_keys.push_back(thief.m_spend_public_key);
+
+    transaction tx = build_coinbase(kBlockReward - budget, expected, thief_keys);
+    tx.extra = build_manifest(expected, height);
+
+    // PRIMA del fork: il vincolo sugli output non esisteva e non viene inventato
+    // adesso. Il manifesto e' comunque verificato, quindi non e' che il 3% fosse
+    // libero: era vincolato alla destinazione dichiarata e non a quella effettiva.
+    std::string err;
+    const bool pre_fork = check_mevatrust_coinbase_pure_consensus(
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, err);
+    EXPECT_TRUE(pre_fork)
+        << "la regola e' stata applicata retroattivamente ai blocchi pre-fork: "
+           "un nodo che riavvia su una catena lunga rifiuterebbe la propria storia";
+
+    // DAAL fork: la stessa identica forma di blocco viene respinta.
+    std::string err2;
+    const bool post_fork = check_mevatrust_coinbase_pure_consensus(
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, err2);
+    EXPECT_FALSE(post_fork)
+        << "la regola non morde dopo il fork: il buco del punto 6 e' di nuovo aperto";
+
+    EXPECT_LT(HF_VERSION_MEVATRUST_VALIDATION, HF_VERSION_MEVATRUST_RULE_V2)
+        << "l'ordine dei due HF e' invertito: la regola vecchia non puo' venire "
+           "dopo quella nuova";
 }
 
 } // namespace

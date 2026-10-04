@@ -858,11 +858,24 @@ bool construct_miner_tx_with_mevatrust(
   //
   // Il nodo spende l'output con la propria spend_priv, che ha gia': e' la chiave
   // con cui si e' registrato.
+  // Sotto V2 si torna allo schema stealth: non perche' sia migliore, ma perche' i
+  // blocchi delle epoche precedenti sono costruiti cosi' e la loro validazione non
+  // puo' dipendere da una regola che non valeva quando sono stati prodotti.
+  const bool bound_outputs = (hard_fork_version >= HF_VERSION_MEVATRUST_RULE_V2);
+
   for (const auto& ncr : node_rewards) {
     if (!ncr.amount) continue;
     summary += ncr.amount;
     tx_out out;
-    cryptonote::set_tx_out(ncr.amount, ncr.address.m_spend_public_key, false, crypto::view_tag{}, out);
+    if (bound_outputs) {
+      cryptonote::set_tx_out(ncr.amount, ncr.address.m_spend_public_key, false, crypto::view_tag{}, out);
+    } else {
+      crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
+      CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(ncr.address.m_view_public_key, txkey.sec, deriv), false, "node deriv");
+      CHECK_AND_ASSERT_MES(crypto::derive_public_key(deriv, out_index, ncr.address.m_spend_public_key, eph_pub), false, "node epk");
+      crypto::view_tag vt; if (use_view_tags) crypto::derive_view_tag(deriv, out_index, vt);
+      cryptonote::set_tx_out(ncr.amount, eph_pub, use_view_tags, vt, out);
+    }
     tx.vout.push_back(out); out_index++;
   }
 
@@ -876,7 +889,15 @@ bool construct_miner_tx_with_mevatrust(
     account_public_address pool_addr = mevatrust::get_pool_address(nettype);
     summary += pool_amount;
     tx_out out;
-    cryptonote::set_tx_out(pool_amount, pool_addr.m_spend_public_key, false, crypto::view_tag{}, out);
+    if (bound_outputs) {
+      cryptonote::set_tx_out(pool_amount, pool_addr.m_spend_public_key, false, crypto::view_tag{}, out);
+    } else {
+      crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
+      CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(pool_addr.m_view_public_key, txkey.sec, deriv), false, "pool deriv");
+      CHECK_AND_ASSERT_MES(crypto::derive_public_key(deriv, out_index, pool_addr.m_spend_public_key, eph_pub), false, "pool epk");
+      crypto::view_tag vt; if (use_view_tags) crypto::derive_view_tag(deriv, out_index, vt);
+      cryptonote::set_tx_out(pool_amount, eph_pub, use_view_tags, vt, out);
+    }
     tx.vout.push_back(out); out_index++;
   }
 

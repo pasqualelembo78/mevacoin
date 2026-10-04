@@ -148,9 +148,13 @@ bool check_mevatrust_coinbase_pure_consensus(
   const transaction& miner_tx,
   uint64_t           height,
   uint64_t           total_reward,
-  uint8_t            /*hf_version*/,
+  uint8_t            hf_version,
   std::string&       error_msg)
 {
+  // Sotto V2 non c'e' il vincolo sugli output: gli output ai nodi erano stealth e
+  // non verificabili da terzi. Applicare il controllo ai blocchi di epoche
+  // precedenti li renderebbe invalidi retroattivamente.
+  const bool outputs_are_bound = (hf_version >= HF_VERSION_MEVATRUST_RULE_V2);
   error_msg.clear();
 
   auto* pm = mevatrust::get_manager();
@@ -227,7 +231,7 @@ bool check_mevatrust_coinbase_pure_consensus(
   // Il miner non puo' aggirarlo: gli servirebbe una chiave-output che sia insieme
   // spendibile da lui e identica a quella del nodo previsto, e un'equazione del
   // genere non ha soluzioni da scegliere.
-  {
+  if (outputs_are_bound) {
     std::string missing;
     bool all_present = true;
     for (const auto& e : expected) {
