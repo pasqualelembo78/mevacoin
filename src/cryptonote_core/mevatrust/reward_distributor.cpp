@@ -13,6 +13,7 @@
 //            vengono importati e rinominati *.migrated.
 
 #include "reward_distributor.h"
+#include "mevatrust_consensus.h"
 #include "mevatrust_lmdb.h"
 #include "mevatrust_engine.h"
 #include "misc_log_ex.h"
@@ -66,8 +67,9 @@ using namespace mevatrust;
 RewardDistributor::RewardDistributor(const std::string& db_path)
     : m_db_path(db_path), m_pool_balance(0), m_total_distributed(0),
       m_last_distribution_height(0), m_distribution_count(0),
-      m_distribution_period(240), m_maturation_blocks(10),
-      m_pool_fraction(3), m_min_score_for_reward(0.5f)
+      m_distribution_period(mevatrust::consensus::DISTRIBUTION_PERIOD_BLOCKS), m_maturation_blocks(10),
+      m_pool_fraction(mevatrust::consensus::NODE_REWARD_PERCENT),
+      m_min_score_for_reward(mevatrust::consensus::MIN_SCORE_FOR_REWARD)
 {
     mkdir(m_db_path.c_str(), 0755);
     try {
@@ -184,6 +186,66 @@ bool RewardDistributor::remove_welcome_bonus(const crypto::hash& nid) {
     } catch(...) {}
     return false;
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// peek_welcome_bonuses — gli stessi bonus, senza che nessuno se li prenda
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Questa funzione esiste perche' process_welcome_bonuses() cancella quello che
+// restituisce, e quel comportamento e' giusto nel suo contesto e disastroso in un
+// altro.
+//
+// Nel suo contesto: un miner chiama process_welcome_bonuses(), costruisce il
+// blocco con quei bonus dentro, e segna i bonus come pagati. Chiamarlo due volte
+// sarebbe un bug del miner, e perderebbe il doppio pagamento.
+//
+// Nel contesto del consenso: il validatore deve rispondere alla domanda "da questo
+// blocco ci si aspetta davvero questo?" ogni volta che rivalida, e quelle volte
+// non sono una: sono una per ogni blocco riorganizzato, e i riorg capitano. Se il
+// validatore consumasse, la prima risposta sarebbe giusta e la seconda no, sullo
+// stesso blocco.
+//
+// Sul nodo che mina i due percorsi sono in sequenza, e non è una coincidenza:
+// costruisci il blocco (e il bonus viene incassato), poi valuti lo stesso blocco.
+// Se il validatore consumasse a sua volta, si troverebbe a respingere il blocco
+// che ha appena prodotto lui, con l'errore piu' criptico del registro: "nessun nodo
+// eleggibile", mentre un secondo prima ce n'era uno. La catena si ferma al primo
+// bonus che matura.
+//
+// Per questo peek non scrive: sola lettura, e stessi campi, cosi' le due liste
+// sono confrontabili voce per voce senza dover riprodurre la logica due volte.
+std::vector<PendingCoinbaseOutput> RewardDistributor::peek_welcome_bonuses(uint64_t current_height) const {
+    std::vector<PendingCoinbaseOutput> outputs;
+    if (!m_env) return outputs;
+    MDB_txn* txn = nullptr;
+    try { txn = MevaTrustLMDB::begin_read(m_env); } catch(...) { return outputs; }
+    if (!txn) return outputs;
+    MDB_cursor* cur = nullptr;
+    if (mdb_cursor_open(txn, m_dbi_welcome, &cur) != 0) { mdb_txn_abort(txn); return outputs; }
+
+    MDB_val k, v;
+    while (mdb_cursor_get(cur, &k, &v, MDB_NEXT) == 0) {
+        if (k.mv_size != 32 || v.mv_size < 16) continue;
+        crypto::hash nid; memcpy(nid.data, k.mv_data, 32);
+        uint64_t amount, mat_height;
+        memcpy(&amount, v.mv_data, 8);
+        memcpy(&mat_height, (const uint8_t*)v.mv_data+8, 8);
+        if (current_height > 0 && mat_height > current_height) continue;
+
+        PendingCoinbaseOutput pco;
+        pco.node_id_str    = epee::string_tools::pod_to_hex(nid);
+        pco.wallet_address = "";
+        pco.amount         = amount;
+        pco.score          = 1.0f;
+        // Come in process_welcome_bonuses(): il peso e' un punteggio, non un
+        // importo. Il campo wallet_address resta vuoto e viene risolto dal
+        // registro in compute_expected_payouts().
+        outputs.push_back(std::move(pco));
+    }
+    mdb_cursor_close(cur);
+    mdb_txn_abort(txn);   // lettura: abort e' cio' che vuol dire "non scrivo niente"
+    return outputs;
+}
+
 std::vector<PendingCoinbaseOutput> RewardDistributor::process_welcome_bonuses(uint64_t current_height) {
     std::vector<PendingCoinbaseOutput> outputs;
     uint64_t total_deduction = 0;

@@ -50,6 +50,32 @@ public:
   std::vector<NodeCoinbaseReward> get_coinbase_rewards(
     uint64_t height, uint64_t total_block_reward, uint64_t& miner_reward_out);
 
+  // ── Il 3% come regola di consenso ────────────────────────────────────────
+  //
+  // expected_payout e' la voce che il consenso si aspetta di vedere nel manifesto
+  // 0xAA: chi incassa e quanto. E' il tipo che rende il ricalcolo confrontabile
+  // voce per voce invece che per somma.
+  struct expected_payout {
+    account_public_address address;
+    uint64_t amount;
+  };
+
+  // Ricalcola, da dati di catena, la lista dei pagamenti che un blocco a questa
+  // altezza DOVEVA contenere. Ogni nodo lo fa da solo: qui non c'e' nessuna
+  // chiave, nessuna firma, nessun input esterno.
+  //
+  // Contratto, che va rispettato se questa funzione deve restare consenso:
+  //   1. non ha effetti collaterali. Non scrive, non consuma, non ricorda. Va
+  //      chiamata due volte alla stessa altezza e deve dare due volte la stessa
+  //      risposta, perche' un validatore rivalida i blocchi dopo un riorg;
+  //   2. il risultato dipende solo da altezza e ricompensa, non dall'ordine in
+  //      cui le altre funzioni del manager sono state chiamate prima.
+  // Violare il punto 1 e' un bug che si manifesta come una catena fermata, non
+  // come un errore visibile.
+  bool compute_expected_payouts(uint64_t height, uint64_t total_block_reward,
+                               std::vector<expected_payout> &out_payouts,
+                               std::string &error_msg) const;
+
   std::shared_ptr<NodeRegistry>              node_registry()        const { return m_node_registry; }
   std::shared_ptr<CircleRegistry>            circle_registry()      const { return m_circle_registry; }
   std::shared_ptr<MevaTrustEngine>       mevatrust_engine() const { return m_mevatrust_engine; }

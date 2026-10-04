@@ -2,6 +2,7 @@
 // mevatrust_manager.cpp
 
 #include "mevatrust_manager.h"
+#include "mevatrust_consensus.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "misc_log_ex.h"
@@ -477,9 +478,21 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
       }
     }
   } else {
-    // No proposer keys available — produce a placeholder (will fail validation)
+    // Nessuna chiave, nessun blocco: si esce con il manifesto a firma zero.
+    //
+    // Il 3% non e' piu' un documento che il gruppo dei proposer autorizza, e' la
+    // dichiarazione di un conto che ogni nodo rifa da solo leggendo la catena.
+    // Firmarlo non aggiungeva sicurezza: aggiungeva una dipendenza. Un server
+    // in ginocchio fermava il 3%, un server acceso lo autorizzava, e il blocco
+    // successivo dipendeva dal fatto che quei server accendessero tutti insieme.
+    //
+    // La firma resta nel formato del blob per compatibilita' di layout e per non
+    // dover riprodurre la genesi: e' zero, e nessuna regola di consenso la guarda
+    // piu'. Non e' una firma valida, e non serve che lo sia.
     memset(&frost_sig, 0, sizeof(frost_sig));
-    MWARNING("[FROST] No proposer keys set — distribution will NOT validate");
+    MWARNING("[MevaTrust] nessuna chiave proposer: manifesto 0xAA emesso senza firma. "
+             "Il consenso ricalcola il 3% dai dati di catena, quindi l'assenza di "
+             "chiavi non cambia la validita' del blocco");
   }
   
   std::vector<uint8_t> dist_extra;
@@ -1515,7 +1528,9 @@ uint64_t MevaTrustManager::compute_pool_balance_from_chain(uint64_t up_to_height
             block_reward += bl.miner_tx.vout[i].amount;
         }
         if (block_reward > 0) {
-            total_contributions += block_reward * 3 / 100;
+            // 3% dalla costante condivisa, non dalla memoria: il test asserisce
+            // su questo numero e deve essere lo stesso.
+            total_contributions += block_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
         }
 
         // 2. Distribution at a period boundary is embedded in the MINER_TX extra
@@ -1554,8 +1569,174 @@ bool MevaTrustManager::verify_mevatrust_state_root(const block& bl, uint64_t hei
     return true;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// compute_expected_payouts — il 3% ricalcolato da chi verifica
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Questa funzione e' la regola di consenso, e quindi la cosa piu' fragile del
+// codice MevaTrust. Vale la pena dire cosa promette, e cosa non puo' fare.
+//
+// Promette tre cose.
+//
+// 1. NESSUNA CHIAVE, NESSUN INPUT ESTERNO. Il peso di ogni nodo arriva dai punteggi
+//    calcolati sugli eventi on-chain 0xA5/0xA6, verificati prima di entrare nel
+//    motore. Non dall'osservazione P2P locale, non da un file, non dall'orologio.
+//
+// 2. NESSUN EFFETTO COLLATERALE. Non scrive, non consuma, non ricorda. Va chiamata
+//    due volte alla stessa altezza e deve dare due volte la stessa risposta,
+//    perche' un validatore rivalida i blocchi dopo un riorg e quei blocchi li ha
+//    gia' accettati una volta.
+//
+// 3. STESSA DIVISIONE DEL MINER, BIT PER BIT. Il miner chiama distribute_rewards(),
+//    che e' distruttiva: paga, scarica il saldo, azzera la coda. Se qui la
+//    divisione differisse anche di un solo atto, il miner produrrebbe un blocco che
+//    il validatore rifiuta, e la catena si fermerebbe al primo confine di periodo.
+//    Per questo la divisione e' riportata qui pari pari, non "in modo equivalente".
+//
+// Il punto 3 e' anche il motivo per cui il saldo NON viene letto da m_pool_balance.
+// m_pool_balance e' stato locale, e sul nodo che mina e' gia' stato decrementato da
+// distribute_rewards(): il miner non riuscirebbe a validare il proprio blocco, e
+// due nodi con saldi diversi pagherebbero due liste diverse. Si usa invece
+// compute_pool_balance_from_chain(), che ricalcola il saldo scansionando i blocchi
+// gia' in catena: contributi 3% meno distribuzioni 0xAA. Costa una scansione, ma
+// risponde a una domanda che tutti i nodi rispondono uguale.
+bool MevaTrustManager::compute_expected_payouts(uint64_t height, uint64_t total_block_reward,
+                                               std::vector<MevaTrustManager::expected_payout> &out_payouts,
+                                               std::string &error_msg) const
+{
+  out_payouts.clear();
+  if (!m_initialized.load()) {
+    error_msg = "MevaTrust not initialized";
+    return false;
+  }
+  if (!m_reward_distributor || !m_mevatrust_engine) {
+    error_msg = "reward distributor or engine unavailable";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lk(m_lock);
+
+  // Bonus di benvenuto maturati a questa altezza: LETTI, non consumati.
+  // process_welcome_bonuses() cancella quello che restituisce, ed e' giusto nel suo
+  // contesto (il miner incassa davvero) e disastroso in questo (il validatore
+  // risponderebbe "nessun nodo eleggibile" alla seconda chiamata sullo stesso
+  // blocco). Sul nodo che mina i due percorsi sono in sequenza: costruisci il blocco
+  // e il bonus viene incassato, poi valuti lo stesso blocco.
+  auto welcome = m_reward_distributor->peek_welcome_bonuses(height);
+
+  if (!m_reward_distributor->is_distribution_due(height) && welcome.empty()) {
+    return true;   // nessun pagamento dovuto a questa altezza
+  }
+
+  // ── Il budget ────────────────────────────────────────────────────────────
+  //
+  // La base della divisione e' il 3% DEL REWARD DI QUESTO BLOCCO, non il saldo
+  // del pool. E' una scelta, e la ragione e' che questa funzione deve essere una
+  // funzione del blocco e basta.
+  //
+  // Il saldo del pool sembra la cosa naturale da usare, ed e' la ragione per cui
+  // distribute_rewards() divide per m_pool_balance. Ma m_pool_balance e' stato
+  // locale, e sul nodo che mina distribute_rewards() lo ha gia' decrementato: il
+  // miner non riuscirebbe a validare il proprio blocco, e due nodi con saldi
+  // diversi pagherebbero due liste diverse. Lo stesso vale per
+  // compute_pool_balance_from_chain(), che e' deterministico ma costa una
+  // scansione della catena a ogni validazione e lega la validita' di un blocco
+  // alla disponibilita' di get_block_func.
+  //
+  // Usando il reward del blocco, la lista e' calcolabile da chiunque abbia il
+  // blocco: nessuna scansione, nessuno stato, nessuna chiave. Il saldo del pool
+  // resta un concetto contabile, e va tenuto separato dal calcolo delle quote:
+  // confonderli e' il modo piu' rapido per arrivare a due nodi che non si
+  // riconoscono.
+  const uint64_t budget = total_block_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
+  if (budget == 0) return true;
+
+  const float min_score = m_reward_distributor->min_score_for_reward();
+
+  // ── La divisione, identica a distribute_rewards() ───────────────────────
+  auto score_map = m_mevatrust_engine->calculate_all_scores(height);
+
+  float total_score = 0.0f;
+  for (const auto& kv : score_map)
+    if (kv.second.total_score >= min_score) total_score += kv.second.total_score;
+  if (total_score <= 0.0f) {
+    // Nessun nodo sopra soglia. Si esce senza pagamenti, come fa anche il miner.
+    return true;
+  }
+
+  std::vector<PendingCoinbaseOutput> pending;
+  for (const auto& kv : score_map) {
+    const auto& snap = kv.second;
+    if (snap.total_score < min_score) continue;
+    const uint64_t share = static_cast<uint64_t>(
+        static_cast<double>(budget) * snap.total_score / total_score);
+    if (share == 0) continue;   // troncamento identico a distribute_rewards()
+
+    PendingCoinbaseOutput pco;
+    // crypto::hash e' un POD con char data[HASH_SIZE], non std::array: niente begin()
+    // e niente size. La chiave della mappa (stringa) e' il ripiego quando l'hash e'
+    // tutto zero.
+    bool has_node_id = false;
+    for (size_t b = 0; b < crypto::HASH_SIZE; ++b)
+      if (snap.node_id.data[b] != 0) { has_node_id = true; break; }
+    pco.node_id_str    = has_node_id ? epee::string_tools::pod_to_hex(snap.node_id) : kv.first;
+    pco.wallet_address = "";    // l'indirizzo sta nel registro, non nel punteggio
+    pco.amount         = share;
+    pco.score          = snap.total_score;
+    pending.push_back(std::move(pco));
+  }
+
+  // I bonus di benvenuto sono cifre fisse promises alla registrazione, non quote di
+  // un peso: vanno aggiunti dopo, senza rientrare nella divisione.
+  for (auto& w : welcome) pending.push_back(std::move(w));
+
+  if (pending.empty()) return true;
+
+  // ── L'indirizzo di pagamento sta nel registro ────────────────────────────
+  std::vector<cryptonote::NodeCoinbaseReward> resolved;
+  resolved.reserve(pending.size());
+  for (auto& pco : pending) {
+    if (pco.wallet_address.empty() && m_node_registry) {
+      crypto::hash nid{};
+      if (epee::string_tools::hex_to_pod(pco.node_id_str, nid)) {
+        NodeRegistryEntry e{};
+        if (m_node_registry->get_node_by_id(nid, e)) pco.wallet_address = e.wallet_address;
+      }
+    }
+    if (pco.wallet_address.empty()) {
+      error_msg = "no wallet address on chain for a node due a payout";
+      return false;
+    }
+    cryptonote::NodeCoinbaseReward ncr{};
+    if (!parse_wallet_address(pco.wallet_address, ncr.address)) {
+      error_msg = "unparseable wallet address on chain";
+      return false;
+    }
+    ncr.amount  = pco.amount;
+    ncr.node_id = pco.node_id_str;
+    resolved.push_back(std::move(ncr));
+  }
+
+  out_payouts.resize(resolved.size());
+  for (size_t i = 0; i < resolved.size(); ++i) {
+    out_payouts[i].address = resolved[i].address;
+    out_payouts[i].amount  = resolved[i].amount;
+  }
+
+  // Ordine canonico per chiave di spesa: due nodi con gli stessi dati devono
+  // produrre due liste identiche elemento per elemento, e il confronto voce per voce
+  // non tollera due liste equivalenti in ordine diverso.
+  std::sort(out_payouts.begin(), out_payouts.end(),
+            [](const expected_payout& a, const expected_payout& b) {
+              const int c = memcmp(&a.address.m_spend_public_key,
+                                   &b.address.m_spend_public_key,
+                                   sizeof(crypto::public_key));
+              if (c != 0) return c < 0;
+              return memcmp(&a.address.m_view_public_key,
+                            &b.address.m_view_public_key,
+                            sizeof(crypto::public_key)) < 0;
+            });
+  return true;
+}
+
 } // namespace cryptonote
-
-
-
-

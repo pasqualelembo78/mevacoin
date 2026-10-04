@@ -53,6 +53,16 @@ public:
   bool distribute_rewards(std::shared_ptr<MevaTrustEngine> engine, uint64_t height = 0);
   bool schedule_welcome_bonus(const crypto::hash& nid, uint64_t maturity_height, uint64_t amount);
   bool remove_welcome_bonus(const crypto::hash& nid);
+  // Restituisce i bonus di benvenuto maturati a questa altezza, senza consumarli.
+  //
+  // E' il fratello non distruttivo di process_welcome_bonones(). La differenza
+  // non e' un dettaglio: e' tutta la funzione.
+  std::vector<PendingCoinbaseOutput> peek_welcome_bonuses(uint64_t current_height) const;
+
+  // Paga i bonus maturati e CANCELLA le voci dal database: e' un'azione, va
+  // chiamata una volta sola per ogni bonus e solo dal percorso che mette davvero
+  // i soldi in una coinbase. Un validatore non deve mai chiamarla: si tenerebbe
+  // il bonus e gli risponderebbe che il bonus non esiste piu'.
   std::vector<PendingCoinbaseOutput> process_welcome_bonuses(uint64_t current_height);
   std::vector<PendingCoinbaseOutput> get_pending_coinbase_outputs();
   bool has_pending_outputs() const;
@@ -66,6 +76,10 @@ public:
   bool     is_distribution_due(uint64_t current_height) const;
   void set_pool_fraction(uint32_t p)    { m_pool_fraction = p; }
   void set_min_score(float s)           { m_min_score_for_reward = s; }
+  // Lettura della soglia: serve al ricalcolo del consenso, che deve filtrare i
+  // nodi esattamente come fa distribute_rewards(). Senza questo accessor la soglia
+  // sarebbe un dettaglio privato e il validatore taglierebbe su un numero diverso.
+  float min_score_for_reward() const     { return m_min_score_for_reward; }
   void set_distribution_period(uint32_t p) { m_distribution_period = p; }
   uint32_t distribution_period() const { return m_distribution_period; }
   uint32_t get_pool_fraction() const    { return m_pool_fraction; }

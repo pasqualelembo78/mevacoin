@@ -135,12 +135,24 @@ bool validate_pool_distribution(
         return false;
     }
     
-    // 5. Verify FROST signature
-    if (!verify_distribution_signature(dist, proposers)) {
-        error_msg = "Pool distribution invalid FROST signature";
-        MERROR(error_msg);
-        return false;
-    }
+    // 5. La firma FROST non e' piu' un controllo di consenso.
+    //
+    // Un tempo questo passo accertava che il manifesto fosse firmato dal gruppo
+    // dei cinque proposer. Accertava solo quello: che il documento fosse
+    // autentico, non che fosse giusto. Cinque possessori di chiavi potevano
+    // firmare un manifesto perfetto con dentro un destinatario a scelta loro, e
+    // questa verifica lo avrebbe accettato: la firma diceva "sono stati loro", non
+    // "e' corretto".
+    //
+    // Il controllo che chiude quel buco e' check_mevatrust_coinbase_pure_consensus(),
+    // che ricalcola la lista dei destinatari dai dati di catena e la confronta voce
+    // per voce. Non ha bisogno di fidarsi di nessuno, quindi non ha bisogno della
+    // firma: e' una regola, non un permesso.
+    //
+    // Rimossa qui, non aggirata: se restasse, un blocco senza chiavi sarebbe
+    // respinto per un documento che il consenso non usa piu', e il messaggio di
+    // errore punterebbe a un file che nessuno sta piu' scrivendo.
+    (void)proposers;  // resta il parametro: cambiare la firma romperebbe ogni chiamante
     
     MINFO("[PoolDist] Distribution validated: period=" << dist.period
           << " total=" << dist.total_distributed

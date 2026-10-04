@@ -1507,6 +1507,27 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
                  << ": " << part_err);
       return false;
     }
+
+    // La domanda successiva: i soldi ci sono (sopra), ma vanno a chi dice il
+    // protocollo?
+    //
+    // Il controllo precedente accetta un manifesto firmato dal gruppo dei
+    // proposer, quindi accetta che quei cinque abbiano scelto il destinatario. Non
+    // e' la stessa cosa che scegliere bene: e' la stessa cosa che avere il
+    // permesso. Qui nessuno chiede il permesso. Ogni nodo rifa la divisione del 3%
+    // dai dati di catena e confronta il manifesto voce per voce.
+    //
+    // Va dopo il controllo precedente e non al posto suo: se i soldi non ci sono
+    // il motivo e' quello, e dire "destinatario sbagliato" a un blocco che non
+    // aveva i soldi e' una diagnosi che fa perdere tempo a chi legge il log.
+    if (!check_mevatrust_coinbase_pure_consensus(b.miner_tx, cur_height,
+                                                 base_reward + fee, version,
+                                                 part_err))
+    {
+      MERROR_VER("MevaTrust: regola del 3% non rispettata h=" << cur_height
+                 << ": " << part_err);
+      return false;
+    }
   }
   return true;
 }

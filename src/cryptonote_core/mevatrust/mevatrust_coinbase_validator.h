@@ -34,6 +34,30 @@ std::vector<NodeCoinbaseReward> build_expected_mevatrust_outputs(
   uint64_t& miner_reward_out
 );
 
+/// Verdetto di consenso sul 3% MevaTrust.
+///
+/// check_mevatrust_coinbase() risponde a "i soldi ci sono?". Questa risponde a
+/// "i soldi vanno a chi dice il protocollo?". Sono due domande diverse e servono
+/// entrambe: la prima blocca le somme inventate, la seconda blocca il destinatario
+/// arbitrario, che e' l'unico modo in cui un miner puo' tenersi il 3% pur
+/// rispettando ogni vincolo di somma.
+///
+/// Il verdetto esce da un ricalcolo su dati di catena, non da una firma: nessuna
+/// chiave, nessun server e nessun gruppo decide se questo blocco e' valido. Ogni
+/// nodo lo ricalcola da solo e deve arrivare allo stesso risultato, altrimenti i
+/// nodi si rifiutano a vicenda i blocchi.
+///
+/// Non ha effetti collaterali: non consuma niente e non scrive niente. Ricalcolare
+/// due volte la stessa altezza deve dare due volte la stessa risposta, perche' un
+/// validatore rivalida i blocchi dopo un riorg.
+bool check_mevatrust_coinbase_pure_consensus(
+  const transaction& miner_tx,
+  uint64_t           height,
+  uint64_t           total_reward,
+  uint8_t            hf_version,
+  std::string&       error_msg
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // construct_miner_tx_with_mevatrust
 //

@@ -845,9 +845,11 @@ namespace cryptonote
                   // backdoor).  They must be provisioned out-of-band into
                   // <data_dir>/mevatrust/proposer_keys (5 * 32-byte secrets,
                   // concatenated) or via --mevatrust-proposer-key.
-                  MWARNING("[FROST] Proposer keys non trovate: " << prop_file
-                           << " - pool distribution NON firmera' finche' "
-                              "le share non sono provisionate");
+                  MWARNING("[MevaTrust] Proposer keys non trovate: " << prop_file
+                           << " - il manifesto 0xAA uscira' senza firma. "
+                              "Nessuna conseguenza sui blocchi: il 3% e' "
+                              "ricalcolato dal consenso e la firma non e' verificata. "
+                              "Le share sono obsolete e possono restare assenti");
                 }
 
                 // CLI override: se --mevatrust-proposer-key e' specificato,
