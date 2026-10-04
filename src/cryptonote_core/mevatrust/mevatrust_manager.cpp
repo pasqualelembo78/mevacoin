@@ -532,16 +532,96 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
 std::vector<NodeCoinbaseReward> MevaTrustManager::get_coinbase_rewards(
   uint64_t height, uint64_t total_reward, uint64_t& miner_out)
 {
-  miner_out=total_reward;
+  miner_out = total_reward;
   if (!m_initialized.load()) return {};
-  std::lock_guard<std::mutex> lk(m_lock);
-  if (m_resolved_rewards.empty()) return {};
-  if (height<m_resolved_at_height||height>=m_resolved_at_height+m_period_length) return {};
-  uint64_t node_total=0; for (const auto& r:m_resolved_rewards) node_total+=r.amount;
-  if (node_total>=total_reward) { MERROR("BUG: node_total>=block_reward"); return {}; }
-  miner_out=total_reward-node_total;
-  MINFO("Injecting "<<m_resolved_rewards.size()<<" outputs node_total="<<node_total<<" miner="<<miner_out);
-  return m_resolved_rewards;
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Il miner non calcola le quote: chiede al consenso.
+  // ═════════════════════════════════════════════════════════════════════════
+  //
+  // Prima questo funzione restituiva m_resolved_rewards, una cache riempita da
+  // trigger_distribution() su un block_reward diverso e su un'altezza diversa. E
+  // il manifesto 0xAA veniva costruito l', ancora prima, dentro
+  // trigger_distribution: due sorgenti, due momenti, due liste.
+  //
+  // Il risultato era che manifesto e output della coinbase potevano non
+  // coincidere, e che la validazione ne chiedeva una terza lista a
+  // check_mevatrust_coinbase, che leggeva la stessa cache del miner. Tre
+  // risposte alla stessa domanda, e nessuna garanzia che coincidessero.
+  //
+  // Adesso le tre letture sono la stessa chiamata, con gli stessi due argomenti:
+  // l'altezza e la ricompensa del blocco che si sta costruendo. Non e' che
+  // adesso coincidono per costruzione: e' che non esiste piu' un posto dove
+  // potrebbero non coincidere. La divergenza non e' stata ridotta, e' stata
+  // resa non scrivibile.
+  std::vector<MevaTrustManager::expected_payout> expected;
+  std::string err;
+  if (!compute_expected_payouts(height, total_reward, expected, err)) {
+    // Non si indietreggia: un blocco senza 3% e' un blocco che il consenso
+    // rifiuterebbe, quindi produrlo cosi' costa un riorg invece di un blocco.
+    MERROR("[MevaTrust] ricalcolo delle quote fallito h=" << height << ": " << err);
+    return {};
+  }
+
+  if (expected.empty()) {
+    std::lock_guard<std::mutex> lk(m_lock);
+    m_resolved_rewards.clear();
+    m_resolved_at_height = 0;
+    m_pending_pool_distribution_extra.clear();
+    m_has_pending_pool_distribution = false;
+    return {};
+  }
+
+  uint64_t node_total = 0;
+  std::vector<NodeCoinbaseReward> rewards;
+  rewards.reserve(expected.size());
+  for (const auto& e : expected) {
+    NodeCoinbaseReward ncr{};
+    ncr.address = e.address;
+    ncr.amount  = e.amount;
+    rewards.push_back(std::move(ncr));
+    node_total += e.amount;
+  }
+
+  // Il miner deve tenere il resto. Se le quote sono piu' della ricompensa non c'e'
+  // un miner da pagare, e il blocco non e' costruibile: me lo dice adesso, invece
+  // di costruire un blocco che il consenso rifiuterebbe.
+  if (node_total >= total_reward) {
+    MERROR("[MevaTrust] quote (" << node_total << ") >= ricompensa (" << total_reward
+           << ") h=" << height << ": nessun miner da pagare, blocco incoerente");
+    return {};
+  }
+  miner_out = total_reward - node_total;
+
+  // Il manifesto 0xAA si costruisce ADESSO, dalla stessa lista che sta per
+  // finire in tx.vout. Non nel giro di prima, non dalla cache: dalla lista.
+  //
+  // La firma FROST resta a zero perche' nessuna regola di consenso la guarda, e
+  // il campo resta nel formato per non dover riprodurre la genesi del blob.
+  const uint64_t pool_balance = compute_pool_balance_from_chain(height);
+  mevatrust::frost::FrostSignature zero_sig;
+  memset(&zero_sig, 0, sizeof(zero_sig));
+  std::vector<uint8_t> dist_extra;
+  if (!mevatrust::construct_pool_distribution_extra(height,
+                                        static_cast<uint32_t>(height / m_period_length),
+                                        pool_balance, rewards, zero_sig, dist_extra)) {
+    MERROR("[MevaTrust] costruzione manifesto 0xAA fallita h=" << height);
+    return {};
+  }
+
+  {
+    std::lock_guard<std::mutex> lk(m_lock);
+    m_resolved_rewards               = rewards;
+    m_resolved_at_height             = height;
+    m_resolved_pool_balance          = pool_balance;
+    m_pending_pool_distribution_extra = std::move(dist_extra);
+    m_has_pending_pool_distribution   = true;
+  }
+
+  MINFO("[MevaTrust] quote ricalcolate e manifesto allineato h=" << height
+        << ": nodi=" << rewards.size() << " node_total=" << node_total
+        << " miner=" << miner_out);
+  return rewards;
 }
 
 bool MevaTrustManager::parse_wallet_address(

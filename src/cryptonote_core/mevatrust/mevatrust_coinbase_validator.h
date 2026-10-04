@@ -27,12 +27,7 @@ bool check_mevatrust_coinbase(
   std::string&       error_msg
 );
 
-/// Returns expected MevaTrust outputs for unit testing.
-std::vector<NodeCoinbaseReward> build_expected_mevatrust_outputs(
-  uint64_t  height,
-  uint64_t  total_reward,
-  uint64_t& miner_reward_out
-);
+
 
 /// Verdetto di consenso sul 3% MevaTrust.
 ///

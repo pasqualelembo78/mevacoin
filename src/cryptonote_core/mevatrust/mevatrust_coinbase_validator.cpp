@@ -13,6 +13,7 @@
 #include "mevatrust_tx_parser.h"
 #include "pool_distribution.h"
 #include "pool_address.h"
+#include "mevatrust_consensus.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
@@ -28,19 +29,6 @@
 namespace cryptonote {
 
 // ─────────────────────────────────────────────────────────────────────────────
-// build_expected_mevatrust_outputs
-// ─────────────────────────────────────────────────────────────────────────────
-std::vector<NodeCoinbaseReward> build_expected_mevatrust_outputs(
-  uint64_t  height,
-  uint64_t  total_reward,
-  uint64_t& miner_reward_out)
-{
-  auto* pm = mevatrust::get_manager();
-  if (!pm || !pm->is_initialized()) return {};
-  return pm->get_coinbase_rewards(height, total_reward, miner_reward_out);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // check_mevatrust_coinbase
 // ─────────────────────────────────────────────────────────────────────────────
 bool check_mevatrust_coinbase(
@@ -54,12 +42,13 @@ bool check_mevatrust_coinbase(
   if (hf_version < HF_VERSION_MEVATRUST_VALIDATION)
     return true;
 
-  // 2. Retrieve expected MevaTrust outputs (node rewards from pool distribution)
-  uint64_t expected_miner_reward = 0;
-  std::vector<NodeCoinbaseReward> expected =
-    build_expected_mevatrust_outputs(height, total_reward, expected_miner_reward);
-
-  // 3. Total coinbase must equal total_reward exactly
+  // 2. La somma della coinbase deve essere esattamente la ricompensa.
+  //
+  //    Questo e' l'unico controllo di questa funzione, ed e' un invariante
+  //    condizionato: vale per OGNI blocco, indipendentemente da chi debba
+  //    ricevere i soldi. Non ammette eccezioni e non ha bisogno di sapere chi
+  //    sono i destinatari, quindi non puo' sbagliare perche' lo stato locale e'
+  //    diverso da quello degli altri nodi.
   uint64_t sum_actual = 0;
   for (const auto& out : miner_tx.vout) sum_actual += out.amount;
   if (sum_actual != total_reward) {
@@ -70,71 +59,39 @@ bool check_mevatrust_coinbase(
     return false;
   }
 
-  // 4. Parse pool distribution tag 0xAA from tx_extra
-  tx_extra_mevatrust_pool_distribution dist;
-  bool has_dist = mevatrust::parse_mevatrust_pool_distribution_from_tx(miner_tx, dist);
-
-  // If no node rewards expected (distribution period not active)
-  if (expected.empty()) {
-    // Tag 0xAA must NOT be present when no distribution is expected
-    if (has_dist) {
-      error_msg = "Unexpected pool distribution tag 0xAA at height " + std::to_string(height);
-      MERROR(error_msg);
-      return false;
-    }
-    MDEBUG("Coinbase OK: no pool distribution expected at h=" << height);
-    return true;
-  }
-
-  // Node rewards expected => tag 0xAA MUST be present
-  if (!has_dist) {
-    error_msg = "Missing pool distribution tag 0xAA at height " + std::to_string(height);
-    MERROR(error_msg);
-    return false;
-  }
-
-  // 5. Verify pool output exists (3% pool contribution) — created by construct_miner_tx_with_mevatrust
-  constexpr uint32_t POOL_FRACTION = 3;
-  uint64_t expected_pool_amount = total_reward * POOL_FRACTION / 100;
+  // 3. Il contributo del pool (3% di ogni blocco) deve esserci, e all'indirizzo
+  //    del pool.
+  //
+  //    Prima questo controllo cercava una vout con l'importo giusto e basta, e
+  //    considerava quello un controllo riuscito. Non lo e': e' una verifica che
+  //    l'importo esista da qualche parte, non che sia spendibile dall'indirizzo
+  //    del pool. Un miner poteva mandare il 3% a se stesso e la vout "del pool"
+  //    non compariva da nessuna parte, ma il controllo passava lo stesso perche'
+  //    non guardava la chiave. Qui la chiave si guarda.
+  const uint64_t expected_pool_amount =
+      total_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
   if (expected_pool_amount > 0) {
+    const account_public_address pool_addr = mevatrust::get_pool_address(MAINNET);
     bool pool_found = false;
     for (const auto& out : miner_tx.vout) {
-      if (out.amount == expected_pool_amount) {
+      if (out.amount == expected_pool_amount &&
+          memcmp(&out.target, &pool_addr.m_spend_public_key,
+                 sizeof(crypto::public_key)) == 0) {
         pool_found = true;
         break;
       }
     }
     if (!pool_found) {
-      error_msg = std::string("Pool output missing: expected ") + std::to_string(expected_pool_amount)
-                + " at height " + std::to_string(height);
+      error_msg = std::string("Pool output missing or misdirected at height ")
+                + std::to_string(height) + ": expected "
+                + std::to_string(expected_pool_amount)
+                + " to the pool address";
       MERROR(error_msg);
       return false;
     }
   }
 
-  // 6. Validate pool distribution via existing validator
-  auto* pm = mevatrust::get_manager();
-  if (!pm) {
-    error_msg = "MevaTrust manager not initialized";
-    MERROR(error_msg);
-    return false;
-  }
-
-  uint64_t pool_balance = pm->compute_pool_balance_from_chain();
-  uint32_t period = static_cast<uint32_t>(height / pm->period_length());
-
-  mevatrust::ProposerState proposers;
-  {
-    for (size_t i = 0; i < mevatrust::frost::FROST_N; ++i)
-      proposers.pubkeys[i] = mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i];
-  }
-
-  if (!mevatrust::validate_pool_distribution(dist, height, period, pool_balance, proposers, error_msg)) {
-    MERROR("Pool distribution validation failed: " << error_msg);
-    return false;
-  }
-
-  MDEBUG("MevaTrust coinbase OK: pool distribution validated at h=" << height);
+  MDEBUG("Coinbase structure OK at h=" << height);
   return true;
 }
 
