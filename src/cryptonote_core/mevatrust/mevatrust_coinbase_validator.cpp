@@ -58,6 +58,7 @@ bool check_mevatrust_coinbase(
   uint64_t           height,
   uint64_t           total_reward,
   uint8_t            hf_version,
+  network_type       nettype,
   std::string&       error_msg)
 {
   // 1. Only active from HF13
@@ -93,14 +94,27 @@ bool check_mevatrust_coinbase(
   const uint64_t expected_pool_amount =
       total_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
   if (expected_pool_amount > 0) {
-    const account_public_address pool_addr = mevatrust::get_pool_address(MAINNET);
+    // Sotto V2 l'output del pool era stealth, quindi la chiave non era confrontabile:
+    // si controlla l'importo e basta, che e'era quello che si poteva fare. Da V2
+    // l'output e' piatto e la chiave si confronta per uguaglianza.
+    //
+    // Il gate non e' pignoleria. Senza, un validatore V2 rigettava TUTTI i blocchi
+    // delle epoche precedenti, perche' cercava una chiave in un output che non
+    // l'aveva: non un blocco fraudolento respinto, ma un blocco onesto respinto
+    // sistematicamente, e la catena non cresceva di un blocco. L'ho trovato solo
+    // perché ho fatto minerare un nodo vero su una catena regtest: nessun test
+    // unitario lo avrebbe visto, perche' il test costruiva la coinbase col
+    // costruttore nuovo e la validava col validatore nuovo, quindi i due erano
+    // d'accordo per costruzione.
+    const bool pool_key_is_checkable = (hf_version >= HF_VERSION_MEVATRUST_RULE_V2);
+    const account_public_address pool_addr = mevatrust::get_pool_address(nettype);
     bool pool_found = false;
     for (const auto& out : miner_tx.vout) {
-      if (out.amount == expected_pool_amount &&
-          vout_key_is(out, pool_addr.m_spend_public_key)) {
-        pool_found = true;
-        break;
-      }
+      if (out.amount != expected_pool_amount) continue;
+      if (pool_key_is_checkable && !vout_key_is(out, pool_addr.m_spend_public_key))
+        continue;
+      pool_found = true;
+      break;
     }
     if (!pool_found) {
       error_msg = std::string("Pool output missing or misdirected at height ")
@@ -149,6 +163,7 @@ bool check_mevatrust_coinbase_pure_consensus(
   uint64_t           height,
   uint64_t           total_reward,
   uint8_t            hf_version,
+  network_type       /*nettype*/,
   std::string&       error_msg)
 {
   // Sotto V2 non c'e' il vincolo sugli output: gli output ai nodi erano stealth e

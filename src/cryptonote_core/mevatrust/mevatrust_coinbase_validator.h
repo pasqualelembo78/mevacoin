@@ -24,6 +24,7 @@ bool check_mevatrust_coinbase(
   uint64_t           height,
   uint64_t           total_reward,
   uint8_t            hf_version,
+  network_type       nettype,
   std::string&       error_msg
 );
 
@@ -50,6 +51,7 @@ bool check_mevatrust_coinbase_pure_consensus(
   uint64_t           height,
   uint64_t           total_reward,
   uint8_t            hf_version,
+  network_type       nettype,
   std::string&       error_msg
 );
 

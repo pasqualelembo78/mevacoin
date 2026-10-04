@@ -1501,7 +1501,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     std::string part_err;
     const uint64_t cur_height = m_db->height();
     if (!check_mevatrust_coinbase(b.miner_tx, cur_height,
-                                      base_reward + fee, version, part_err))
+                                      base_reward + fee, version, m_nettype, part_err))
     {
       MERROR_VER("MevaTrust coinbase non valido h=" << cur_height
                  << ": " << part_err);
@@ -1522,7 +1522,7 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     // aveva i soldi e' una diagnosi che fa perdere tempo a chi legge il log.
     if (!check_mevatrust_coinbase_pure_consensus(b.miner_tx, cur_height,
                                                  base_reward + fee, version,
-                                                 part_err))
+                                                 m_nettype, part_err))
     {
       MERROR_VER("MevaTrust: regola del 3% non rispettata h=" << cur_height
                  << ": " << part_err);
@@ -1921,7 +1921,28 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   // usare sempre construct_miner_tx_with_mevatrust anche senza node_rewards,
   // altrimenti il blob viene consumato da consume_pending_*_extra()
   // ma mai scritto nel miner_tx.extra — dati on-chain persi.
-  if (node_rewards.empty() && combined_extra.empty())
+  // ── Perche' da HF13 il costruttore col MevaTrust e' sempre ──────────────
+  //
+  // Il contributo del 3% al pool e' OBBLIGO del consenso, non un extra: si crea
+  // a ogni blocco, anche quando non c'e' nessun nodo eleggibile e anche quando
+  // combined_extra e' vuoto.
+  //
+  // La condizione precedente (nessuna quota E nessun blob -> costruttore semplice)
+  // sembrava un'ottimizzazione. Ma il validatore richiede l'output del pool a ogni
+  // blocco da HF13, e il costruttore semplice non lo crea: il miner produceva un
+  // blocco che il validatore respingeva per sempre.
+  //
+  // E su una catena dove nessun nodo e' eleggibile — cioe' esattamente la catena
+  // di adesso, senza un produttore di 0xA5 — la condizione era SEMPRE vera e il
+  // miner non poteva produrre un solo blocco. La catena non poteva crescere.
+  //
+  // Non l'avevo visto perche' i test costruivano la coinbase chiamando il
+  // costruttore giusto: il test diceva "il miner produce un blocco valido" mentre
+  // il miner vero ne produceva uno respinto. Due cose diverse con lo stesso nome.
+  const bool use_mevatrust_ctor =
+      (hf_version >= HF_VERSION_MEVATRUST) || !node_rewards.empty() || !combined_extra.empty();
+
+  if (!use_mevatrust_ctor)
     r = construct_miner_tx(height, median_weight, already_generated_coins,
         txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window, desy_additional_reward);
   else
@@ -1939,7 +1960,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
     // [C2 FIX] stessa logica del primo tentativo: embeddare 0xA2 anche senza node_rewards
-    if (node_rewards.empty() && combined_extra.empty())
+  if (!use_mevatrust_ctor)
       r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version, custom_unlock_window, desy_additional_reward);
     else
       r = construct_miner_tx_with_mevatrust(height, median_weight, already_generated_coins, cumulative_weight, total_block_reward, miner_address, node_rewards, b.miner_tx, ex_nonce, max_outs, hf_version, combined_extra, custom_unlock_window, m_nettype, desy_additional_reward);

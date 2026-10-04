@@ -47,6 +47,7 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include <sys/stat.h>
 
 #include "crypto/crypto.h"
@@ -295,7 +296,7 @@ Verdict judge(const transaction& tx, uint64_t height) {
     Verdict v;
     std::string err;
     v.accepted = check_mevatrust_coinbase_pure_consensus(
-        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, err);
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err);
     v.error = err;
     return v;
 }
@@ -553,7 +554,7 @@ TEST_F(RuleFixture, block_is_rejected_when_the_rule_cannot_be_recomputed)
     Verdict v;
     std::string err;
     v.accepted = check_mevatrust_coinbase_pure_consensus(
-        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, err);
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, MAINNET, err);
     v.error = err;
 
     EXPECT_FALSE(v.accepted)
@@ -860,7 +861,7 @@ TEST_F(RuleFixture, the_output_rule_starts_at_the_fork_and_not_before)
     // libero: era vincolato alla destinazione dichiarata e non a quella effettiva.
     std::string err;
     const bool pre_fork = check_mevatrust_coinbase_pure_consensus(
-        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, err);
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_VALIDATION, MAINNET, err);
     EXPECT_TRUE(pre_fork)
         << "la regola e' stata applicata retroattivamente ai blocchi pre-fork: "
            "un nodo che riavvia su una catena lunga rifiuterebbe la propria storia";
@@ -868,7 +869,7 @@ TEST_F(RuleFixture, the_output_rule_starts_at_the_fork_and_not_before)
     // DAAL fork: la stessa identica forma di blocco viene respinta.
     std::string err2;
     const bool post_fork = check_mevatrust_coinbase_pure_consensus(
-        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, err2);
+        tx, height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err2);
     EXPECT_FALSE(post_fork)
         << "la regola non morde dopo il fork: il buco del punto 6 e' di nuovo aperto";
 
@@ -958,7 +959,7 @@ TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
     // ── Il validatore vero giudica ──────────────────────────────────────────
     std::string err;
     const bool ok = check_mevatrust_coinbase_pure_consensus(
-        coinbase, height, reward, HF_VERSION_MEVATRUST_RULE_V2, err);
+        coinbase, height, reward, HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err);
     EXPECT_TRUE(ok)
         << "il miner ha costruito un blocco che il validatore rifiuta: la catena "
            "si fermerebbe al primo confine di periodo. Motivo: " << err;
@@ -993,8 +994,9 @@ TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
 
     std::string err2;
     EXPECT_FALSE(check_mevatrust_coinbase_pure_consensus(
-        stolen, height, reward, HF_VERSION_MEVATRUST_RULE_V2, err2))
+        stolen, height, reward, HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err2))
         << "il 3% e' stato deviato al miner e il blocco e' passato";
 }
+
 
 } // namespace
