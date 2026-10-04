@@ -830,26 +830,53 @@ bool construct_miner_tx_with_mevatrust(
   }
 
   // Output N+1..M: Node rewards (from pool, distributed periodically)
+  //
+  // ── Perche' questi output NON sono stealth, e quelli del miner si ─────────
+  //
+  // Il miner e gli output dei nodi sembrano sibling e invece sono due cose
+  // diverse, per una ragione che vale la pena mettere per iscritto.
+  //
+  // Un output stealth e' spendibile dal destinatario e da nessun altro, e questa
+  // privacy e' il suo punto di forza. Il rovescio e' che la sua chiave-output non
+  // e' verificabile da un terzo: P = r*G + s*view_pub, e per ricavare s serve r,
+  // che e' la meta' segreta del tx e quindi non esiste fuori dal miner. Un nodo
+  // che valida non puo' ricomporre la chiave che il protocollo prescrive, quindi
+  // non puo' accertare che quella chiave appartenga al nodo previsto.
+  //
+  // Il risultato era che il consenso poteva contare gli importi e leggere i
+  // destinatari dichiarati nel manifesto, ma non poteva guardare dove finivano
+  // davvero i soldi. Il manifesto diceva "nodo A" e i soldi andavano al miner:
+  // entrambe le affermazioni erano verificabili, e insieme erano una frode.
+  //
+  // Qui l'output e' la chiave pubblica registrata del nodo, punto. Non e' una
+  // scelta di privacy: la spend_pub del nodo e' gia' in chiaro nel manifesto 0xAA,
+  // quindi non si perde nulla. In cambio si guadagna la proprieta' che conta: il
+  // consenso puo' verificare per uguaglianza esatta che la vout esista e che sia
+  // del nodo giusto. Il miner non puo' dirottarla perche' non puo' fabbricare una
+  // chiave che sia contemporaneamente spendibile da lui e uguale a quella di un
+  // altro: non e' una cosa che si sceglie, e' un'equazione.
+  //
+  // Il nodo spende l'output con la propria spend_priv, che ha gia': e' la chiave
+  // con cui si e' registrato.
   for (const auto& ncr : node_rewards) {
     if (!ncr.amount) continue;
-    crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
-    CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(ncr.address.m_view_public_key, txkey.sec, deriv), false, "node deriv");
-    CHECK_AND_ASSERT_MES(crypto::derive_public_key(deriv, out_index, ncr.address.m_spend_public_key, eph_pub), false, "node epk");
     summary += ncr.amount;
-    crypto::view_tag vt; if (use_view_tags) crypto::derive_view_tag(deriv, out_index, vt);
-    tx_out out; cryptonote::set_tx_out(ncr.amount, eph_pub, use_view_tags, vt, out);
+    tx_out out;
+    cryptonote::set_tx_out(ncr.amount, ncr.address.m_spend_public_key, false, crypto::view_tag{}, out);
     tx.vout.push_back(out); out_index++;
   }
 
   // Output M+1: Pool address (3% every block) — DETERMINISTIC ADDRESS, no private key
+  //
+  // Come i nodi: output piatto sulla chiave pubblica del pool, non stealth.
+  // check_mevatrust_coinbase() confronta questa chiave per uguaglianza, e un
+  // confronto non puo' essere soddisfatto da una chiave derivata: quindi qui la
+  // chiave deve essere proprio quella, e non una sua versione offuscata.
   if (pool_amount > 0) {
     account_public_address pool_addr = mevatrust::get_pool_address(nettype);
-    crypto::key_derivation deriv{}; crypto::public_key eph_pub{};
-    CHECK_AND_ASSERT_MES(crypto::generate_key_derivation(pool_addr.m_view_public_key, txkey.sec, deriv), false, "pool deriv");
-    CHECK_AND_ASSERT_MES(crypto::derive_public_key(deriv, out_index, pool_addr.m_spend_public_key, eph_pub), false, "pool epk");
     summary += pool_amount;
-    crypto::view_tag vt; if (use_view_tags) crypto::derive_view_tag(deriv, out_index, vt);
-    tx_out out; cryptonote::set_tx_out(pool_amount, eph_pub, use_view_tags, vt, out);
+    tx_out out;
+    cryptonote::set_tx_out(pool_amount, pool_addr.m_spend_public_key, false, crypto::view_tag{}, out);
     tx.vout.push_back(out); out_index++;
   }
 

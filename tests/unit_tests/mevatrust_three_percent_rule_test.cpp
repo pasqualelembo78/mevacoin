@@ -219,8 +219,7 @@ protected:
 /// conto che chi riceve puo' rifare da solo.
 std::vector<uint8_t> build_manifest(const std::vector<MevaTrustManager::expected_payout>& payouts,
                                     uint64_t height,
-                                    const std::vector<crypto::public_key>& out_keys) {
-    if (payouts.size() != out_keys.size()) return {};
+                                    const std::vector<crypto::public_key>& /*out_keys*/ = {}) {
 
     std::vector<NodeCoinbaseReward> nr;
     nr.reserve(payouts.size());
@@ -253,9 +252,18 @@ std::vector<uint8_t> build_manifest(const std::vector<MevaTrustManager::expected
 /// e' la convenzione con cui il validatore sa dove iniziano i pagamenti, e non
 /// viene dichiarata dal miner: un campo "i miei pagamenti iniziano qui" scritto
 /// da lui sarebbe un altro modo per mentire.
+/// Costruisce la coinbase come fa davvero construct_miner_tx_with_mevatrust.
+///
+/// out_keys sovrascrive le chiavi-output reali delle vout dei nodi. Va lasciato
+/// vuoto per un blocco onesto, dove la chiave e' la spend_pub del nodo; va
+/// riempito per un attacco, ed e' esattamente il punto in cui il miner sceglie a
+/// chi mandare i soldi. Prima che gli output dei nodi diventassero piatti questo
+/// parametro non aveva importanza — la chiave era una derivazione e nessuno la
+/// guardava, quindi ogni valore era indistinguibile dagli altri. Ora e' l'unico
+/// posto in cui si puo' deviare, ed e' esattamente quello che il consenso blocca.
 transaction build_coinbase(uint64_t miner_amount,
                            const std::vector<MevaTrustManager::expected_payout>& payouts,
-                           const std::vector<crypto::public_key>& out_keys) {
+                           const std::vector<crypto::public_key>& out_keys = {}) {
     transaction tx;
     tx.version = 2;
     tx.unlock_time = 0;
@@ -266,8 +274,11 @@ transaction build_coinbase(uint64_t miner_amount,
         tx.vout.push_back(o);
     }
     for (size_t i = 0; i < payouts.size(); ++i) {
+        // Onesto: la chiave e' quella del nodo. Attacco: quella fornita.
+        const crypto::public_key& key =
+            (i < out_keys.size()) ? out_keys[i] : payouts[i].address.m_spend_public_key;
         tx_out o;
-        set_tx_out(payouts[i].amount, out_keys[i], false, crypto::view_tag{}, o);
+        set_tx_out(payouts[i].amount, key, false, crypto::view_tag{}, o);
         tx.vout.push_back(o);
     }
     return tx;
@@ -305,12 +316,9 @@ TEST_F(RuleFixture, honest_miner_needs_no_keys_and_is_accepted)
         << "senza destinatari la regola non avrebbe niente da dire, e il test "
            "passerebbe senza provare niente";
 
-    std::vector<crypto::public_key> out_keys;
-    out_keys.reserve(expected.size());
-    for (size_t i = 0; i < expected.size(); ++i) out_keys.push_back(fresh_key());
-
-    transaction tx = build_coinbase(kBlockReward - budget, expected, out_keys);
-    tx.extra = build_manifest(expected, height, out_keys);
+    // out_keys vuoto: la coinbase usa la spend_pub dei nodi, come fa il miner vero.
+    transaction tx = build_coinbase(kBlockReward - budget, expected);
+    tx.extra = build_manifest(expected, height, {});
     ASSERT_FALSE(tx.extra.empty());
 
     const Verdict v = judge(tx, height);
@@ -352,20 +360,29 @@ TEST_F(RuleFixture, miner_redirecting_three_percent_to_itself_is_rejected)
     std::vector<MevaTrustManager::expected_payout> stolen = expected;
     stolen[0].address = thief;
 
+    // E anche i soldi vanno al ladro: questo test non si limita a mentire sul
+    // manifesto, devia davvero la coinbase.
     std::vector<crypto::public_key> out_keys;
     out_keys.reserve(stolen.size());
-    for (size_t i = 0; i < stolen.size(); ++i) out_keys.push_back(fresh_key());
+    for (size_t i = 0; i < stolen.size(); ++i)
+        out_keys.push_back(stolen[i].address.m_spend_public_key);
 
     transaction tx = build_coinbase(kBlockReward - budget, stolen, out_keys);
-    tx.extra = build_manifest(stolen, height, out_keys);
+    tx.extra = build_manifest(stolen, height, {});
     ASSERT_FALSE(tx.extra.empty());
 
     const Verdict v = judge(tx, height);
     EXPECT_FALSE(v.accepted)
         << "il 3% e' finito all'indirizzo arbitrario del miner e il blocco e' "
            "stato accettato: la regola non e' una regola";
-    EXPECT_NE(v.error.find("mismatch"), std::string::npos)
-        << "il rifiuto deve dire che il destinatario non e' quello dovuto, "
+    // La diagnosi che arriva e' "non c'e' un'uscita spendibile verso il nodo
+    // dovuto", non "il destinatario e' sbagliato". Sono due fatti distinti e il
+    // secondo e' piu' grave: il manifesto puo' essere perfettamente conforme
+    // mentre i soldi sono andati altrove. Un operatore che legge "destinatario
+    // sbagliato" va a guardare il manifesto, che invece e' corretto, e non
+    // trova mai il bug.
+    EXPECT_NE(v.error.find("no spendable output"), std::string::npos)
+        << "il rifiuto deve dire che i soldi non sono dove il protocollo vuole, "
            "altrimenti un operatore non capisce perche' il blocco e' rimasto fuori"
         << " (messaggio ricevuto: " << v.error << ")";
 }
@@ -427,15 +444,15 @@ TEST_F(RuleFixture, paying_the_right_amount_to_the_wrong_node_is_rejected)
     ASSERT_LT(partial.size(), expected.size())
         << "il nodo 'a' ha preso tutto: non c'e' piu' nulla da escludere";
 
-    std::vector<crypto::public_key> out_keys;
-    for (size_t i = 0; i < partial.size(); ++i) out_keys.push_back(fresh_key());
-
     uint64_t stolen = 0;
     for (const auto& p : expected) stolen += p.amount;
     for (const auto& p : partial) stolen -= p.amount;
 
-    transaction tx = build_coinbase(kBlockReward - budget, partial, out_keys);
-    tx.extra = build_manifest(partial, height, out_keys);
+    // out_keys vuoto: le vout sono oneste, quelle del nodo "a". Il furto qui e'
+    // solo la voce mancante dal manifesto, non i soldi spostati: e i due casi
+    // hanno bisogni di controlli diversi, quindi i test li tengono separati.
+    transaction tx = build_coinbase(kBlockReward - budget, partial);
+    tx.extra = build_manifest(partial, height);
     ASSERT_FALSE(tx.extra.empty());
 
     const Verdict v = judge(tx, height);
@@ -731,6 +748,65 @@ TEST_F(RuleFixture, recomputing_the_same_height_twice_gives_the_same_answer)
         << "il risultato dipende dall'altezza in mezzo e' passata: il ricalcolo ha "
            "memoria di cio' che e' successo prima, e quindi non e' una funzione "
            "dell'altezza";
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 10 - L'ATTACCO FORTE: il punto 6 della richiesta, quello vero.
+//
+// Il test 2 dice che il manifesto non puo' mentire sul destinatario. Ma il
+// manifesto e' un documento, e un documento puo' dire la verita' mentre i soldi
+// vanno altrove: il miner sceglie anche le chiavi-output delle vout, e fino a
+// poco fa non c'era nessun legame fra quelle scelte e i destinatari dichiarati.
+//
+// Questo e' il test che mancava, ed e' quello che chiude il buco.
+//
+// Com'e' andata quando l'ho scritto: il blocco e' stato ACCETTATO, con un errore
+// vuoto. Il manifesto era corretto, le somme erano corrette, e i soldi erano
+// del miner. Tutte le verifiche esistenti erano soddisfatte, perche' guardavano
+// il manifesto e non guardavano la coinbase.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST_F(RuleFixture, honest_manifest_but_the_money_goes_to_the_miner_is_rejected)
+{
+    const uint64_t height = 240;
+    const uint64_t budget = node_budget_of(kBlockReward);
+    ASSERT_GT(budget, 0);
+
+    m_wallet["a"] = addr_of(fresh_key());
+    add_node("a");
+
+    const auto expected = expected_at(height);
+    ASSERT_FALSE(expected.empty());
+
+    // Il manifesto e' ONESTO: e' la lista del consenso, parola per parola.
+    // Il colpevole e' uno solo, ed e' la chiave-output della vout.
+    const account_public_address thief = addr_of(fresh_key());
+    ASSERT_TRUE(memcmp(&thief.m_spend_public_key,
+                       &expected[0].address.m_spend_public_key,
+                       sizeof(crypto::public_key)) != 0)
+        << "il test non avrebbe niente da dimostrare";
+
+    std::vector<crypto::public_key> thief_keys;
+    thief_keys.reserve(expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        thief_keys.push_back(thief.m_spend_public_key);
+
+    // Solo la chiave cambia. Gli importi, gli indirizzi dichiarati e tutte le
+    // somme restano quelli giusti: e' un attacco che non si vede leggendo il
+    // manifesto, ed e' per questo che il manifesto non basta.
+    transaction tx = build_coinbase(kBlockReward - budget, expected, thief_keys);
+    tx.extra = build_manifest(expected, height);
+    ASSERT_FALSE(tx.extra.empty());
+
+    const Verdict v = judge(tx, height);
+    EXPECT_FALSE(v.accepted)
+        << "manifesto perfettamente conforme, somme giuste, e i soldi del 3% "
+           "sono finiti all'indirizzo del miner: il blocco e' stato accettato. "
+           "Il 3% non e' una regola di consenso";
+    EXPECT_NE(v.error.find("no spendable output"), std::string::npos)
+        << "il rifiuto deve nominare il problema vero (i soldi non sono dove il "
+           "protocollo prescrive), non il manifesto, che e' corretto"
+        << " (messaggio ricevuto: " << v.error << ")";
 }
 
 } // namespace

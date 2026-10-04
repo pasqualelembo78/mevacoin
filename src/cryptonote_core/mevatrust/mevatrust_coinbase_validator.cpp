@@ -14,6 +14,7 @@
 #include "pool_distribution.h"
 #include "pool_address.h"
 #include "mevatrust_consensus.h"
+#include <boost/variant/get.hpp>
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
@@ -27,6 +28,27 @@
 #define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.validator"
 
 namespace cryptonote {
+namespace {
+
+// ── vout_key_is ───────────────────────────────────────────────────────────────
+//
+// tx_out::target e' un boost::variant, non una chiave. Confrontarlo con memcmp
+// contro una public_key funziona e non significa niente: si confronta il
+// contenuto grezzo del variant con 32 byte di chiave, e la disposizione dei byte
+// nel variant e' un dettaglio di implementazione.
+//
+// Il pericolo di questo errore e' che passa. La verifica tornava "diverso" per
+// motivi sbagliati, quindi un blocco fraudolento veniva respinto per caso e un
+// blocco onesto poteva venire respinto per caso: due bug diversi, un solo
+// memcmp. Per questo la chiave si estrae con boost::get e si dice cosa si
+// confronta.
+bool vout_key_is(const tx_out& vout, const crypto::public_key& expected) {
+  const auto* to_key = boost::get<txout_to_key>(&vout.target);
+  if (!to_key) return false;   // output a script/tag, non a chiave: non e' un nodo
+  return memcmp(&to_key->key, &expected, sizeof(crypto::public_key)) == 0;
+}
+
+} // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
 // check_mevatrust_coinbase
@@ -75,8 +97,7 @@ bool check_mevatrust_coinbase(
     bool pool_found = false;
     for (const auto& out : miner_tx.vout) {
       if (out.amount == expected_pool_amount &&
-          memcmp(&out.target, &pool_addr.m_spend_public_key,
-                 sizeof(crypto::public_key)) == 0) {
+          vout_key_is(out, pool_addr.m_spend_public_key)) {
         pool_found = true;
         break;
       }
@@ -188,6 +209,48 @@ bool check_mevatrust_coinbase_pure_consensus(
                 ") is not the sum of its own entries (" +
                 std::to_string(entries_sum) + ")";
     return false;
+  }
+
+  // ── I soldi devono essere fisicamente lì ──────────────────────────────────
+  //
+  // Fin qui abbiamo controllato il manifesto: chi dice di ricevere e quanto. Il
+  // manifesto e' un documento, e un documento puo' dire la cosa giusta mentre i
+  // soldi vanno altrove: il miner sceglie anche le chiavi-output delle vout, e
+  // nulla finora legava quelle scelte ai destinatari dichiarati.
+  //
+  // Il legame c'e' ed e' un'uguaglianza, non un calcolo: la vout del nodo deve
+  // avere esattamente la chiave pubblica registrata del nodo. Non e' ricostruibile
+  // e non e' ricostruibile perche' non deve esserlo - un output stealth non e'
+  // verificabile da terzi, quindi il protocollo non usa output stealth per i
+  // pagamenti ai nodi (vedi construct_miner_tx_with_mevatrust).
+  //
+  // Il miner non puo' aggirarlo: gli servirebbe una chiave-output che sia insieme
+  // spendibile da lui e identica a quella del nodo previsto, e un'equazione del
+  // genere non ha soluzioni da scegliere.
+  {
+    std::string missing;
+    bool all_present = true;
+    for (const auto& e : expected) {
+      bool found = false;
+      for (const auto& vout : miner_tx.vout) {
+        if (vout.amount == e.amount &&
+            vout_key_is(vout, e.address.m_spend_public_key)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        all_present = false;
+        missing = epee::string_tools::pod_to_hex(e.address.m_spend_public_key).substr(0, 16);
+        break;
+      }
+    }
+    if (!all_present) {
+      error_msg = "MevaTrust: the 3% is declared to the right node but the coinbase "
+                  "has no spendable output to it (node " + missing + ") - the money "
+                  "would go somewhere else";
+      return false;
+    }
   }
 
   // confronto voce per voce, in ordine canonico
