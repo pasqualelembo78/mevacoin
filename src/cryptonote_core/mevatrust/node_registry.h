@@ -49,6 +49,19 @@ struct NodeRegistryEntry {
   uint32_t total_challenges, successful_challenges;
   uint64_t total_uptime_seconds;
   uint32_t disconnections;
+  // ── Dichiarato on-chain? ────────────────────────────────────────────────
+  //
+  // Vera SOLO per le registrazioni rilette da un blocco (tag 0xA0). False per
+  // quelle che arrivano dalla RPC register_node(), che scrive in questo stesso
+  // registro ma non lascia nulla sulla catena.
+  //
+  // Non e' cosmetico: e' il campo che distingue "nodo che esiste per tutti" da
+  // "nodo che esiste solo su questo disco". Un nodo registrato solo in locale si
+  // ritrova ACTIVE, e ACTIVE basta per finire nel calcolo delle quote.
+  //
+  // Vedi get_eligible_nodes(): e' l'unico posto dove si decide chi viene
+  // pagato, ed e' l'unico posto che chiede questo campo.
+  bool     registered_onchain{false};
   bool     is_validator{false};
   uint64_t validator_since_height{0};
   uint64_t validator_tx_amount{0};
@@ -62,6 +75,10 @@ struct NodeRegistryEntry {
     KV_SERIALIZE_VAL_POD_AS_BLOB_N(status,"status") KV_SERIALIZE(last_sync_height)
     KV_SERIALIZE(is_synchronized) KV_SERIALIZE(reputation_score) KV_SERIALIZE(total_challenges)
     KV_SERIALIZE(successful_challenges) KV_SERIALIZE(total_uptime_seconds) KV_SERIALIZE(disconnections)
+    // Aggiunto dopo: i record scritti prima non hanno questo tag e si rileggono
+    // come false. Il default e' la risposta conservativa — un record che non
+    // sa di essere on-chain non viene pagato — quindi l'aggiunta e' sicura.
+    KV_SERIALIZE(registered_onchain)
   END_KV_SERIALIZE_MAP()
 };
 
@@ -88,6 +105,8 @@ public:
 
   // ── Listing ───────────────────────────────────────────────────────────────
   std::vector<NodeRegistryEntry> get_active_nodes(uint32_t limit=0, uint32_t offset=0);
+  // I soli nodi che il consenso puo' pagare. vedi registered_onchain.
+  std::vector<NodeRegistryEntry> get_eligible_nodes();
   std::vector<NodeRegistryEntry> get_all_nodes();           // definito in .cpp
   std::vector<NodeRegistryEntry> get_synchronized_nodes();
   std::vector<NodeRegistryEntry> get_nodes_by_status(NodeStatus s);

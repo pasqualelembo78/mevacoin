@@ -898,6 +898,95 @@ TEST_F(RuleFixture, the_output_rule_starts_at_the_fork_and_not_before)
 // onesto produce blocchi che i validatori rifiutano, e la rete si ferma al primo
 // confine di periodo.
 // ─────────────────────────────────────────────────────────────────────────────
+// ── La registrazione deve stare sulla catena, non sul disco ──────────────────
+//
+// Un nodo puo' registrarsi con la RPC register_node(), che scrive in questo
+// stesso registro e lo lascia ACTIVE. ACTIVE, da solo, e' tutto quello che il
+// calcolo delle quote guardava: quindi quel nodo finiva nel blocco di questo
+// daemon, con un importo che nessun altro nodo ricostruisce, e il blocco veniva
+// respinto dalla rete.
+//
+// Il caso e' diverso da una semplice disattenzione. register_node() ricalcola
+// anche il node_id da time(nullptr): due nodi che registrano lo stesso fatto
+// ottengono due identificatori diversi. Il registro locale non racconta la stessa
+// storia del registro degli altri, quindi la lista delle quote non e' confrontabile
+// voce per voce — e quando non e' confrontabile non c'e' piu' consenso, c'e' solo
+// il miner che si crede d'accordo con se stesso.
+//
+// ACTIVE resta il filtro per l'amministrazione (RPC, statistiche, ban). Per i
+// soldi vale registered_onchain, e il posto che lo chiede e' uno solo.
+
+TEST_F(RuleFixture, a_node_registered_only_locally_earns_nothing) {
+    const uint64_t height = 240;
+    Seed s = make_seed();
+    ASSERT_TRUE(m_manager->node_registry()->register_node(
+            s.wallet_pubkey, addr_str(m_wallet["local"]), s.node_pubkey,
+            crypto::signature{}, 5555, "10.0.0.9", 1))
+        << "registrazione locale respinta: il test non sta provando niente";
+
+    // Il nodo e' nel registro, e questo e' il punto: non e' invisibile.
+    NodeRegistryEntry e{};
+    // get_node_by_pubkey confronta il NODE_pubkey, non il wallet.
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_pubkey(s.node_pubkey, e))
+        << "il nodo non e' nel registro: il test sta provando il caso sbagliato";
+    EXPECT_EQ(e.status, NodeStatus::ACTIVE)
+        << "il caso d'interesse e' un nodo ACTIVE, non uno scartato a monte";
+
+    // Eppure non viene pagato, perche' nessun blocco lo ha mai registrato.
+    EXPECT_TRUE(m_manager->node_registry()->get_eligible_nodes().empty())
+        << "un nodo registrato solo in locale e' stato pagato";
+
+    auto payouts = expected_at(height);
+    EXPECT_TRUE(payouts.empty())
+        << "le quote contengono un nodo che non esiste sulla catena: "
+        << payouts.size() << " payout";
+}
+
+TEST_F(RuleFixture, the_same_node_on_chain_is_paid_and_locally_it_is_not) {
+    const uint64_t height = 240;
+    Seed s = make_seed();
+
+    // Stesso wallet, stesso indirizzo, stesso passato di uptime. Cambia solo da
+    // dove arriva la registrazione: un blocco, o una RPC.
+    ASSERT_TRUE(m_manager->node_registry()->register_node(
+            s.wallet_pubkey, addr_str(m_wallet["x"]), s.node_pubkey,
+            crypto::signature{}, 5555, "10.0.0.9", 1));
+    EXPECT_TRUE(expected_at(height).empty())
+        << "prima della registrazione on-chain nessuno deve essere pagato";
+
+    tx_extra_mevatrust_registration reg{};
+    reg.wallet_pubkey  = s.wallet_pubkey;
+    reg.node_pubkey    = s.node_pubkey;
+    reg.wallet_address = addr_str(m_wallet["x"]);
+    reg.node_id        = s.node_id;
+    ASSERT_TRUE(m_manager->node_registry()->register_node_onchain(reg, 1));
+
+    // Registrato non basta: la soglia guarda il punteggio, e il punteggio si
+    // costruisce da uptime. Dieci eventi online con peer: il massimo possibile.
+    for (uint32_t i = 0; i < 10; ++i) {
+        UptimeEvent ev{};
+        ev.timestamp        = 1000 + i;
+        ev.online           = true;
+        ev.block_height     = 240;
+        ev.peer_count       = 4;
+        ev.response_time_ms = 50;
+        ev.ip_address       = "127.0.0.1";
+        ASSERT_TRUE(m_manager->mevatrust_engine()->record_uptime_event(s.node_id, ev));
+    }
+
+    auto payouts = expected_at(height);
+    EXPECT_EQ(payouts.size(), 1u)
+        << "la registrazione on-chain non rende il nodo eleggibile";
+    // Si confronta con l'indirizzo dichiarato nella registrazione, non con
+    // wallet_pubkey: quello e' solo la chiave che il nodo prova di possedere,
+    // l'indirizzo di pagamento e' un altro campo dello stesso messaggio.
+    if (!payouts.empty())
+        EXPECT_EQ(memcmp(&payouts[0].address.m_spend_public_key,
+                         &m_wallet["x"].m_spend_public_key,
+                         sizeof(crypto::public_key)), 0)
+            << "i soldi sono andati a un indirizzo diverso da quello dichiarato";
+}
+
 TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
 {
     const uint64_t height = 240;

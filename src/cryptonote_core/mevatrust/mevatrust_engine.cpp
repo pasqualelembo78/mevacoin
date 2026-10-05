@@ -100,7 +100,12 @@ MevaTrustEngine::calculate_all_scores(uint64_t current_height)
 {
     std::map<std::string, MevaTrustScoreSnapshot> scores;
     if (!node_registry_) return scores;
-    auto nodes = node_registry_->get_active_nodes();
+    // get_eligible_nodes(), non get_active_nodes(): la differenza e' un nodo che
+    // si e' registrato via RPC e non esiste sulla catena. Pagarlo qui significa
+    // che questo nodo mette nel blocco una lista di quote che nessun altro
+    // ricostruisce, e il blocco viene respinto dalla rete. Il posto dove si
+    // sceglie chi viene pagato e' l'unico che deve chiedere se il nodo e' on-chain.
+    auto nodes = node_registry_->get_eligible_nodes();
     for (auto& entry : nodes)
         scores[hk(entry.node_id)] = calculate_node_score(entry.node_id, current_height);
     return scores;

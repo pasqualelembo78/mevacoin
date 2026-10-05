@@ -340,6 +340,17 @@ std::vector<NodeRegistryEntry> NodeRegistry::get_active_nodes(uint32_t limit, ui
     }
     return r;
 }
+std::vector<NodeRegistryEntry> NodeRegistry::get_eligible_nodes() {
+    // L'unico filtro che conta per il consenso. ACTIVE da solo non basta:
+    // anche una registrazione RPC scrive ACTIVE, e un nodo che esiste solo
+    // su questo disco non puo' ricevere soldi che gli altri nodi non vedono.
+    std::lock_guard<std::mutex> lk(nodes_lock_);
+    std::vector<NodeRegistryEntry> r;
+    for (auto& kv:nodes_)
+        if (kv.second.status==NodeStatus::ACTIVE && kv.second.registered_onchain)
+            r.push_back(kv.second);
+    return r;
+}
 std::vector<NodeRegistryEntry> NodeRegistry::get_all_nodes() {
     std::lock_guard<std::mutex> lk(nodes_lock_);
     std::vector<NodeRegistryEntry> r; r.reserve(nodes_.size());
@@ -476,6 +487,7 @@ bool NodeRegistry::register_node_onchain(const tx_extra_mevatrust_registration& 
     e.registration_signature = reg.signature; e.ip_address = ""; e.port = (uint16_t)reg.port;
     e.last_seen_timestamp = now; e.status = NodeStatus::ACTIVE;
     e.is_synchronized = true; e.last_sync_height = height; e.reputation_score = 1.0f;
+    e.registered_onchain = true;   // questo e' il posto dove si puo' dire
     e.created_at = now; e.updated_at = now;
     if (!db_put(m_env, m_dbi, e)) return false;
     nodes_[key] = e;
