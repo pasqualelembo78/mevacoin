@@ -315,10 +315,13 @@ TEST(mevatrust_store, purchase_cancel_and_refund)
 
 TEST(mevatrust_store, build_and_parse_store_create)
 {
+    // Chiavi vere, non memset: 0x12 ripetuto 32 volte non e' quasi certamente un
+    // punto valido della curva, e check_signature su una chiave pubblica non
+    // valida solleva invece di verificare. Il test falliva per i dati, non per
+    // il codice che voleva provare.
     crypto::public_key pk{};
-    memset(pk.data, 0x12, 32);
     crypto::secret_key sk{};
-    memset(sk.data, 0x34, 32);
+    crypto::generate_keys(pk, sk);
 
     tx_extra_mevatrust_store op{};
     op.op = tx_extra_mevatrust_store::STORE_CREATE;
@@ -358,12 +361,11 @@ TEST(mevatrust_store, build_and_parse_store_create)
 
 TEST(mevatrust_store, build_and_verify_confirm_cancel)
 {
-    crypto::public_key seller_pk{};
-    memset(seller_pk.data, 0x12, 32);
-    crypto::secret_key seller_sk{};
-    memset(seller_sk.data, 0x34, 32);
-    crypto::public_key buyer_pk{};
-    memset(buyer_pk.data, 0x56, 32);
+    // Chiavi vere: vedi la nota sopra su check_signature e le chiavi non valide.
+    crypto::public_key seller_pk{}, buyer_pk{};
+    crypto::secret_key seller_sk{}, buyer_sk{};
+    crypto::generate_keys(seller_pk, seller_sk);
+    crypto::generate_keys(buyer_pk, buyer_sk);
 
     crypto::hash store_id{};
     memset(store_id.data, 0x78, 32);
@@ -429,4 +431,167 @@ TEST(mevatrust_store, build_and_verify_confirm_cancel)
         // seller_sig left uninitialized (all zeros)
         EXPECT_FALSE(mevatrust::verify_store_confirm_signature(op));
     }
+}
+
+// -- Regressions: due bug reali trovati dai test ----------------------------
+
+// db_put_purchase() faceva sempre emplace(), quindi un aggiornamento non
+// sostituiva la riga: la duplicava. confirm_purchase() su un acquisto ne
+// lasciava due copie, una ancora PENDING. Il test se ne accorgeva per il
+// conteggio, ma il danno vero e' altro: la copia stantia permette a un
+// annullamento successivo di trovare un PENDING fantasma e incrementare la
+// quantita' due volte per un solo acquisto. La disponibilita' si gonfia.
+TEST(mevatrust_store, confirming_a_purchase_does_not_duplicate_it)
+{
+    auto tmpdir = create_temp_dir();
+    {
+        StoreRegistry reg(tmpdir);
+        ASSERT_TRUE(reg.load_from_disk());
+
+        crypto::public_key owner{}, buyer{};
+        memset(owner.data, 0xAA, 32);
+        memset(buyer.data, 0xBB, 32);
+
+        crypto::hash sid = reg.create_store("S","d","","a", false,"",100,0,owner,1000);
+        crypto::hash iid = reg.list_item(sid,"W","w",1000,3,"g","","mvc_only",1000);
+        ASSERT_TRUE(reg.buy_item(sid, iid, buyer, 1001, 1000000, 1000, "", 0));
+        ASSERT_EQ(reg.get_store_purchases(sid).size(), 1u);
+
+        crypto::hash txid{};
+        memset(txid.data, 0xCC, 32);
+        ASSERT_TRUE(reg.confirm_purchase(sid, iid, buyer, owner, txid, 1005));
+
+        // Un solo acquisto: quello stesso, ora confermato.
+        auto purchases = reg.get_store_purchases(sid);
+        ASSERT_EQ(purchases.size(), 1u) << "la conferma ha duplicato l'acquisto";
+        EXPECT_EQ(purchases[0].status, PURCHASE_CONFIRMED);
+        EXPECT_EQ(purchases[0].confirm_height, 1005u);
+
+        StoreItemEntry item{};
+        ASSERT_TRUE(reg.get_item(iid, item));
+        EXPECT_EQ(item.quantity, 2u) << "la quantita' non doveva muoversi alla conferma";
+    }
+    cleanup_temp_dir(tmpdir);
+}
+
+// Il seguito del bug precedente: dopo una conferma un annullamento deve essere
+// rifiutato. Se la copia PENDING stantia e' ancora in registro, l'annullamento la
+// trova, rimette la quantita' e restituisce true: disponibilita' restituita senza
+// che nessun pagamento sia mai avvenuto.
+TEST(mevatrust_store, cancelling_after_a_confirm_does_not_restore_quantity)
+{
+    auto tmpdir = create_temp_dir();
+    {
+        StoreRegistry reg(tmpdir);
+        ASSERT_TRUE(reg.load_from_disk());
+
+        crypto::public_key owner{}, buyer{};
+        memset(owner.data, 0xAA, 32);
+        memset(buyer.data, 0xBB, 32);
+
+        crypto::hash sid = reg.create_store("S","d","","a", false,"",100,0,owner,1000);
+        crypto::hash iid = reg.list_item(sid,"W","w",1000,3,"g","","mvc_only",1000);
+        ASSERT_TRUE(reg.buy_item(sid, iid, buyer, 1001, 1000000, 1000, "", 0));
+
+        crypto::hash txid{};
+        memset(txid.data, 0xCC, 32);
+        ASSERT_TRUE(reg.confirm_purchase(sid, iid, buyer, owner, txid, 1005));
+
+        EXPECT_FALSE(reg.cancel_purchase(sid, iid, buyer, owner, "late", txid, 1006))
+            << "un acquisto gia' confermato e' stato annullato";
+
+        StoreItemEntry item{};
+        ASSERT_TRUE(reg.get_item(iid, item));
+        EXPECT_EQ(item.quantity, 2u)
+            << "la quantita' e' stata ripristinata da un annullamento non valido";
+    }
+    cleanup_temp_dir(tmpdir);
+}
+
+// La chiave LMDB degli acquisti era solo la chiave pubblica del buyer. Un buyer
+// che comprava due articoli diversi scriveva due righe con la stessa chiave e la
+// seconda sovrascriveva la prima: dopo un riavvio spariva un acquisto, senza
+// errore e senza traccia.
+TEST(mevatrust_store, two_items_bought_by_the_same_buyer_survive_a_restart)
+{
+    auto tmpdir = create_temp_dir();
+    crypto::hash sid{};
+    {
+        StoreRegistry reg(tmpdir);
+        ASSERT_TRUE(reg.load_from_disk());
+
+        crypto::public_key owner{}, buyer{};
+        memset(owner.data, 0xAA, 32);
+        memset(buyer.data, 0xBB, 32);
+
+        sid = reg.create_store("S","d","","a", false,"",100,0,owner,1000);
+        crypto::hash iid1 = reg.list_item(sid,"Uno","w",1000,3,"g","","mvc_only",1000);
+        crypto::hash iid2 = reg.list_item(sid,"Due","w",1000,3,"g","","mvc_only",1000);
+        ASSERT_NE(iid1, crypto::hash{});
+        ASSERT_NE(iid2, crypto::hash{});
+
+        ASSERT_TRUE(reg.buy_item(sid, iid1, buyer, 1001, 1000000, 1000, "", 0));
+        ASSERT_TRUE(reg.buy_item(sid, iid2, buyer, 1002, 1000000, 1000, "", 0));
+
+        EXPECT_EQ(reg.get_store_purchases(sid).size(), 2u)
+            << "i due acquisti non sono entrambi registrati in memoria";
+    }
+    // Riavvio: quello che si rilegge e' cio' che la catena potra' vedere.
+    {
+        StoreRegistry reg2(tmpdir);
+        ASSERT_TRUE(reg2.load_from_disk());
+        auto purchases = reg2.get_store_purchases(sid);
+        ASSERT_EQ(purchases.size(), 2u)
+            << "un acquisto e' sparito nel riavvio: la chiave LMDB non distingue i due articoli";
+    }
+    cleanup_temp_dir(tmpdir);
+}
+
+// Quale campo non sopravvive al round-trip? La firma e' firmata sull'hash dei
+// campi e verificata sull'hash del campo riletto dalla transazione: se un campo
+// coperto dall'hash cambia, non si autentica piu' nulla. Qui ogni campo viene
+// confrontato uno a uno, perche' l'hash da solo dice solo "non torna".
+TEST(mevatrust_store, store_message_hash_survives_serialization)
+{
+    crypto::public_key pk{}; memset(pk.data, 0x12, 32);
+    tx_extra_mevatrust_store op{};
+    op.op = tx_extra_mevatrust_store::STORE_CREATE;
+    op.name = "Test Store"; op.description = "A test store";
+    op.url = "https://example.com"; op.payment_address = "addr1";
+    op.euro_enabled = true; op.euro_details = "IBAN123";
+    op.mvc_percent = 70; op.euro_percent = 30; op.owner_pubkey = pk;
+
+    std::vector<uint8_t> extra;
+    ASSERT_TRUE(mevatrust::build_mevatrust_store_extra(op, extra));
+    transaction tx{}; tx.extra = extra;
+    tx_extra_mevatrust_store parsed{};
+    ASSERT_TRUE(mevatrust::parse_mevatrust_store_from_tx(tx, parsed));
+
+    EXPECT_EQ((int)parsed.op,               (int)op.op);
+    EXPECT_EQ(parsed.store_id,              op.store_id);
+    EXPECT_EQ(parsed.item_id,               op.item_id);
+    EXPECT_EQ(parsed.name,                  op.name);
+    EXPECT_EQ(parsed.description,           op.description);
+    EXPECT_EQ(parsed.url,                   op.url);
+    EXPECT_EQ(parsed.price,                 op.price);
+    EXPECT_EQ(parsed.quantity,              op.quantity);
+    EXPECT_EQ(parsed.category,              op.category);
+    EXPECT_EQ(parsed.payment_address,       op.payment_address);
+    EXPECT_EQ(parsed.euro_enabled,          op.euro_enabled);
+    EXPECT_EQ(parsed.euro_details,          op.euro_details);
+    EXPECT_EQ(parsed.mvc_percent,           op.mvc_percent);
+    EXPECT_EQ(parsed.euro_percent,          op.euro_percent);
+    EXPECT_EQ(parsed.payment_mode,          op.payment_mode);
+    EXPECT_EQ(parsed.buyer_payment_method,  op.buyer_payment_method);
+    EXPECT_EQ(parsed.euro_ref,              op.euro_ref);
+    EXPECT_EQ(parsed.euro_amount,           op.euro_amount);
+    EXPECT_EQ(parsed.seller_pubkey,         op.seller_pubkey);
+    EXPECT_EQ(parsed.cancel_reason,         op.cancel_reason);
+    EXPECT_EQ(parsed.confirm_expiry_height, op.confirm_expiry_height);
+
+    // Il punto: i due hash devono coincidere, altrimenti la firma firmata prima
+    // della serializzazione non verifica mai su una transazione reale.
+    EXPECT_EQ(mevatrust::store_message_hash(parsed), mevatrust::store_message_hash(op))
+        << "l'hash del messaggio cambia passando dalla transazione: ogni operazione "
+           "store firmata prima di essere serializzata diventerebbe non verificabile";
 }

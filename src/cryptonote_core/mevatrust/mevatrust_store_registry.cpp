@@ -207,6 +207,28 @@ bool StoreRegistry::close_database() {
   return true;
 }
 
+/// Chiave LMDB di un acquisto: buyer || store || item.
+///
+/// Con il solo buyer, due acquisti dello stesso compratore finivano sulla stessa
+/// riga e il secondo sovrascriveva il primo: al riavvio uno spariva senza
+/// errore e senza traccia. Gli acquisti si ricostruiscono dai blocchi, ma la
+/// cache non deve mentire nel frattempo.
+static std::string purchase_key(const crypto::hash& store_id, const crypto::hash& item_id,
+                                const crypto::public_key& buyer) {
+  std::string k;
+  k.reserve(96);
+  k.append(reinterpret_cast<const char*>(buyer.data), 32);
+  k.append(reinterpret_cast<const char*>(store_id.data), 32);
+  k.append(reinterpret_cast<const char*>(item_id.data), 32);
+  return k;
+}
+
+/// Chiave usata per il multimap in memoria: solo il buyer, perche' i metodi di
+/// lookup fanno equal_range() su quella e poi confrontano store e item.
+static std::string purchase_mem_key(const crypto::public_key& buyer) {
+  return std::string(reinterpret_cast<const char*>(buyer.data), 32);
+}
+
 bool StoreRegistry::load_from_disk() {
   std::lock_guard<std::mutex> lk(lock_);
   if (!open_database()) return false;
@@ -247,10 +269,8 @@ bool StoreRegistry::load_from_disk() {
     while (mdb_cursor_get(cur, &k, &v, MDB_NEXT) == 0) {
       StorePurchaseEntry e;
       std::string data(static_cast<const char*>(v.mv_data), v.mv_size);
-      if (unpack_purchase(data, e)) {
-        std::string key(static_cast<const char*>(k.mv_data), k.mv_size);
-        purchases_.emplace(key, e);
-      }
+      if (unpack_purchase(data, e))
+        purchases_.emplace(purchase_mem_key(e.buyer_pubkey), e);
     }
     mdb_cursor_close(cur);
   }
@@ -282,7 +302,9 @@ bool StoreRegistry::save_to_disk() const {
     }
     for (const auto& kv : purchases_) {
       std::string data; pack_purchase(kv.second, data);
-      MDB_val mk{ kv.first.size(), const_cast<char*>(kv.first.data()) };
+      const std::string dkey = purchase_key(kv.second.store_id, kv.second.item_id,
+                                            kv.second.buyer_pubkey);
+      MDB_val mk{ dkey.size(), const_cast<char*>(dkey.data()) };
       MDB_val mv{ data.size(), const_cast<char*>(data.data()) };
       if (mdb_put(txn, m_dbi_purchases_, &mk, &mv, 0)) { mdb_txn_abort(txn); return false; }
     }
@@ -340,23 +362,39 @@ bool StoreRegistry::db_del_item(const crypto::hash& item_id) {
 }
 
 bool StoreRegistry::db_put_purchase(const StorePurchaseEntry& e) {
-  std::string key(reinterpret_cast<const char*>(e.buyer_pubkey.data), 32);
+  const std::string memkey = purchase_mem_key(e.buyer_pubkey);
+  const std::string dkey   = purchase_key(e.store_id, e.item_id, e.buyer_pubkey);
   std::string data; pack_purchase(e, data);
   MDB_txn* txn = MevaTrustLMDB::begin_write(m_env_);
-  MDB_val mk{ key.size(), const_cast<char*>(key.data()) };
+  MDB_val mk{ dkey.size(), const_cast<char*>(dkey.data()) };
   MDB_val mv{ data.size(), const_cast<char*>(data.data()) };
   int rc = mdb_put(txn, m_dbi_purchases_, &mk, &mv, 0);
   if (rc) { mdb_txn_abort(txn); return false; }
   mdb_txn_commit(txn);
-  purchases_.emplace(key, e);
+
+  // Aggiornare la riga esistente, non aggiungerne una. Con emplace() ogni
+  // conferma o annullamento duplicava l'acquisto e lasciava in giro una copia
+  // PENDING stantia, sulla quale un annullamento successivo riusciva a trovare
+  // un acquisto " ancora da confermare e a rimettere la quantita' una seconda
+  // volta. Il chiamante tiene gia' il lock.
+  auto range = purchases_.equal_range(memkey);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (memcmp(it->second.store_id.data, e.store_id.data, 32) == 0 &&
+        memcmp(it->second.item_id.data, e.item_id.data, 32) == 0) {
+      it->second = e;
+      return true;
+    }
+  }
+  purchases_.emplace(memkey, e);
   return true;
 }
 
 bool StoreRegistry::db_del_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
                                      const crypto::public_key& buyer) {
-  std::string key(reinterpret_cast<const char*>(buyer.data), 32);
+  const std::string dkey = purchase_key(store_id, item_id, buyer);
+  std::string key = purchase_mem_key(buyer);
   MDB_txn* txn = MevaTrustLMDB::begin_write(m_env_);
-  MDB_val mk{ key.size(), const_cast<char*>(key.data()) };
+  MDB_val mk{ dkey.size(), const_cast<char*>(dkey.data()) };
   mdb_del(txn, m_dbi_purchases_, &mk, nullptr);
   mdb_txn_commit(txn);
   auto range = purchases_.equal_range(key);
