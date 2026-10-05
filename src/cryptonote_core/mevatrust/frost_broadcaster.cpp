@@ -395,7 +395,8 @@ bool FrostBroadcaster::try_finalize(uint64_t height, uint32_t period)
     std::string err;
     if (!mevatrust::frost::aggregate_signatures(
             msg_hash, b->participants, partials, b->rho,
-            mevatrust::frost::CONSENSUS_GROUP_PUBKEY, final_sig)) {
+            mevatrust::frost::CONSENSUS_GROUP_PUBKEY,
+            mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS, final_sig)) {
       MERROR("[FROST:P2P] aggregate_signatures failed");
       return false;
     }

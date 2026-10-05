@@ -167,6 +167,15 @@ bool aggregate_signatures(
     const std::vector<PartialSignature>& partials,
     const std::vector<crypto::ec_scalar>& rho,                       // binding factors, same order
     const crypto::public_key& Y,
+    // Le chiavi pubbliche dei firmatari corrispondenti a Y, indicizzate per
+    // signer_index - 1.
+    //
+    // Prima questi non erano un parametro: la funzione verificava i partial
+    // contro CONSENSUS_PROPOSER_PUBKEYKS letto dal global, ignorando Y. Non
+    // era un dettaglio, era una dipendenza nascosta dentro una funzione che
+    // sembrava parametrica: con Y diverso la verifica girava su chiavi che non
+    // gli appartenevano, e falliva per un motivo che non c'entava con la firma.
+    const std::array<crypto::public_key, FROST_N>& signer_pubkeys,
     FrostSignature& sig_out);
 
 /// Verify an aggregated FROST signature: z*G == R + c*Y.

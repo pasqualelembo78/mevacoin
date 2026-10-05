@@ -456,7 +456,8 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
             if (partials.size() == USE_SIGNERS &&
                 cryptonote::mevatrust::frost::aggregate_signatures(
                   msg_hash, signer_indices, partials, rho,
-                  cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY, frost_sig)) {
+                  cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY,
+                  cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS, frost_sig)) {
               // Final sanity: verify aggregate against ceremony group key
               cryptonote::mevatrust::frost::PublicKeyPackage vpkg;
               vpkg.agg_pubkey = cryptonote::mevatrust::frost::CONSENSUS_GROUP_PUBKEY;

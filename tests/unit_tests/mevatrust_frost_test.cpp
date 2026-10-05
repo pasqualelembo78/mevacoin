@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -15,26 +16,7 @@ using namespace cryptonote;
 using namespace cryptonote::mevatrust;
 
 namespace {
-int hexval(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
 
-bool decode_hex(const std::string& hex, crypto::secret_key& out) {
-    if (hex.size() != 64) return false;
-    for (size_t i = 0; i < 32; ++i) {
-        int hi = hexval(hex[i*2]), lo = hexval(hex[i*2+1]);
-        if (hi < 0 || lo < 0) return false;
-        out.data[i] = static_cast<uint8_t>((hi << 4) | lo);
-    }
-    return true;
-}
-
-// Test certificate issuance under the exact manager signing path:
-//   signer_indices {1,2,3} -> nonces -> commitments -> binding factors ->
-//   aggregate R -> per-partial verify -> aggregate -> verify vs ceremony Y.
 bool frost_sign_distribution(
     uint64_t height,
     uint32_t period,
@@ -43,34 +25,33 @@ bool frost_sign_distribution(
 {
     const std::vector<uint8_t> signer_indices = {1, 2, 3};
 
-    // Ceremony private shares (test-only copy; fixed at the compile-time
-    // ceremony, individually matching CONSENSUS_PROPOSER_PUBKEYS).
-    // sec1..sec3 are the shares held by signers 1..3.
-    const std::vector<std::string> share_hex = {
-        "415ec82c42e2f28db494d4b44ff5c11de8b12bbec768c079e4e316cffa697d09",
-        "1da4fd52f3f51d16f9577ea341a2506a1eb7eaa18e57c0945fd81e3b0fe73c05",
-        "9ca761fa6cb68c6ba9c927de34881076e465b8261d7516c5907fccf11f5e1c04",
-        "be68f422af233f8ec5e9d06429a701413abe944c73c1c20a78d91ff32ccf1b06",
-        "83e7b5ccb93d357e4db879371fff23cb1fc07f13913cc56515e6183f363a3b0b",
-    };
+    // Chiavi di cerimonia generate qui, non copie di quelle deployate.
+    //
+    // Il test aveva le share private della cerimonia hardcoded, ma la cerimonia
+    // e' stata ruotata (gov_crypto frost-keygen, 2026-09-23) e CONSENSUS_PROPOSER_PUBKEYS
+    // contiene le chiavi nuove: le share nel test non derivavano piu' nessuna di
+    // quelle, e il sanity check falliva. Le share nuove sono con i cinque
+    // operatori, non nel repo, quindi il test non era recuperabile com'era.
+    //
+    // Qui si genera un pacchetto di cerimonia fresco con frost_keygen(): e' lo
+    // stesso percorso della cerimonia reale, quindi il test verifica davvero la
+    // matematica (Shamir, Lagrange, binding factors, aggregazione). Quello che
+    // NON verifica, e che va detto: che le chiavi di cerimonia effettivamente
+    // in uso sui nodi siano quelle giuste. Per quello servono le share, e quelle
+    // non sono nel repo per scelta. Copre ceremony_keys_are_self_consistent()
+    // solo la forma dell'array, non la sua verita'.
+    frost::FrostKeyPackage keypkg{};
+    if (!frost::frost_keygen(keypkg)) { std::cerr << "DIAG keygen FAIL\n"; return false; }
 
-    std::vector<frost::SignerKeypair> kp(share_hex.size());
-    for (size_t i = 0; i < share_hex.size(); ++i) {
-        if (!decode_hex(share_hex[i], kp[i].sec)) return false;
-        crypto::secret_key_to_public_key(kp[i].sec, kp[i].pub);
-        kp[i].index = static_cast<uint8_t>(i + 1);
-    }
-
-    // Sanity: keypairs must be the ceremony set.
-    for (size_t i = 0; i < frost::FROST_N; ++i) {
-        if (memcmp(&kp[i].pub, &frost::CONSENSUS_PROPOSER_PUBKEYS[i], 32) != 0)
-            return false;
-    }
+    std::vector<frost::SignerKeypair> kp(frost::FROST_N);
+    for (size_t i = 0; i < frost::FROST_N; ++i)
+        kp[i] = keypkg.signer_keypairs[i];
+    const crypto::public_key& group_pk = keypkg.group_public_key;
 
     crypto::hash msg_hash = frost::create_distribution_message_hash(height, period, outputs);
 
     std::vector<crypto::ec_scalar> lambdas;
-    if (!frost::compute_lagrange_coeffs(signer_indices, lambdas)) return false;
+    if (!frost::compute_lagrange_coeffs(signer_indices, lambdas)) { std::cerr << "DIAG lagrange FAIL\n"; return false; }
     if (lambdas.size() != signer_indices.size()) return false;
 
     std::vector<frost::NoncePair> nonces(signer_indices.size());
@@ -81,35 +62,69 @@ bool frost_sign_distribution(
     }
 
     std::vector<crypto::ec_scalar> rho;
-    if (!frost::compute_binding_factors(signer_indices, msg_hash, comms, rho)) return false;
+    if (!frost::compute_binding_factors(signer_indices, msg_hash, comms, rho)) { std::cerr << "DIAG binding FAIL\n"; return false; }
 
     crypto::public_key R;
-    if (!frost::compute_aggregate_r(comms, rho, R)) return false;
+    if (!frost::compute_aggregate_r(comms, rho, R)) { std::cerr << "DIAG aggR FAIL\n"; return false; }
 
     std::vector<frost::PartialSignature> partials;
     for (size_t i = 0; i < signer_indices.size(); ++i) {
         frost::PartialSignature ps;
         ps.signer_index = signer_indices[i];
         if (!frost::sign_partial(msg_hash, nonces[i], kp[signer_indices[i]-1].sec,
-                                 lambdas[i], rho[i], R, frost::CONSENSUS_GROUP_PUBKEY, ps))
-            return false;
+                                 lambdas[i], rho[i], R, group_pk, ps))
+            { std::cerr << "DIAG sign_partial FAIL i=" << i << "\n"; return false; }
         std::string perr;
         if (!frost::verify_partial(msg_hash, ps, lambdas[i], rho[i], R,
-                                   frost::CONSENSUS_GROUP_PUBKEY,
-                                   frost::CONSENSUS_PROPOSER_PUBKEYS[signer_indices[i]-1], perr))
-            return false;
+                                   group_pk,
+                                   kp[signer_indices[i]-1].pub, perr))
+            { std::cerr << "DIAG verify_partial FAIL i=" << i << " err=" << perr << "\n"; return false; }
         partials.push_back(std::move(ps));
     }
 
     if (!frost::aggregate_signatures(msg_hash, signer_indices, partials, rho,
-                                     frost::CONSENSUS_GROUP_PUBKEY, sig_out))
+                                     group_pk, keypkg.signer_public_keys, sig_out))
         return false;
 
     frost::PublicKeyPackage pkg;
-    pkg.agg_pubkey = frost::CONSENSUS_GROUP_PUBKEY;
-    pkg.signer_pubkeys = frost::CONSENSUS_PROPOSER_PUBKEYS;
+    pkg.agg_pubkey = group_pk;
+    for (size_t i = 0; i < frost::FROST_N; ++i) pkg.signer_pubkeys[i] = kp[i].pub;
     std::string verr;
-    return frost::verify_signature(sig_out, pkg, verr);
+    bool v = frost::verify_signature(sig_out, pkg, verr);
+    if (!v) std::cerr << "DIAG verify_signature FAIL err=" << verr << "\n";
+    return v;
+}
+
+// Cosa NON coprono i test FROST, detto nel codice.
+//
+// I test firmano con un pacchetto di cerimonia generato da frost_keygen(), non
+// con le share della cerimonia deployata: quelle sono con i cinque operatori e
+// non sono nel repo. Quindi verificano che il protocollo sia matematicamente
+// giusto, non che le chiavi in uso sui nodi siano quelle giuste.
+//
+// Questo test mette nero su bianco il perimetro residuo: controlla solo la forma
+// dei dati. Se qualcuno cambiasse una chiave di cerimonia con un valore arbitrario
+// e nessuno avesse la share corrispondente, questi test continuerebbero a
+// passare. Serve un controllo fuori banda, non un test.
+TEST(mevatrust_frost, ceremony_keys_are_shaped_but_not_verified)
+{
+    // Esistono e sono valori distinti: il minimo che serve per non firmare e
+    // aggregare tutto con la stessa chiave.
+    std::set<std::string> seen;
+    for (size_t i = 0; i < frost::FROST_N; ++i) {
+        const std::string hex = epee::string_tools::pod_to_hex(frost::CONSENSUS_PROPOSER_PUBKEYS[i]);
+        EXPECT_EQ(hex.size(), 64u) << "una chiave di cerimonia non e' un punto da 32 byte";
+        EXPECT_FALSE(hex.empty());
+        EXPECT_TRUE(seen.insert(hex).second)
+            << "due firmatari hanno la stessa chiave pubblica";
+    }
+    EXPECT_EQ(frost::FROST_N, 5u);
+    EXPECT_EQ(frost::FROST_T, 3u);
+    EXPECT_EQ(sizeof(frost::CONSENSUS_GROUP_PUBKEY.data), 32u);
+
+    // Quello che non si puo' fare qui: nessuna share privata disponibile nel
+    // repo con cui derivare queste chiavi e provarle. Dichiarato perche' il
+    // limite sia leggibile, non perche' il test lo verifichi.
 }
 
 } // anonymous namespace

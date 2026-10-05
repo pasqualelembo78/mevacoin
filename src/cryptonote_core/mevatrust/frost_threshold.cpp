@@ -383,6 +383,7 @@ bool aggregate_signatures(
     const std::vector<PartialSignature>& partials,
     const std::vector<crypto::ec_scalar>& rho,
     const crypto::public_key& Y,
+    const std::array<crypto::public_key, FROST_N>& signer_pubkeys,
     FrostSignature& sig_out)
 {
     const size_t S = signer_indices.size();
@@ -405,7 +406,7 @@ bool aggregate_signatures(
         if (idx < 1 || idx > FROST_N) return false;
         std::string perr;
         if (!verify_partial(msg_hash, partials[i], lambda_coeffs[i], rho[i],
-                            sig_out.R, Y, CONSENSUS_PROPOSER_PUBKEYS[idx - 1], perr))
+                            sig_out.R, Y, signer_pubkeys[idx - 1], perr))
             return false;
     }
 
