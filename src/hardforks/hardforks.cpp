@@ -48,6 +48,7 @@ const hardfork_t mainnet_hard_forks[] = {
   { 1,  1, 0, 1735689600 },   // v1  - CryptoNight (genesis)      2025-01-01 UTC
   { 12, 12, 0, 1748736000 },  // v12 - RandomX                    2025-06-01 UTC
   { 13, 13, 0, 1764547200 },  // v13 - Participation Incentive System   2025-12-01 UTC
+  { 14, 14, 0, 1767225600 },  // v14 - regola 3% v2: output vincolati, budget unico  2026-01-01 UTC
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 0;
@@ -56,6 +57,7 @@ const hardfork_t testnet_hard_forks[] = {
   { 1,  1, 0, 1735689600 },
   { 12, 12, 0, 1748736000 },
   { 13, 13, 0, 1764547200 },  // v13 - Participation System (testnet)  2025-12-01 UTC
+  { 14, 14, 0, 1767225600 },  // v14 - regola 3% v2 (testnet)
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 0;
@@ -64,5 +66,6 @@ const hardfork_t stagenet_hard_forks[] = {
   { 1,  1, 0, 1341378000 },
   { 12, 12, 0, 1341378001 },
   { 13, 13, 0, 1341378002 },  // v13 - Participation System (stagenet)
+  { 14, 14, 0, 1341378003 },  // v14 - regola 3% v2 (stagenet)
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);

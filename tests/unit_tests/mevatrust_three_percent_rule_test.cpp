@@ -1103,7 +1103,10 @@ TEST_F(RuleFixture, the_budget_is_three_percent_and_nothing_is_minted) {
                 << "il nodo " << (i - nodes_from) << " e' stato pagato verso un'altra chiave";
             to_nodes += o.amount;
         } else {
-            EXPECT_TRUE(tk) << "gli output del miner portano il view tag";
+            // Il formato degli output del miner non e' il soggetto di questo
+            // test: cambia con HF_VERSION_VIEW_TAGS e non c'entra col conto del
+            // 3%. Qui basta che sia un output a chiave.
+            EXPECT_TRUE(k || tk) << "output del miner non a chiave";
             to_miner += o.amount;
         }
     }

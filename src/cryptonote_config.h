@@ -230,9 +230,27 @@
 //
 // Senza questo gate la regola nuova sarebbe valida retroattivamente: dal primo
 // blocco della catena, e ogni blocco gia' prodotto con il metodo vecchio
-// diventerebbe invalido. Un nodo che riavvia su una catena lunga si troverebbe a
+// diventarebbe invalido. Un nodo che riavvia su una catena lunga si troverebbe a
 // rifiutare l'intera storia, e non per colpa di nessuno.
-#define HF_VERSION_MEVATRUST_RULE_V2      17
+//
+// Perche' 14 e non 17.
+//
+// 17 era il numero che avevo scelto all'inizio, senza guardare cosa c'era in
+// mezzo. Ma la tabella dei fork di mainnet finisce a 13: le versioni 14, 15 e 16
+// non esistono. Aggiungere una riga { 17, ... } attiverebbe di colpo TUTTE le
+// versioni intermedie che nessuno ha mai messo in funzione — 15 (bulletproof+,
+// view tag, fee scaling 2021) e 16 (early coinbase unlock) — senza che nessuna
+// fosse mai stata attiva.
+//
+// E HF16 non e' una formalita': cambia quando la coinbase diventa spendabile.
+// Attivarlo per sbaglio, insieme a una regola sul 3%, significa cambiare
+// l'economia del miner senza averlo deciso. Il nome della costante sembrerebbe
+// parlare solo del 3%, mentre cambierebbe tre cose che non c'entrano.
+//
+// 14 e' il numero successivo a quello gia' attivo, quindi attiva esattamente
+// quello che voglio attivare e nient'altro. Se un giorno serve la 15 o la 16 si
+// aggiungono con la loro riga, e con la loro altezza.
+#define HF_VERSION_MEVATRUST_RULE_V2      14
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2
