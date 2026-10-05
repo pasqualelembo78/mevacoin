@@ -1384,4 +1384,62 @@ TEST_F(RuleFixture, uptime_commitment_signed_by_a_foreign_key_does_not_verify) {
         << "una firma fatta con una chiave diversa da quella dichiarata e' passata";
 }
 
+
+// -- Il commitment deve sopravvivere alla costruzione della transazione -------
+
+// Questo e' il test che mancava, ed e' quello che conta.
+//
+// I test precedenti passano l'extra direttamente al consumatore, quindi
+// saltano il passaggio in cui la transazione viene costruita. Ma sort_tx_extra
+// conosce solo i tag che ha un pick<>: i tag MevaTrust non lo hanno, e senza un
+// pick un campo non riconosciuto fa fallire la costruzione con "transaction was
+// not constructed". Lo stesso errore ha gia' fatto perdere una transazione di
+// governance.
+//
+// Per ora i tag MevaTrust non hanno VARIANT_TAG, quindi sort_tx_extra si
+// ferma sul tag sconosciuto, lascia i campi non raccolti e con allow_partial
+// riappende i byte grezzi in coda: la transazione si costruisce e il blob
+// sopravvive. Questo test blocca quel comportamento. Se qualcuno aggiunge un
+// VARIANT_TAG a 0xA5 senza aggiungere il pick<>, questo test fallisce - che e'
+// esattamente quando serve saperlo.
+TEST_F(RuleFixture, uptime_blob_survives_tx_construction_and_stays_findable) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    m_manager->set_node_key(sk, pk);
+    add_node_as("alpha", pk);
+
+    std::vector<uint8_t> extra;
+    std::string err, node_id_hex;
+    uint64_t uptime = 0;
+    ASSERT_TRUE(m_manager->build_signed_uptime_commitment(4, 240, true, extra, err,
+                                                          node_id_hex, uptime));
+
+    // allow_partial=true: e' il valore che usa construct_tx_with_tx_key(), cioe'
+    // il percorso di un invio dal wallet.
+    std::vector<uint8_t> sorted;
+    ASSERT_TRUE(sort_tx_extra(extra, sorted, true))
+        << "la transazione con 0xA5 non si costruirebbe: il commitment non arriverebbe mai";
+
+    // Con un solo campo non riconosciuto l'output puo' tornare identico
+    // all'input: sort_tx_extra non raccoglie nulla e riappende da offset 0. Non
+    // e' un difetto, e non e' quello che questo test deve controllare. Quello che
+    // conta e' che il blob resti intatto e ritrovabile.
+    EXPECT_EQ(sorted.size(), extra.size())
+        << "il commitment ha perso byte passando dalla costruzione della transazione";
+
+    // Il consumatore deve ritrovarlo dopo il riordino, altrimenti la firma
+    // verificherebbe ma l'evento non verrebbe mai registrato.
+    transaction tx{};
+    tx.version     = 1;
+    tx.unlock_time = 60;
+    tx.extra       = sorted;
+
+    tx_extra_mevatrust_uptime u{};
+    ASSERT_TRUE(mevatrust::parse_mevatrust_uptime_from_tx(tx, u))
+        << "il commitment e' sopravvissuto alla costruzione ma il consumatore non lo trova";
+    EXPECT_TRUE(mevatrust::verify_uptime_signature(u));
+    EXPECT_EQ(u.node_pubkey, pk);
+}
+
 } // namespace
