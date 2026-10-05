@@ -1913,9 +1913,12 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   };
 
   bool r;
-  // Total block reward = base_reward + fees
+  // Total block reward = base_reward + fees. NON aggiungo le quote dei nodi:
+  // quelle sono la contropartita, non un incasso. Il costruttore le scala dentro
+  // il 3% e i soldi restano quelli del blocco. Passargliele gia' sommate qui e'
+  // quello che le faceva contare due volte, una alla costruzione e una al check
+  // finale sulla somma.
   uint64_t total_block_reward = effective_miner_reward;
-  for (const auto& nr : node_rewards) total_block_reward += nr.amount;
   
   // [MevaTrust] Se combined_extra non e' vuoto (blob 0xA2 badge +/o 0xAA pool dist),
   // usare sempre construct_miner_tx_with_mevatrust anche senza node_rewards,

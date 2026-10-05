@@ -37,6 +37,7 @@
 
 #include "cryptonote_core/mevatrust/mevatrust_coinbase_validator.h"
 #include "cryptonote_core/mevatrust/mevatrust_consensus.h"
+#include "cryptonote_core/mevatrust/pool_address.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/mevatrust/mevatrust_manager.h"
 #include "cryptonote_core/mevatrust/reward_distributor.h"
@@ -985,6 +986,142 @@ TEST_F(RuleFixture, the_same_node_on_chain_is_paid_and_locally_it_is_not) {
                          &m_wallet["x"].m_spend_public_key,
                          sizeof(crypto::public_key)), 0)
             << "i soldi sono andati a un indirizzo diverso da quello dichiarato";
+}
+
+// ── Il conto: 97 al miner, 3 di budget, niente moneta coniata ───────────────
+//
+// Il caso che nessun test copriva e che la catena reale non poteva mostrare:
+// sulla regtest non c'e' mai stato un nodo eleggibile, quindi node_total era
+// sempre zero e i due difetti sotto restavano addormentati.
+//
+// Il primo: create_block_template() passava total_block_reward = base+fee+quote,
+// e il costruttore aggiungeva le quote una seconda volta al check sulla somma.
+// La coinbase coniava node_total a ogni blocco di distribuzione, e il check finale
+// la rifiutava — quindi catena ferma al primo periodo con un nodo reale.
+//
+// Il secondo: 3% al pool PIÙ 3% ai nodi faceva 6%, e il miner incassava il 94%.
+// Il pool non ha una chiave privata, quindi il suo 3% non e' una riserva per
+// i nodi: e' moneta bloccata. I nodi venivano pagati con soldi inesistenti.
+
+TEST_F(RuleFixture, the_budget_is_three_percent_and_nothing_is_minted) {
+    const uint64_t height = 240;
+    const uint64_t reward = kBlockReward;
+
+    // Tre nodi con lo stesso punteggio. Tre, e non due: due si dividono il budget
+    // esattamente e non lasciano resto, quindi il pool non riceverebbe niente e il
+    // caso da provare — "il 3% smette di essere contato due volte" — resterebbe
+    // addormentato. Con tre la divisione troncata lascia sempre un resto, ed e'
+    // il resto che il pool deve incassare.
+    m_wallet["a"] = addr_of(fresh_key());
+    m_wallet["b"] = addr_of(fresh_key());
+    m_wallet["c"] = addr_of(fresh_key());
+    add_node("a");
+    add_node("b");
+    add_node("c");
+
+    const auto expected = expected_at(height);
+    ASSERT_EQ(expected.size(), 3u) << "servono tre nodi per lasciare un resto";
+
+    // Le quote che il miner riceve dal consenso, e il manifesto insieme. Si passa
+    // da get_coinbase_rewards() perche' e' la stessa porta che apre il miner: il
+    // manifesto 0xAA nasce li'. expected_at() serve solo come riferimento.
+    std::vector<NodeCoinbaseReward> claimed;
+    uint64_t node_total = 0;
+    {
+        uint64_t miner_out = 0;
+        claimed = m_manager->get_coinbase_rewards(height, reward, miner_out);
+        ASSERT_EQ(claimed.size(), expected.size());
+        for (size_t i = 0; i < claimed.size(); ++i)
+            ASSERT_EQ(claimed[i].amount, expected[i].amount);
+        for (const auto& c : claimed) node_total += c.amount;
+    }
+    ASSERT_GT(node_total, 0u);
+    ASSERT_LT(node_total, reward);
+
+    // Il budget e' il 3% del blocco. Le quote ci stanno dentro: e' il punto.
+    const uint64_t budget = node_budget_of(reward);
+    ASSERT_LE(node_total, budget)
+        << "le quote sono piu' del budget: il 3% non basta a coprirle";
+    ASSERT_LT(node_total, budget)
+        << "le quote mangiano tutto il budget: al pool non resta niente da provare";
+
+    m_wallet["miner"] = addr_of(fresh_key());
+    const std::vector<uint8_t> manifest = m_manager->consume_pending_pool_distribution_extra();
+    ASSERT_FALSE(manifest.empty());
+
+    // total_block_reward = base+fee, ESATTAMENTE come fa create_block_template().
+    // Passare base+fee+quote e' il difetto: e' quello che si corregge qui.
+    transaction coinbase;
+    ASSERT_TRUE(construct_miner_tx_with_mevatrust(
+        height, 500, 1, 0, reward, m_wallet["miner"], claimed, coinbase,
+        blobdata(), 999, HF_VERSION_MEVATRUST_RULE_V2, manifest, 0, MAINNET, 0))
+        << "il costruttore ha rifiutato un blocco onesto";
+
+    uint64_t sum = 0;
+    for (const auto& o : coinbase.vout) sum += o.amount;
+    EXPECT_EQ(sum, reward)
+        << "la coinbase vale " << sum << " invece di " << reward
+        << ": " << (sum > reward ? "ha coniato " : "ha perso ")
+        << (sum > reward ? sum - reward : reward - sum) << " atomic";
+
+    // Il miner prende il 97%, non il 94%.
+    const account_public_address pool_addr =
+        mevatrust::get_pool_address(MAINNET);
+    // Per posizione, non per chiave. Il costruttore emette nell'ordine
+    // [output del miner, splitti in cifre][un output per nodo][pool], quindi
+    // l'ultimo e' il pool, i claimed.size() precedenti sono i nodi e il resto e'
+    // del miner. Confrontare le chiavi non funzionerebbe: quelle del miner sono
+    // derivate e non eguagliano mai la sua spend_pub.
+    // L'output del pool c'e' solo se il budget non e' stato tutto distribuito: e'
+    // quello che distingue "i nodi sono stati pagati dentro il 3%" da "il 3% e'
+    // sparito".
+    const bool     has_pool  = (budget > node_total);
+    const size_t   pool_pos  = coinbase.vout.size() - (has_pool ? 1 : 0);
+    const size_t   nodes_from = pool_pos - claimed.size();
+    ASSERT_GE(pool_pos, claimed.size()) << "coinbase troppo corta: mancano gli output";
+
+    uint64_t to_miner = 0, to_pool = 0, to_nodes = 0;
+    for (size_t i = 0; i < coinbase.vout.size(); ++i) {
+        const auto& o = coinbase.vout[i];
+        const auto* k  = boost::get<txout_to_key>(&o.target);
+        const auto* tk = k ? nullptr : boost::get<txout_to_tagged_key>(&o.target);
+
+        if (has_pool && i == pool_pos) {
+            // L'output del pool e' piatto per costruzione: e' la proprieta' che
+            // permette al consenso di confrontarne la chiave.
+            ASSERT_TRUE(k) << "l'output del pool non e' piatto";
+            EXPECT_EQ(memcmp(&k->key, &pool_addr.m_spend_public_key,
+                             sizeof(k->key)), 0)
+                << "l'output in posizione di pool non e' all'indirizzo del pool";
+            to_pool += o.amount;
+        } else if (i >= nodes_from) {
+            // Idem per i nodi: se non sono piatti, il consenso puo' contare i
+            // soldi ma non accertarsi che siano andati al nodo giusto.
+            ASSERT_TRUE(k) << "l'output di un nodo non e' piatto";
+            EXPECT_EQ(memcmp(&k->key, &expected[i - nodes_from].address.m_spend_public_key,
+                             sizeof(k->key)), 0)
+                << "il nodo " << (i - nodes_from) << " e' stato pagato verso un'altra chiave";
+            to_nodes += o.amount;
+        } else {
+            EXPECT_TRUE(tk) << "gli output del miner portano il view tag";
+            to_miner += o.amount;
+        }
+    }
+
+    EXPECT_EQ(to_nodes, node_total) << "ai nodi non e' arrivata la quota calcolata";
+    EXPECT_EQ(to_pool, budget - node_total)
+        << "il pool ha preso il 3% pieno invece del resto: i nodi verrebbero "
+           "pagati due volte, dal pool e dal miner";
+    EXPECT_EQ(to_miner, reward - budget)
+        << "il miner non ha incassato il 97%";
+
+    std::string err;
+    EXPECT_TRUE(check_mevatrust_coinbase(coinbase, height, reward,
+                                         HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err))
+        << "il check del pool non riconosce il conto giusto: " << err;
+    EXPECT_TRUE(check_mevatrust_coinbase_pure_consensus(
+        coinbase, height, reward, HF_VERSION_MEVATRUST_RULE_V2, MAINNET, err))
+        << "validatore rifiuta un blocco onesto: " << err;
 }
 
 TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)

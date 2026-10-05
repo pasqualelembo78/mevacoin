@@ -792,9 +792,44 @@ bool construct_miner_tx_with_mevatrust(
 
   uint64_t desy_total = total_block_reward + desy_additional_reward;
 
-  // Pool gets 3% of total block reward (deterministic, every block)
-  uint64_t pool_amount = desy_total * MEVATRUST_POOL_FRACTION_PERCENT / 100;
-  uint64_t miner_reward = desy_total - pool_amount;
+  // ── Il 3% e' un BUDGET, non due pagamenti ────────────────────────────────
+  //
+  // Prima: 3% al pool E 3% ai nodi, quindi 6% fuori dalla circolazione e 94%
+  // al miner. E il pool non e' un indirizzo spendibile — non ha una chiave
+  // privata — quindi quel suo 3% non e' "accantonato per i nodi": e' moneta
+  // bloccata per sempre. I nodi venivano insomma pagati con soldi che non
+  // esistevano: la coinbase coniava node_total a ogni blocco di distribuzione,
+  // e il check finale sulla somma lo rifiutava. La catena si sarebbe fermata al
+  // primo confine di periodo con un nodo eleggibile: lo stesso tipo di blocco che
+  // avevo appena corretto, per un motivo diverso e con lo stesso effetto.
+  //
+  // Ora il 3% e' un budget solo: i nodi ne prendono una parte, il pool incassa
+  // il resto non speso. Miner 97%, nodi fino al 3%, pool fino al 3%, e la somma
+  // torna a 100% senza coniare niente.
+  //
+  // Sotto V2 resta la formula di prima, e lo fa perche' i blocchi delle epoche
+  // precedenti sono costruiti cosi': cambiarne la validazione significherebbe
+  // dichiarare invalidi blocchi gia' nella catena. La correzione vale da V2 in
+  // avanti, dove non e' ancora successo niente da invalidare.
+  uint64_t node_total = 0;
+  for (const auto& ncr : node_rewards) node_total += ncr.amount;
+
+  const uint64_t budget = desy_total * MEVATRUST_POOL_FRACTION_PERCENT / 100;
+  const bool bound_outputs = (hard_fork_version >= HF_VERSION_MEVATRUST_RULE_V2);
+
+  uint64_t pool_amount, miner_reward;
+  if (bound_outputs) {
+    // I nodi sono pagati DENTRO il 3%: al pool va solo cio' che non e' stato
+    // distribuito, quindi mai piu' del 3%.
+    pool_amount = (budget > node_total) ? (budget - node_total) : 0;
+    miner_reward = desy_total - budget;
+  } else {
+    // Epoche precedenti: il pool prende il 3% pieno. Ma i nodi escono dalla
+    // parte del miner, non si aggiungono: la somma deve tornare a desy_total
+    // anche qui, o il check sulla somma rifiuta il blocco.
+    pool_amount = budget;
+    miner_reward = desy_total - pool_amount - node_total;
+  }
 
   if (hard_fork_version >= 2 && hard_fork_version < 4)
     miner_reward = miner_reward - miner_reward % ::config::BASE_REWARD_CLAMP_THRESHOLD;
@@ -856,8 +891,6 @@ bool construct_miner_tx_with_mevatrust(
   // Sotto V2 si torna allo schema stealth: non perche' sia migliore, ma perche' i
   // blocchi delle epoche precedenti sono costruiti cosi' e la loro validazione non
   // puo' dipendere da una regola che non valeva quando sono stati prodotti.
-  const bool bound_outputs = (hard_fork_version >= HF_VERSION_MEVATRUST_RULE_V2);
-
   for (const auto& ncr : node_rewards) {
     if (!ncr.amount) continue;
     summary += ncr.amount;
@@ -896,8 +929,9 @@ bool construct_miner_tx_with_mevatrust(
     tx.vout.push_back(out); out_index++;
   }
 
-  uint64_t expected = desy_total;
-  for (const auto& n : node_rewards) expected += n.amount;
+  // desy_total e' gia' tutto: i nodi sono gia' dentro, non vanno aggiunti un
+  //'altra volta. Il totale e' il reward del blocco piu' il premio, niente altro.
+  const uint64_t expected = desy_total;
   CHECK_AND_ASSERT_MES(summary == expected, false, "miner_tx sum mismatch " << summary << " != " << expected);
   
   tx.version = (hard_fork_version >= 4) ? 2 : 1;

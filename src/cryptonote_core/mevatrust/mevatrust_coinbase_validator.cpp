@@ -91,8 +91,27 @@ bool check_mevatrust_coinbase(
   //    del pool. Un miner poteva mandare il 3% a se stesso e la vout "del pool"
   //    non compariva da nessuna parte, ma il controllo passava lo stesso perche'
   //    non guardava la chiave. Qui la chiave si guarda.
-  const uint64_t expected_pool_amount =
+  //
+  // Da V2 i nodi sono pagati DENTRO il 3%: al pool va quello che non e' stato
+  // distribuito. Quindi l'importo atteso non e' il 3% fisso ma 3% meno la somma
+  // delle quote, che si legge dal manifesto 0xAA (total_distributed) dentro
+  // questa stessa coinbase. Sotto V2 il pool prende il 3% pieno, come nei blocchi
+  // gia' nella catena.
+  uint64_t node_total = 0;
+  {
+    tx_extra_mevatrust_pool_distribution dist{};
+    if (mevatrust::parse_mevatrust_pool_distribution_from_tx(miner_tx, dist))
+      node_total = dist.total_distributed;
+  }
+
+  const uint64_t budget =
       total_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
+  const bool pool_takes_the_remainder =
+      (hf_version >= HF_VERSION_MEVATRUST_RULE_V2);
+  const uint64_t expected_pool_amount = pool_takes_the_remainder
+      ? ((budget > node_total) ? (budget - node_total) : 0)
+      : budget;
+
   if (expected_pool_amount > 0) {
     // Sotto V2 l'output del pool era stealth, quindi la chiave non era confrontabile:
     // si controlla l'importo e basta, che e'era quello che si poteva fare. Da V2
