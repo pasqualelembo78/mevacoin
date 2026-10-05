@@ -5295,6 +5295,66 @@ bool core_rpc_server::on_get_node_pubkey(
   return true;
 }
 
+// -- commit_uptime (0xA5) ------------------------------------------------------
+//
+// Il pezzo che mancava. Il consumatore 0xA5 c'era, la registrazione 0xA0 aveva un
+// emittente, ma il commitment di uptime non lo produceva nessuno: zero chiamanti
+// di build_mevatrust_uptime_extra(). Quindi nessun nodo ha mai avuto uptime
+// on-chain, nessuno ha mai superato la soglia, e il 3% non e' mai arrivato a
+// nessuno. Non era un accessorio mancante: era la funzionalita' intera.
+//
+// Qui si firma, e si firma nel daemon perche' la chiave privata del nodo non
+// esce di qui. Il wallet riceve un blob gia' firmato e lo mette in una
+// transazione come fa per la registrazione.
+//
+// peer_count arriva dalla richiesta perche' e' l'unico dato che il daemon non
+// puo' misurare da solo: "quanti peer ha questo nodo" e' una dichiarazione, e il
+// consenso puo' verificare che sia firmata, non che sia vera. Mentire sul
+// proprio uptime e' esattamente il caso che il 3% deve rendere scomodo.
+bool core_rpc_server::on_commit_uptime(const cryptonote::rpc::COMMAND_RPC_COMMIT_UPTIME::request& req,
+                                       cryptonote::rpc::COMMAND_RPC_COMMIT_UPTIME::response& res,
+                                       epee::json_rpc::error& /*error_resp*/, const connection_context*)
+{
+  auto* pm = cryptonote::mevatrust::get_manager();
+  if (!pm || !pm->is_initialized()) {
+    res.status = "MevaTrust non inizializzato";
+    return true;
+  }
+
+  const uint64_t height  = m_core.get_current_blockchain_height();
+  const bool     is_synced = check_core_ready();
+  const uint32_t peers   = req.peer_count;
+
+  std::vector<uint8_t> extra;
+  std::string err, node_id_hex;
+  uint64_t    uptime_seconds = 0;
+  if (!pm->build_signed_uptime_commitment(peers, height, is_synced, extra, err,
+                                          node_id_hex, uptime_seconds)) {
+    res.ok     = false;
+    res.status = err;
+    return true;
+  }
+
+  // Non firmare niente se il commitment e' vuoto: un blob da 0 byte messo in
+  // tx_extra passerebbe la costruzione della transazione e produrrebbe una tx
+  // che sembra andare a buon fine ma non contiene nessun commitment.
+  if (extra.empty()) {
+    res.ok     = false;
+    res.status = "commitment vuoto: non inviare una transazione vuota";
+    return true;
+  }
+
+  res.ok             = true;
+  res.extra_hex      = epee::string_tools::pod_to_hex(extra);
+  res.node_id        = node_id_hex;
+  res.uptime_seconds = uptime_seconds;
+  res.sync_height    = height;
+  res.is_synced      = is_synced;
+  res.peer_count     = peers;
+  res.status         = CORE_RPC_STATUS_OK;
+  return true;
+}
+
 // ── Store RPC handlers ─────────────────────────────────────────────────────
 bool core_rpc_server::on_store_list(
     const rpc::COMMAND_RPC_STORE_LIST::request& req,

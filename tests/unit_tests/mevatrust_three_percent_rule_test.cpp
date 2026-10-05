@@ -194,6 +194,26 @@ protected:
         m_node_id[label] = s.node_id;
     }
 
+    /// Registra un nodo con una node_pubkey precisa, per i test del producer
+    /// 0xA5. Serve perche' il commitment viene costruito sul node_id che il
+    /// manager trova cercando *la propria* chiave nel registro: se il test
+    /// registrasse un nodo con una chiave generata a caso e poi firmasse con
+    /// un'altra, non avrebbe un commitment da firmare, e il test fallirebbe per
+    /// il motivo sbagliato sembrando un bug del producer.
+    void add_node_as(const std::string& label, const crypto::public_key& node_pk) {
+        Seed s{};
+        s.node_pubkey = node_pk;
+        crypto::secret_key wsk{};
+        crypto::generate_keys(s.wallet_pubkey, wsk);
+        // node_id stabile e arbitrario: qui non si verifica la formula del
+        // produttore della registrazione, ma che il commitment venga costruito
+        // sul nodo giusto.
+        memcpy(&s.node_id, &node_pk, sizeof(crypto::hash));
+        m_wallet[label] = addr_of(fresh_key());
+        apply_registration(*m_manager, m_wallet[label], s);
+        m_node_id[label] = s.node_id;
+    }
+
     /// La lista che il consenso si aspetta a questa altezza. Se il manager
     /// produce qualcosa di diverso dal previsto, il test che lo usa fallisce: la
     /// regola e' quella che dice lui, non quella che il test immagina.
@@ -1227,5 +1247,141 @@ TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
         << "il 3% e' stato deviato al miner e il blocco e' passato";
 }
 
+
+
+// -- Il producer di uptime 0xA5 ----------------------------------------------
+
+// Il consumatore 0xA5 non legge un blob: legge una transazione. Il test mette
+// quindi il blob dove andrebbe messo e passa per la stessa funzione che il
+// manager usa su ogni blocco, cosi' copre anche la serializzazione in tx_extra
+// e non solo la firma.
+tx_extra_mevatrust_uptime roundtrip(const std::vector<uint8_t>& extra) {
+    transaction tx{};
+    tx.version     = 1;
+    tx.unlock_time = 60;
+    tx.extra       = extra;
+    tx_extra_mevatrust_uptime out{};
+    bool ok = mevatrust::parse_mevatrust_uptime_from_tx(tx, out);
+    EXPECT_TRUE(ok) << "il consumatore 0xA5 non ha riconosciuto il blob prodotto";
+    return out;
+}
+
+TEST_F(RuleFixture, uptime_commitment_is_signed_by_the_node_and_parses_back) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    m_manager->set_node_key(sk, pk);
+
+    add_node_as("alpha", pk);
+
+    // Il commitment e' costruito sul node_id che questo nodo ha registrato,
+    // cercato per la sua chiave: non su uno dichiarato da fuori.
+    NodeRegistryEntry me{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_pubkey(pk, me))
+        << "il nodo non e' in registro per la propria chiave";
+
+    std::vector<uint8_t> extra;
+    std::string err, node_id_hex;
+    uint64_t uptime = 0;
+    ASSERT_TRUE(m_manager->build_signed_uptime_commitment(4, 240, true, extra, err,
+                                                          node_id_hex, uptime))
+        << "commitment non costruito: " << err;
+    ASSERT_FALSE(extra.empty());
+    EXPECT_TRUE(err.empty()) << "su un percorso riuscito non deve esserci un errore";
+
+    const tx_extra_mevatrust_uptime u = roundtrip(extra);
+
+    EXPECT_EQ(u.node_id, me.node_id);
+    EXPECT_EQ(u.node_pubkey, pk);
+    EXPECT_TRUE(mevatrust::verify_uptime_signature(u))
+        << "il blob firmato dal nodo non verifica con la chiave del nodo";
+    EXPECT_EQ(u.peer_count, 4u);
+    EXPECT_TRUE(u.is_synced);
+    EXPECT_EQ(u.sync_height, 240u);
+    EXPECT_EQ(uptime, u.uptime_seconds)
+        << "la cifra risposta all'operatore e' quella firmata nel blob";
+}
+
+// Il caso che la separazione delle chiavi deve chiudere: se il richiedente potesse
+// scegliere il node_id, potrebbe far firmare a questo nodo l'uptime di un altro e
+// prendersi i suoi punti. Il commitment deve essere sempre su questo nodo.
+TEST_F(RuleFixture, uptime_commitment_cannot_be_built_for_someone_elses_node) {
+    add_node("alpha");
+    add_node("beta");
+
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    m_manager->set_node_key(sk, pk);
+
+    // Questo nodo non e' mai registrato: non puo' firmare nulla, ne' per se' ne'
+    // per gli altri. Il messaggio deve dirlo, non restituire un blob vuoto che
+    // finirebbe in una transazione che sembra andare a buon fine.
+    std::vector<uint8_t> extra;
+    std::string err, node_id_hex;
+    uint64_t uptime = 0;
+    EXPECT_FALSE(m_manager->build_signed_uptime_commitment(4, 240, true, extra, err,
+                                                           node_id_hex, uptime));
+    EXPECT_TRUE(extra.empty());
+    EXPECT_NE(err.find("not registered"), std::string::npos)
+        << "l'errore dovrebbe dire che il nodo non e' registrato, non altro";
+}
+
+TEST_F(RuleFixture, uptime_commitment_from_a_tampered_blob_does_not_verify) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    m_manager->set_node_key(sk, pk);
+    add_node_as("alpha", pk);
+
+    std::vector<uint8_t> extra;
+    std::string err, node_id_hex;
+    uint64_t uptime = 0;
+    ASSERT_TRUE(m_manager->build_signed_uptime_commitment(4, 240, true, extra, err,
+                                                          node_id_hex, uptime));
+
+    // Inflare l'uptime: un secondo dichiarato come un milione. E' la
+    // falsificazione piu' semplice, e anche la prima che un nodo disonesto
+    // proverebbe.
+    const tx_extra_mevatrust_uptime honest = roundtrip(extra);
+    tx_extra_mevatrust_uptime u = honest;
+    u.uptime_seconds = 1000000;
+
+    EXPECT_FALSE(mevatrust::verify_uptime_signature(u))
+        << "un uptime gonfiato e' stato accettato come firmato dal nodo";
+
+    // E il blob col dato alterato non deve passare la rilettura del consumatore
+    // come se fosse un commitment valido: e' il percorso che il manager esegue.
+    std::vector<uint8_t> tampered;
+    if (mevatrust::build_mevatrust_uptime_extra(u, tampered))
+        EXPECT_FALSE(mevatrust::verify_uptime_signature(roundtrip(tampered)));
+}
+
+// Un commitment firmato da una chiave diversa da quella dichiarata: se il
+// consumatore accettasse questo, un nodo con una sola chiave potrebbe
+// attribuirsi l'uptime di un altro.
+TEST_F(RuleFixture, uptime_commitment_signed_by_a_foreign_key_does_not_verify) {
+    crypto::secret_key mine_sk{};
+    crypto::public_key mine_pk{};
+    crypto::generate_keys(mine_pk, mine_sk);
+
+    crypto::secret_key other_sk{};
+    crypto::public_key other_pk{};
+    crypto::generate_keys(other_pk, other_sk);
+
+    tx_extra_mevatrust_uptime u{};
+    u.node_id        = crypto::hash{};
+    u.uptime_seconds = 999;
+    u.timestamp      = 1700000000;
+    u.peer_count     = 3;
+    u.is_synced      = true;
+    u.sync_height    = 240;
+    u.node_pubkey    = mine_pk;
+    crypto::generate_signature(mevatrust::uptime_message_hash(u), other_pk, other_sk,
+                               u.signature);
+
+    EXPECT_FALSE(mevatrust::verify_uptime_signature(u))
+        << "una firma fatta con una chiave diversa da quella dichiarata e' passata";
+}
 
 } // namespace

@@ -11937,6 +11937,8 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   // ── Node commands ──────────────────────────────────────────────────
   if (sub == "register")  return cmd_register_node(sub_args);
   if (sub == "unregister") return cmd_unregister_node(sub_args);
+  // "uptime" e gia cmd_get_uptime (sola lettura): questo scrive in catena.
+  if (sub == "commit_uptime") return cmd_commit_uptime(sub_args);
   if (sub == "list")     return cmd_list_nodes(sub_args);
   if (sub == "status")   return cmd_get_node_status(sub_args);
   if (sub == "score")    return cmd_node_score(sub_args);

@@ -128,6 +128,37 @@ public:
   // Restituisce il blob 0xAA da appendere al miner_tx extra.
   std::vector<uint8_t> consume_pending_pool_distribution_extra();
 
+  // -- Il commitment di uptime (0xA5), firmato ------------------------------
+  //
+  // Il consumatore esiste gia': un blocco che porta 0xA5 viene riletto, la firma
+  // verificata, e l'evento di presenza registrato. Quello che mancava era
+  // l'emittente, e senza emittente nessun nodo ha mai uptime on-chain: nessuno
+  // diventa eleggibile e il 3% non arriva a nessuno. Non e' un dettaglio della
+  // feature, e' la feature.
+  //
+  // La firma la fa qui e non nel wallet perche' la chiave privata del nodo non
+  // esce mai dal daemon: il wallet legge solo la pubblica. Se il wallet
+  // firmasse, dovrebbe avere la privata, e allora basterebbe rubare un file per
+  // firmare qualunque uptime per qualunque nodo.
+  //
+  // node_id: non lo prende da chi lo chiama e non lo mette in chiaro da
+  // nessuna parte. E' quello che questo nodo ha registrato, trovato qui per la
+  // sua chiave pubblica. Se lo passasse l'esterno, un nodo potrebbe firmare
+  // l'uptime di un altro: si prenderebbe i punti di qualcun altro.
+  bool build_signed_uptime_commitment(uint64_t peer_count,
+                                      uint64_t sync_height,
+                                      bool        is_synced,
+                                      std::vector<uint8_t>& extra_out,
+                                      std::string& err,
+                                      std::string& node_id_hex_out,
+                                      uint64_t&    uptime_seconds_out);
+  bool build_signed_uptime_commitment_for(const crypto::hash& node_id,
+                                          uint64_t peer_count,
+                                          uint64_t sync_height,
+                                          bool        is_synced,
+                                          std::vector<uint8_t>& extra_out,
+                                          std::string& err);
+
   // ── Reorg rollback ──────────────────────────────────────────────────────
   // Chiamato quando un blocco viene rimosso dalla catena principale (reorg).
   // Inverte le modifiche allo stato MevaTrust applicate da quel blocco.

@@ -24,6 +24,7 @@
 #include <fstream>
 #include <cstdlib>
 #include "rpc/mevatrust_rpc_commands.h"
+#include "common/util.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
 #include "cryptonote_core/mevatrust/pool_address.h"
@@ -277,6 +278,70 @@ bool simple_wallet::cmd_get_incentive_history(const std::vector<std::string>& ar
     tools::fail_msg_writer() << "Totale reward: " << total_reward << " sat";
   return true;
 }
+// -- commit_uptime ------------------------------------------------------------
+//
+// Il nodo firma, il wallet trasmette. La separazione non e' estetica: la chiave
+// privata del nodo sta solo sul daemon, e il wallet non deve poter firmare
+// l'uptime di un nodo che non e' lui. Per questo qui NON si costruisce il blob:
+// si chiede al daemon di firmarlo e si manda il risultato.
+//
+// peer_count arriva da --peers (default 0): e' l'unico dato che il wallet puo'
+// sapere e il daemon no. Resta una dichiarazione del nodo, non un fatto
+// verificato: la catena puo' controllare che la dichiarazione sia firmata da
+// quella chiave, non che sia vera.
+bool simple_wallet::cmd_commit_uptime(const std::vector<std::string>& args) {
+  try {
+  uint32_t peers = 0;
+  if (!args.empty()) peers = static_cast<uint32_t>(std::strtoul(args[0].c_str(), nullptr, 10));
+
+  rpc::COMMAND_RPC_COMMIT_UPTIME::request  req;
+  rpc::COMMAND_RPC_COMMIT_UPTIME::response res;
+  req.peer_count = peers;
+
+  const bool ok = m_wallet->invoke_http_json("/commit_uptime", req, res);
+  if (!ok || !res.ok) {
+    tools::fail_msg_writer() << tr("Commitment uptime non riuscito.");
+    if (!res.status.empty())
+      tools::fail_msg_writer() << tr("  Motivo: ") << res.status;
+    return true;
+  }
+  if (res.extra_hex.empty()) {
+    tools::fail_msg_writer() << tr("Il daemon ha restituito un commitment vuoto: non invio.");
+    return true;
+  }
+
+  std::vector<uint8_t> extra;
+  if (!epee::string_tools::hex_to_pod(res.extra_hex, extra)) {
+    tools::fail_msg_writer() << tr("Blob 0xA5 non decodificabile dal daemon.");
+    return true;
+  }
+
+  tools::msg_writer() << "\nInvio commitment uptime on-chain...";
+  tools::msg_writer() << "  Node ID   : " << res.node_id.substr(0, 24) << "...";
+  tools::msg_writer() << "  Uptime    : " << res.uptime_seconds << " s";
+  tools::msg_writer() << "  Sync      : " << (res.is_synced ? "si" : "no")
+                      << "  altezza " << res.sync_height;
+  tools::msg_writer() << "  Peer      : " << res.peer_count;
+  tools::msg_writer() << "  Blob      : " << extra.size() << " byte";
+
+  const std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) {
+    tools::fail_msg_writer() << tr("Invio tx fallito. Verifica saldo e connessione al daemon.");
+    return true;
+  }
+  tools::success_msg_writer()
+    << "\n\033[1;32m*** COMMITMENT UPTIME INVIATO! ***\033[0m"
+    << "\n  TXID : " << txid;
+  tools::msg_writer()
+    << "\n  Serve inviarlo piu' volte: ogni 0xA5 confermato e' un evento di uptime.\n"
+    << "  Senza eventi ricorrenti il nodo non puo' accumulare punteggio.";
+  return true;
+  } catch (const std::exception& e) {
+    tools::fail_msg_writer() << tr("ERRORE cmd_commit_uptime: ") << e.what();
+    return true;
+  }
+}
+
 bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
   try {
   // UX ZERO-ARGOMENTI: basta digitare register_node

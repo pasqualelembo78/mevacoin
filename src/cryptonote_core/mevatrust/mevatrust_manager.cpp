@@ -1845,4 +1845,126 @@ bool MevaTrustManager::compute_expected_payouts(uint64_t height, uint64_t total_
   return true;
 }
 
+
+namespace {
+/// Il nodo di cui questo daemon parla: quello la cui chiave pubblica e' la
+/// nostra. Chiamare get_node_by_pubkey() invece di fidarsi di un node_id
+/// passato da fuori e' la differenza fra "firmo il mio uptime" e "firmo
+/// l'uptime di chi mi chiede".
+bool find_own_entry(NodeRegistry* reg, const crypto::public_key& self_pk,
+                    NodeRegistryEntry& out)
+{
+    return reg && reg->get_node_by_pubkey(self_pk, out);
+}
+} // namespace
+
+bool MevaTrustManager::build_signed_uptime_commitment(uint64_t peer_count,
+                                                      uint64_t sync_height,
+                                                      bool        is_synced,
+                                                      std::vector<uint8_t>& extra_out,
+                                                      std::string& err,
+                                                      std::string& node_id_hex_out,
+                                                      uint64_t&    uptime_seconds_out)
+{
+    extra_out.clear();
+    node_id_hex_out.clear();
+    uptime_seconds_out = 0;
+
+    crypto::public_key self_pk{};
+    {
+        std::lock_guard<std::mutex> lk(m_lock);
+        if (!m_node_key_set) {
+            err = "this node has no signing key loaded";
+            return false;
+        }
+        self_pk = m_node_pk;
+    }
+
+    NodeRegistryEntry me{};
+    if (!find_own_entry(m_node_registry.get(), self_pk, me)) {
+        // Non e' un errore da nascondere: significa che questo nodo non si e'
+        // registrato on-chain, e senza registrazione non e' eleggibile. Dire
+        // "non registrato" e' piu' utile di "errore".
+        err = "this node is not registered on-chain (no 0xA0 for node key "
+              + epee::string_tools::pod_to_hex(self_pk).substr(0, 16) + "...)";
+        return false;
+    }
+
+    if (!me.registered_onchain) {
+        err = "registration exists only in the local registry: it never reached "
+              "the chain, so no uptime commitment can be built";
+        return false;
+    }
+
+    std::vector<uint8_t> blob;
+    if (!build_signed_uptime_commitment_for(me.node_id, peer_count, sync_height,
+                                            is_synced, blob, err)) {
+        return false;
+    }
+
+    extra_out           = std::move(blob);
+    node_id_hex_out     = epee::string_tools::pod_to_hex(me.node_id);
+    // Lo stesso valore che e' finito nel blob firmato: non rileggiamo il registro
+    // qui, cosi' la risposta non puo' dire una cifra e firmarne un'altra.
+    uptime_seconds_out  = me.total_uptime_seconds;
+    return true;
+}
+
+bool MevaTrustManager::build_signed_uptime_commitment_for(const crypto::hash& node_id,
+                                                          uint64_t peer_count,
+                                                          uint64_t sync_height,
+                                                          bool        is_synced,
+                                                          std::vector<uint8_t>& extra_out,
+                                                          std::string& err)
+{
+    extra_out.clear();
+
+    crypto::secret_key   sk{};
+    crypto::public_key   pk{};
+    {
+        std::lock_guard<std::mutex> lk(m_lock);
+        if (!m_node_key_set) { err = "this node has no signing key loaded"; return false; }
+        sk = m_node_sk;
+        pk = m_node_pk;
+    }
+
+    // uptime_seconds viene dal registro, non da un contatore in memoria: e' il
+    // totale che il nodo ha accumulato. Se lo prendissimo da un orologio qui,
+    // ogni riavvio azzererebbe la dichiarazione e un nodo che riavvia spesso
+    // finirebbe con un uptime basso perche' riavvia, che e' il contrario di
+    // quello che si vuole misurare.
+    uint64_t uptime_seconds = 0;
+    {
+        NodeRegistryEntry e{};
+        if (m_node_registry && m_node_registry->get_node_by_id(node_id, e))
+            uptime_seconds = e.total_uptime_seconds;
+    }
+
+    tx_extra_mevatrust_uptime u{};
+    u.node_id        = node_id;
+    u.uptime_seconds = uptime_seconds;
+    u.timestamp      = static_cast<uint64_t>(std::time(nullptr));
+    u.peer_count     = static_cast<uint32_t>(peer_count);
+    u.is_synced      = is_synced;
+    u.sync_height    = sync_height;
+    u.node_pubkey    = pk;
+
+    crypto::generate_signature(mevatrust::uptime_message_hash(u), pk, sk, u.signature);
+
+    // Firma riletta subito, prima di mandare qualcosa in rete. Se il blob fosse
+    // respinto dal consumatore 0xA5, l'utente vedrebbe un "invio riuscito" e
+    // l'uptime non verrebbe mai registrato: il sintomo sarebbe un nodo che
+    // resta non eleggibile senza che nessuno capisca perche'.
+    if (!mevatrust::verify_uptime_signature(u)) {
+        err = "the uptime commitment I just signed does not verify";
+        return false;
+    }
+
+    if (!mevatrust::build_mevatrust_uptime_extra(u, extra_out)) {
+        err = "could not serialise the 0xA5 blob";
+        return false;
+    }
+    return true;
+}
+
 } // namespace cryptonote

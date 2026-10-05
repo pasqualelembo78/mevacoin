@@ -516,6 +516,39 @@ struct COMMAND_RPC_GET_NODE_PUBKEY {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+// -- Uptime Commitment (0xA5) ------------------------------------------------
+//
+// Restituisce il blob 0xA5 GIA' FIRMATO dal daemon. Non un blob da firmare: la
+// chiave privata del nodo non esce dal daemon, quindi firmare qui dentro non e'
+// una scelta di comodo'.
+//
+// Il wallet non puo' accettare un node_id dalla richiesta, altrimenti potrebbe
+// firmare l'uptime di un nodo che non e' lui e si prenderebbe i punti di un
+// altro. Per questo il richiedente manda solo i suoi numeri (peer, altezza,
+// sincronizzato) e il daemon mette il node_id di chi e' lui, cercandolo per la
+// propria chiave pubblica nel registro che ha ricostruito dalla catena.
+struct COMMAND_RPC_COMMIT_UPTIME {
+  struct request_t { uint32_t peer_count{0};
+    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE_OPT(peer_count,(uint32_t)0) END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t {
+    bool        ok{false};
+    std::string extra_hex;    // blob 0xA5 pronto da mettere in tx_extra
+    std::string node_id;      // hex, per il messaggio all'operatore
+    uint64_t    uptime_seconds{0};
+    uint64_t    sync_height{0};
+    bool        is_synced{false};
+    uint32_t    peer_count{0};
+    std::string status;
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(ok) KV_SERIALIZE(extra_hex) KV_SERIALIZE(node_id)
+      KV_SERIALIZE(uptime_seconds) KV_SERIALIZE(sync_height)
+      KV_SERIALIZE(is_synced) KV_SERIALIZE(peer_count) KV_SERIALIZE(status)
+    END_KV_SERIALIZE_MAP()
+  };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 // ── Pool Distribution History ──────────────────────────────────────────────────
 struct COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY {
   struct request_t { uint32_t limit{50};
