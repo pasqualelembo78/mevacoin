@@ -118,3 +118,6 @@ nbproject
 __pycache__/
 *.pyc
 *.log
+
+# binario daemon deployato
+/mevacoind
