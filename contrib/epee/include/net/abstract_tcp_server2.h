@@ -477,8 +477,25 @@ namespace net_utils
     template<class t_handler>
     bool global_timer_handler(/*const boost::system::error_code& err, */boost::shared_ptr<idle_callback_conext<t_handler>> ptr)
     {
-      //if handler return false - he don't want to be called anymore
-      if(!ptr->call_handler())
+      // An exception escaping call_handler() would unwind past the re-arm below and
+      // silently kill this idle timer forever, which stops every periodic task the
+      // handler drives (peer connections, timed sync, peerlist upkeep...). Catch it
+      // here so one bad handler can never take the idle loop down.
+      bool keep_going = true;
+      try
+      {
+        //if handler return false - he don't want to be called anymore
+        keep_going = ptr->call_handler();
+      }
+      catch(const std::exception& e)
+      {
+        _erro("Idle handler threw an exception, keeping the idle loop alive: " << e.what());
+      }
+      catch(...)
+      {
+        _erro("Idle handler threw an unknown exception, keeping the idle loop alive");
+      }
+      if(!keep_going)
         return true;
       ptr->m_timer.expires_from_now(boost::posix_time::milliseconds(ptr->m_period));
       ptr->m_timer.async_wait(boost::bind(&boosted_tcp_server<t_protocol_handler>::global_timer_handler<t_handler>, this, ptr));

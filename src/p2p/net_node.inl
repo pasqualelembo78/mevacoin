@@ -729,19 +729,25 @@ std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() co
 {
     std::set<std::string> full_addrs;
 
+    // NOTE: this is the fallback used when the DNS seed lookup above failed or timed
+    // out, so it must be resolvable without any DNS round trip. Consumers parse these
+    // with net::get_network_address(), which only accepts literal addresses - returning
+    // hostnames here makes every fallback seed unparseable.
+    // Addresses must stay in sync with the seed1/2/3.mevacoin.com A records.
+
     if (m_nettype == cryptonote::TESTNET)
     {
         // Seed nodes testnet
-        full_addrs.insert("seed1.mevacoin.com:28080");
-        full_addrs.insert("seed2.mevacoin.com:28080");
-        full_addrs.insert("seed3.mevacoin.com:28080");
+        full_addrs.insert("82.165.218.56:28080");
+        full_addrs.insert("87.106.40.193:28080");
+        full_addrs.insert("87.106.233.72:28080");
     }
     else if (m_nettype == cryptonote::STAGENET)
     {
         // Seed nodes stagenet
-        full_addrs.insert("seed1.mevacoin.com:38080");
-        full_addrs.insert("seed2.mevacoin.com:38080");
-        full_addrs.insert("seed3.mevacoin.com:38080");
+        full_addrs.insert("82.165.218.56:38080");
+        full_addrs.insert("87.106.40.193:38080");
+        full_addrs.insert("87.106.233.72:38080");
     }
     else if (m_nettype == cryptonote::FAKECHAIN)
     {
@@ -750,9 +756,9 @@ std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() co
     else
     {
         // MAINNET - Seed nodes principali
-        full_addrs.insert("seed1.mevacoin.com:18080");
-        full_addrs.insert("seed2.mevacoin.com:18080");
-        full_addrs.insert("seed3.mevacoin.com:18080");
+        full_addrs.insert("82.165.218.56:18080");
+        full_addrs.insert("87.106.40.193:18080");
+        full_addrs.insert("87.106.233.72:18080");
     }
 
     return full_addrs;
@@ -1834,9 +1840,17 @@ std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() co
         server.m_seed_nodes_initialized = true;
         for (const auto& full_addr : get_seed_nodes(zone))
         {
-          // seeds should have hostname converted to IP already
+          // seeds should have hostname converted to IP already; skip anything that still
+          // fails to parse instead of throwing, since this runs on the idle worker and an
+          // escaping exception would tear down the whole periodic connection loop
           MDEBUG("Seed node: " << full_addr);
-          server.m_seed_nodes.push_back(MEVACOIN_UNWRAP(net::get_network_address(full_addr, default_port)));
+          const expect<epee::net_utils::network_address> parsed_addr = net::get_network_address(full_addr, default_port);
+          if (parsed_addr)
+          {
+            server.m_seed_nodes.push_back(*parsed_addr);
+            continue;
+          }
+          MWARNING("Seed node " << full_addr << " is not a reachable literal address, skipping it");
         }
         MDEBUG("Number of seed nodes: " << server.m_seed_nodes.size());
       }
