@@ -65,10 +65,14 @@ if [ $# -ge 1 ] && [ -n "$1" ] && [ -f "$1" ] && [ -x "$1" ]; then
 elif [ -f "/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind" ]; then
     DAEMON="/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind"
     echo -e "    ${GREEN}✅ Binario trovato nella build locale:${NC} ${DAEMON}"
+elif [ -f "/root/mevacoin/mevacoind" ]; then
+    DAEMON="/root/mevacoin/mevacoind"
+    echo -e "    ${GREEN}✅ Binario trovato nella radice sorgente:${NC} ${DAEMON}"
 else
     echo -e "    ${RED}❌ Nessun mevacoind trovato (né argomento né build locale).${NC}"
     echo "       Copialo su questa macchina via scp da un nodo gia' compilato:"
-    echo "         scp root@<nodo-origine>:/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind ."
+    echo "         scp root@<nodo-origine>:/root/mevacoin/mevacoind ."
+    echo "       Oppure: scp root@<nodo-origine>:/root/mevacoin/build/Linux/mevacoin/release/bin/mevacoind ."
     exit 1
 fi
 

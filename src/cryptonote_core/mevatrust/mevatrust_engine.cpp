@@ -2,6 +2,7 @@
 // MevaTrustEngine Implementation
 
 #include "mevatrust_engine.h"
+#include "mevatrust_consensus.h"
 #include "node_registry.h"
 #include "string_tools.h"
 #include "misc_log_ex.h"
@@ -141,6 +142,115 @@ bool MevaTrustEngine::record_uptime_event(
 
 float MevaTrustEngine::get_uptime_percentage(const crypto::hash& node_id, uint64_t) {
     return calculate_uptime_score(node_id, 0) * 100.0f;
+}
+
+// ============================================================================
+// UPTIME DERIVATO DALLA CATENA — regola 3% v3
+// ============================================================================
+
+bool MevaTrustEngine::record_chain_uptime_sample(
+    const crypto::hash& node_id,
+    uint64_t height,
+    uint64_t block_ts)
+{
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    auto& v = chain_uptime_samples_[hk(node_id)];
+
+    // Idempotente per altezza: piu' 0xA5 dello stesso nodo nello stesso blocco sono un
+    // campione solo. Senza questo un nodo potrebbe infilare firme multiple nel proprio
+    // blocco e farsi accreditare tempo che non e' passato.
+    //
+    // I blocchi vengono processati in ordine di altezza, quindi l'ultimo elemento e'
+    // gia' quello di altezza maggiore o uguale: se arriva un blocco indietro — durante
+    // un reorg — non si inserisce, perche' altrimenti l'elenco perderebbe l'ordinamento
+    // su cui si regge il calcolo a coppie.
+    if (!v.empty() && height <= v.back().height)
+        return false;
+
+    v.push_back(ChainUptimeSample{height, block_ts});
+
+    // Potatura: la finestra non guarda oltre UPTIME_WINDOW_BLOCKS, quindi i campioni piu'
+    // vecchi non possono influenzare nessuna quota futura. Si potra durante la finestra,
+    // non prima: potare un campione ancora dentro la finestra cambierebbe una quota gia'
+    // calcolata e romperebbe il consenso.
+    const uint64_t window = mevatrust::consensus::UPTIME_WINDOW_BLOCKS;
+    while (!v.empty() && height >= window && v.front().height + window <= height)
+        v.erase(v.begin());
+    return true;
+}
+
+bool MevaTrustEngine::has_chain_uptime_samples() const {
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    return !chain_uptime_samples_.empty();
+}
+
+void MevaTrustEngine::clear_chain_uptime_samples() {
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    chain_uptime_samples_.clear();
+}
+
+MevaTrustEngine::UptimeStanding MevaTrustEngine::compute_uptime_standing(    const crypto::hash& node_id,
+    uint64_t height) const
+{
+    using mevatrust::consensus::MAX_UPTIME_CREDIT_GAP_SECONDS;
+    using mevatrust::consensus::MIN_ELIGIBLE_UPTIME_SECONDS;
+    using mevatrust::consensus::UPTIME_WEIGHT_CAP_DAYS;
+    using mevatrust::consensus::UPTIME_WINDOW_BLOCKS;
+
+    UptimeStanding st;
+
+    // Sotto la finestra non si e' ancora entrati: niente credito. Il nodo non e' "in
+    // attesa", e' appena arrivato, e la differenza e' la stessa che gia' vale per la
+    // soglia: due giorni non si dimezzano perche' il tempo e' poco.
+    if (height < UPTIME_WINDOW_BLOCKS)
+        return st;
+
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    auto it = chain_uptime_samples_.find(hk(node_id));
+    if (it == chain_uptime_samples_.end() || it->second.size() < 2)
+        return st;
+
+    const uint64_t window_start = height - UPTIME_WINDOW_BLOCKS;
+    uint64_t credited = 0;
+    uint32_t considered = 0;
+
+    for (size_t i = 1; i < it->second.size(); ++i) {
+        const ChainUptimeSample& prev = it->second[i - 1];
+        const ChainUptimeSample& cur  = it->second[i];
+
+        // Coppia interamente dentro la finestra: se il campione precedente e' caduto
+        // fuori, il salto che lo collega a questo non e' piu' dentro la finestra e non
+        // viene contato. Il credito che ne era derivato e' gia' uscito con lui.
+        if (prev.height < window_start) continue;
+        if (cur.height > height) break;   // difensivo: campioni oltre l'altezza richiesta
+
+        ++considered;
+
+        // Il credito e' il tempo di blocco realmente trascorso fra le due prove, non
+        // quello che il nodo dichiara. Il limite sul singolo salto e' quello che distingue
+        // "era su" da "era su fino a un certo punto e poi e' sparito": un nodo che manca
+        // per una settimana e torna non accumula una settimana.
+        if (cur.block_ts > prev.block_ts) {
+            const uint64_t gap = cur.block_ts - prev.block_ts;
+            credited += (gap > MAX_UPTIME_CREDIT_GAP_SECONDS)
+                            ? MAX_UPTIME_CREDIT_GAP_SECONDS
+                            : gap;
+        }
+    }
+
+    st.credited_seconds = credited;
+    st.samples = considered;
+    st.days = static_cast<double>(credited) / 86400.0;
+
+    if (credited < MIN_ELIGIBLE_UPTIME_SECONDS)
+        return st;   // days e weight restano a zero, eligible resta false
+
+    st.eligible = true;
+    // Tetto sui giorni che contano. Oltre, il peso smette di crescere: il nodo piu'
+    // longevo smette di guadagnare e la differenza resta nei badge.
+    const double cap = static_cast<double>(UPTIME_WEIGHT_CAP_DAYS);
+    st.weight = (st.days > cap) ? cap : st.days;
+    return st;
 }
 
 float MevaTrustEngine::get_sync_percentage(
@@ -372,6 +482,27 @@ bool MevaTrustEngine::save_to_disk() const {
                 }
             }
         }
+        // Save chain_uptime_samples_ (regola 3% v3)
+        //
+        // File separato, non aggiunto a uptime.dat: il formato di uptime.dat e' quello
+        // che troverebbe un nodo lanciato con un binario di prima della v3, e riderlo per
+        // aggiungere un campo in fondo farebbe fallire la lettura su tutta la storia.
+        // Un file in piu' costa qualche inode e non rompe niente.
+        {
+            std::string path = db_path_ + "/chain_uptime.dat";
+            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            if (!f) { MERROR("save_to_disk: cannot open " << path); return false; }
+            write_u32(f, static_cast<uint32_t>(chain_uptime_samples_.size()));
+            for (const auto& [key, samples] : chain_uptime_samples_) {
+                write_u8(f, static_cast<uint8_t>(key.size()));
+                f.write(key.data(), key.size());
+                write_u32(f, static_cast<uint32_t>(samples.size()));
+                for (const auto& s : samples) {
+                    write_u64(f, s.height);
+                    write_u64(f, s.block_ts);
+                }
+            }
+        }
         // Save score_cache_
         {
             std::string path = db_path_ + "/scores.dat";
@@ -430,6 +561,45 @@ bool MevaTrustEngine::load_from_disk() {
                         events[j] = ev;
                     }
                     uptime_history_[key] = std::move(events);
+                }
+            }
+        }
+        // Load chain_uptime_samples_ (regola 3% v3)
+        {
+            std::string path = db_path_ + "/chain_uptime.dat";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) { MDEBUG("load_from_disk: no chain_uptime.dat, clean start"); }
+            else {
+                chain_uptime_samples_.clear();
+                uint32_t count = read_u32(f);
+                if (count > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint8_t klen = read_u8(f);
+                    std::string key(klen, '\0');
+                    f.read(key.data(), klen);
+                    uint32_t n = read_u32(f);
+                    if (n > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
+                    std::vector<ChainUptimeSample> samples;
+                    samples.reserve(n);
+                    for (uint32_t j = 0; j < n; ++j) {
+                        ChainUptimeSample s;
+                        s.height   = read_u64(f);
+                        s.block_ts = read_u64(f);
+                        samples.push_back(s);
+                    }
+                    // L'ordinamento e' un invariante del calcolo a coppie, non un
+                    // gradimento: se il file e' stato riordinato o corrotto, le quote
+                    // che ne uscirebbero non coinciderebbero con quelle degli altri nodi.
+                    if (!std::is_sorted(samples.begin(), samples.end(),
+                                        [](const ChainUptimeSample& a, const ChainUptimeSample& b) {
+                                            return a.height < b.height;
+                                        })) {
+                        MERROR("load_from_disk: chain_uptime.dat non ordinato per altezza, scarto");
+                        chain_uptime_samples_.clear();
+                        f.setstate(std::ios::failbit);
+                        return false;
+                    }
+                    chain_uptime_samples_[key] = std::move(samples);
                 }
             }
         }

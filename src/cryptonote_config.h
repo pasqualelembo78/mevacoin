@@ -252,6 +252,27 @@
 // aggiungono con la loro riga, e con la loro altezza.
 #define HF_VERSION_MEVATRUST_RULE_V2      14
 
+// Regola 3% v3: l'uptime diventa il gate di eleggibilita'.
+//
+// Stessa logica della v2 — due regole incompatibili stanno in due epoche diverse —
+// ma stavolta il punto di partenza e' 14, non 13, quindi il numero non puo' essere 15.
+//
+// Le versioni 15 e 16 sono DICHIARATE ma non hanno una riga nella tabella dei fork di
+// hardforks.cpp: non sono mai state attive. Aggiungere { 15, ... } le accenderebbe
+// tutte e tre insieme, e nessuna delle tre ha a che fare con MevaTrust:
+//   15 -> HF_VERSION_BULLETPROOF_PLUS  (intervallo dei rang proof ammessi)
+//   15 -> HF_VERSION_VIEW_TAGS         (codifica degli output: txout_to_key diventa
+//                                       txout_to_tagged_key)
+//   15 -> HF_VERSION_2021_SCALING      (fee median e blocchi brevi vs lunghi)
+// 16 -> HF_VERSION_EARLY_COINBASE_UNLOCK (quando la coinbase diventa spendabile)
+// Le ultime due cambiano l'economia del miner e la validazione delle transazioni.
+//
+// Quindi: 17, che e' il primo numero libero dopo l'ultima versione gia' dichiarata.
+// Se un giorno si volesse la 15 o la 16, si aggiunge la sua riga con la sua altezza e
+// si numera di nuovo: il salto di numero non costa nulla, accendere per sbaglio una
+// regola maidiscussa costa tutta la catena.
+#define HF_VERSION_MEVATRUST_UPTIME_V3    17
+
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2
 

@@ -46,6 +46,73 @@ constexpr uint32_t DISTRIBUTION_PERIOD_BLOCKS = 240;
 /// differenza e' deliberata perche' un nodo che risponde a caso e' rumore.
 constexpr float MIN_SCORE_FOR_REWARD = 0.5f;
 
+// ════════════════════════════════════════════════════════════════════════════
+// Regola 3% v3 — l'uptime come gate, non come voce di uno score
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Fin qui la ripartizione era proporzionale a uno score composto da quattro voci
+// (uptime 0.40, sync 0.30, responsiveness 0.20, activity 0.10) con soglia 0.5. La
+// forma e' elegante. Il problema e' che lo score non era alimentato: in produzione
+// nessuna delle quattro strutture che lo compongono veniva scritta, tranne il sync.
+// Il tetto raggiungibile era 0.30 (0.40 con il bonus validator), quindi nessun nodo
+// superava la soglia e la regola non ha mai pagato nessuno.
+//
+// La v3 sostituisce lo score con una sola grandezza misurata sulla catena: quanti
+// secondi di uptime sono ACCREDITATI a un nodo dentro una finestra scorrevole. Il
+// nodo e' eleggibile sopra i due giorni, e la sua quota cresce con i giorni fino a
+// un tetto. Nessun altro canale decide chi e' pagato.
+//
+// ── Perche' i secondi si contano sui timestamp dei blocchi ───────────────────
+//
+// L'uptime dichiarato dal nodo (campo `timestamp` del 0xA5) e' una firma, non una
+// prova: un nodo puo' firmare timestamp = adesso + 10 anni e accreditarsi dieci anni
+// di uptime con un solo messaggio. Il credito si conta quindi sui timestamp dei
+// BLOCCHI che contengono i 0xA5 accettati: sono dati che il consenso gia' valida,
+// e che due nodi onesti ricostruiscono identici. Il timestamp dichiarato viene
+// ignorato per il calcolo della quota e resta solo come informazione per l'explorer.
+
+/// Secondi di uptime accreditati necessari per essere eleggibili: due giorni.
+///
+/// Non e' un numero di blocchi perche' la richiesta e' in giorni, e blocchi e
+/// giorni divergono appena il tempo di blocco si muove. La conversione resta
+/// comunque deterministica perche' i secondi vengono dai timestamp dei blocchi.
+constexpr uint64_t MIN_ELIGIBLE_UPTIME_SECONDS = 2 * 24 * 60 * 60;
+
+/// Tetto dei giorni che contano ai fini della quota: novanta.
+///
+/// Serve perche' senza tetto il nodo piu' longevo prende sempre piu' e il 3% si
+/// concentra su una sola macchina, il peggiore esito possibile per una regola
+/// pensata per incentivare la rete piu' che per premiare un singolo nodo. Il
+/// merito dell'anzianita' non si perde: resta nei badge, che sono simbolici e non
+/// incidono sul denaro.
+constexpr uint64_t UPTIME_WEIGHT_CAP_DAYS = 90;
+
+/// Ampiezza della finestra scorrevole, in blocchi.
+///
+/// 43200 = 120 giorni a 4 minuti/blocco. Deve essere piu' larga del tetto dei
+/// novanta giorni, altrimenti il tetto non lega mai e la finestra diventerebbe essa
+/// stessa il limite. E' la finestra a produrre il decadimento: un nodo che si
+/// ferma vede il suo credito uscire dalla finestra un giorno alla volta, invece di
+/// ripartire da zero.
+///
+/// Si misura in blocchi e non in secondi perche' l'altezza e' l'unica cosa che il
+/// miner e il validatore conoscono con sicurezza insieme: il tempo del blocco che
+/// sta per essere costruito non e' ancora deciso quando le quote si calcolano.
+constexpr uint64_t UPTIME_WINDOW_BLOCKS = 43200;
+
+/// Secondi accreditabili da una singola coppia di campioni consecutivi: dodici ore.
+///
+/// Il credito e' il delta fra due timestamp di blocco consecutivi del nodo, ma
+/// limitato: se un nodo spariste per un mese e torna, il salto e' enorme e
+/// accreditarglielo intero equivarrebbe a premiarlo anche per il mese in cui non
+/// c'era. Il limite trasforma "assente" in "non accreditato" senzache serva sapere
+/// quando e' tornato.
+///
+/// Dodici ore e' anche il ritmo minimo di emissione dei 0xA5 che un nodo deve
+/// tenere per non perdere quote: due al giorno sono abbastanza per dimostrare
+/// presenza e abbastanza rare da non affollare la mempool.
+constexpr uint64_t MAX_UPTIME_CREDIT_GAP_SECONDS = 12 * 60 * 60;
+
 } // namespace consensus
 } // namespace mevatrust
 } // namespace cryptonote

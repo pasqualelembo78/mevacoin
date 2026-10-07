@@ -1852,7 +1852,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   auto* pm = cryptonote::mevatrust::get_manager();
   std::vector<cryptonote::NodeCoinbaseReward> node_rewards;
   if (pm && pm->is_initialized() && hf_version >= HF_VERSION_MEVATRUST)
-    node_rewards = pm->get_coinbase_rewards(height, effective_miner_reward, effective_miner_reward);
+    node_rewards = pm->get_coinbase_rewards(height, effective_miner_reward, hf_version, effective_miner_reward);
 
   // [C2] Badge On-Chain: recupera e consuma il blob 0xA2 dal participation manager.
   std::vector<uint8_t> snapshot_extra;

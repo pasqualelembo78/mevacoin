@@ -48,7 +48,7 @@ public:
   void on_new_block(uint64_t height, uint64_t block_reward, uint8_t hf_version);
 
   std::vector<NodeCoinbaseReward> get_coinbase_rewards(
-    uint64_t height, uint64_t total_block_reward, uint64_t& miner_reward_out);
+    uint64_t height, uint64_t total_block_reward, uint8_t hf_version, uint64_t& miner_reward_out);
 
   // ── Il 3% come regola di consenso ────────────────────────────────────────
   //
@@ -72,9 +72,30 @@ public:
   //      cui le altre funzioni del manager sono state chiamate prima.
   // Violare il punto 1 e' un bug che si manifesta come una catena fermata, non
   // come un errore visibile.
+  //
+  // hf_version serve a scegliere la regola: da HF_VERSION_MEVATRUST_UPTIME_V3 in poi
+  // l'uptime della catena e' l'unico criterio, prima contava uno score. Va passata
+  // come parametro e non letta da m_hf_version perche' quel campo e' quello con cui
+  // il manager e' stato inizializzato al boot, e resta indietro rispetto ai fork che
+  // la rete attiva mentre il processo gira.
   bool compute_expected_payouts(uint64_t height, uint64_t total_block_reward,
+                               uint8_t hf_version,
                                std::vector<expected_payout> &out_payouts,
                                std::string &error_msg) const;
+
+  // Regola 3% v3. Isola il calcolo di cui sopra quando hf_version >= 17, cosi' il
+  // percorso storico resta leggibile per quello che e' e non viene frammentato da
+  // condizioni. Stesso contratto di compute_expected_payouts(): pura, e stessa
+  // risposta alla stessa altezza.
+  bool compute_uptime_payouts_v3(uint64_t height, uint64_t total_block_reward,
+                                 uint64_t budget,
+                                 const std::vector<PendingCoinbaseOutput> &welcome,
+                                 std::vector<expected_payout> &out_payouts,
+                                 std::string &error_msg) const;
+
+  /// Ci sono prove di presenza salvate? Al boot, un archivio vuoto su una catena
+  /// gia' lunga significa che i campioni vanno ricostruiti prima di pagare qualcuno.
+  bool has_chain_uptime_samples() const;
 
   std::shared_ptr<NodeRegistry>              node_registry()        const { return m_node_registry; }
   std::shared_ptr<CircleRegistry>            circle_registry()      const { return m_circle_registry; }
@@ -92,6 +113,14 @@ public:
   // ?? Fase 2: On-Chain processing ????????????????????????????????????????
   void process_mevatrust_txs(const cryptonote::block& bl, uint64_t height);
   void rebuild_registry_from_chain(uint64_t start_height, uint64_t end_height);
+
+  /// Ricostruisce SOLO i campioni di uptime v3, senza toccare il registry.
+  ///
+  /// Esiste separata da rebuild_registry_from_chain() perche' quella azzera il registry
+  /// prima di ripartire: e' la cosa giusta quando il registry e' il dato mancante, ed e'
+  /// una-caporetto quando mancano solo i campioni, perche' durante il giro il registro
+  /// sarebbe vuoto e un blocco validato in quel momento troverebbe un nodo senza nome.
+  void rebuild_uptime_samples_from_chain(uint64_t start_height, uint64_t end_height);
   void set_get_block_func(GetBlockFunc fn);
   void set_get_tx_func(GetTxFunc fn);
 

@@ -748,7 +748,7 @@ namespace cryptonote
               }
             }
           }
-          // ── Fase 2/G5: rebuild registry da chain se DB locale vuoto ──────
+// ── Fase 2/G5: rebuild registry da chain se DB locale vuoto ──────
           {
             auto* pm_r2 = cryptonote::mevatrust::get_manager();
             if (pm_r2 && pm_r2->node_registry()
@@ -761,6 +761,32 @@ namespace cryptonote
                       " 0.." << chain_h);
                 pm_r2->rebuild_registry_from_chain(0, chain_h);
               }
+            }
+          }
+          // ── Regola 3% v3: ricostruire i campioni di uptime se mancano ──────
+          //
+          // I campioni sono una funzione pura della catena: si ottengono riprocessando i
+          // 0xA5. Se l'archivio locale e' vuoto su una catena gia' lunga — dopo un
+          // ripristino da backup, un disco nuovo, un'istallazione fresca che ha scaricato
+          // la catena — il noco leggerebbe zero giorni di uptime per tutti e produrrebbe
+          // liste di pagamenti diverse da quelle degli altri. Il sintomo sarebbe una
+          // catena fermata al primo blocco di distribuzione, non un errore in log.
+          //
+          // Il rebuild e' lo stesso gia' usato per il registry e ripassa da
+          // process_mevatrust_txs(), quindi ricostruisce anche i campioni senza un secondo
+          // giro di codice da mantenere.
+          {
+            auto* pm_up = cryptonote::mevatrust::get_manager();
+            const uint64_t chain_h2 =
+              m_blockchain_storage.get_current_blockchain_height();
+            if (pm_up && !pm_up->has_chain_uptime_samples()
+                && chain_h2 > 0
+                && m_blockchain_storage.get_current_hard_fork_version()
+                     >= HF_VERSION_MEVATRUST_UPTIME_V3)
+            {
+              MINFO("Campioni uptime assenti post-boot (catena h=" << chain_h2
+                    << "): rebuild_uptime_samples_from_chain 0.." << chain_h2);
+              pm_up->rebuild_uptime_samples_from_chain(0, chain_h2);
             }
           }
           // ── Fase 3: wire broadcast_tx_func per SnapshotBroadcaster ──────

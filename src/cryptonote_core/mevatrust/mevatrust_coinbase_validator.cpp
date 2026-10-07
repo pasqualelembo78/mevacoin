@@ -108,9 +108,26 @@ bool check_mevatrust_coinbase(
       total_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
   const bool pool_takes_the_remainder =
       (hf_version >= HF_VERSION_MEVATRUST_RULE_V2);
-  const uint64_t expected_pool_amount = pool_takes_the_remainder
-      ? ((budget > node_total) ? (budget - node_total) : 0)
-      : budget;
+
+  // Da V3, quando nessun nodo e' eleggibile il 3% resta al miner e il pool non riceve
+  // nulla. Non e' una cortesia: il pool e' derivato per hash e non esiste una chiave di
+  // spesa che corrisponda, quindi mandarlo li' significa che quei soldi non li prendera'
+  // nessuno. E non e' nemmeno una punizione per il miner: non avere ancora nodi con due
+  // giorni di uptime non e' una colpa di chi sta minando.
+  //
+  // La condizione e' node_total == 0, cioe' nessuno e' stato pagato in questo blocco. E'
+  // la stessa condizione che produce la lista vuota in compute_uptime_payouts_v3(), e
+  // quindi miner e validatore ci arrivano leggendo gli stessi dati.
+  const bool uptime_v3 = (hf_version >= HF_VERSION_MEVATRUST_UPTIME_V3);
+  const bool nobody_paid = (node_total == 0);
+
+  uint64_t expected_pool_amount;
+  if (uptime_v3 && nobody_paid)
+    expected_pool_amount = 0;
+  else if (pool_takes_the_remainder)
+    expected_pool_amount = (budget > node_total) ? (budget - node_total) : 0;
+  else
+    expected_pool_amount = budget;
 
   if (expected_pool_amount > 0) {
     // Sotto V2 l'output del pool era stealth, quindi la chiave non era confrontabile:
@@ -201,7 +218,7 @@ bool check_mevatrust_coinbase_pure_consensus(
   // Non deve scrivere niente: vedi compute_expected_payouts().
   std::vector<MevaTrustManager::expected_payout> expected;
   std::string recompute_err;
-  if (!pm->compute_expected_payouts(height, total_reward, expected, recompute_err)) {
+  if (!pm->compute_expected_payouts(height, total_reward, hf_version, expected, recompute_err)) {
     error_msg = "MevaTrust 3% rule not computable: " + recompute_err;
     return false;
   }

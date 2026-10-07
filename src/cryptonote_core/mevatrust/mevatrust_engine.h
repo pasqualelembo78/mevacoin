@@ -121,6 +121,66 @@ public:
     uint64_t lookback_height = 14400  // ~4 hours
   );
 
+  // ========================================================================
+  // UPTIME DERIVATO DALLA CATENA (regola 3% v3)
+  // ========================================================================
+  //
+  // Quanto segue e' la grandezza su cui la v3 decide chi viene pagato, e sostituisce
+  // lo score composed di calculate_node_score(). Vive in una struttura separata da
+  // uptime_history_ per una ragione precisa: uptime_history_ alimenta lo score usato
+  // dalla v2, e riempirla avrebbe cambiato il risultato dei blocchi gia' prodotti,
+  // rendendo invalida la storia. Due strutture, due epoche, nessuna retroattivita'.
+
+  /// Una prova di presenza accettata dalla catena.
+  ///
+  /// block_ts e' il timestamp del BLOCCO che contiene il 0xA5, non il timestamp che il
+  /// nodo si e' firmato da solo. E' la differenza fra una prova e un'opinione: il primo
+  /// e' un dato che il consenso gia' valida e che due nodi onesti leggono identico, il
+  /// secondo e' un numero che il nodo sceglie e che potrebbe valere anche dieci anni.
+  struct ChainUptimeSample {
+    uint64_t height{0};
+    uint64_t block_ts{0};
+  };
+
+  /// La posizione di un nodo nella finestra scorrevole, e quanto vale come quota.
+  struct UptimeStanding {
+    uint64_t credited_seconds{0};  ///< uptime accreditato dentro la finestra
+    uint32_t samples{0};           ///< campioni considerati
+    double days{0.0};              ///< credited_seconds / 86400
+    double weight{0.0};            ///< min(days, tetto) — la chiave di divisione
+    bool eligible{false};          ///< days >= soglia
+  };
+
+  /// Registra una prova di presenza. Idempotente per altezza: due 0xA5 dello stesso nodo
+  /// nello stesso blocco valgono un campione solo, altrimenti un nodo che infila piu'
+  /// firme in un blocco — cosa che puo' fare finche' i suoi 0xA5 ci stanno — guadagnerebbe
+  /// crediti che non corrispondono a tempo realmente trascorso.
+  bool record_chain_uptime_sample(
+    const crypto::hash& node_id,
+    uint64_t height,
+    uint64_t block_ts
+  );
+
+  /// Calcola la posizione del nodo alla data altezza.
+  ///
+  /// Il credito di ogni coppia di campioni consecutivi e' il delta fra i loro timestamp
+  /// di blocco, limitato a MAX_UPTIME_CREDIT_GAP_SECONDS: se il nodo e' sparito per un
+  /// mese e torna, il salto non vale un mese. I campioni fuori dalla finestra non
+  /// contano, ed e' questo che produce il decadimento — un nodo fermo vede il suo
+  /// credito scorrere fuori dalla finestra un giorno alla volta invece di azzerarsi.
+  UptimeStanding compute_uptime_standing(
+    const crypto::hash& node_id,
+    uint64_t height
+  ) const;
+
+  /// Ci sono campioni salvati? Al boot serve a capire se il nodo sta per leggere le
+  /// quote da un archivio vuoto: in quel caso, se la catena non e' ai primi blocchi, i
+  /// campioni vanno ricostruiti da lei prima di calcolare qualsiasi quota.
+  bool has_chain_uptime_samples() const;
+
+  /// Svuota i campioni. Serve al rebuild, che deve ripartire da zero come fa col registry.
+  void clear_chain_uptime_samples();
+
   float get_sync_percentage(
     const crypto::hash& node_id,
     uint64_t current_height,
@@ -249,6 +309,11 @@ private:
   // In-memory caches
   std::map<std::string, std::vector<UptimeEvent>> uptime_history_;
   std::map<std::string, MevaTrustScoreSnapshot> score_cache_;
+
+  // Prove di presenza derivate dalla catena, per la regola 3% v3. Tenute separate da
+  // uptime_history_ per non perturbare il percorso pre-v17: vedi compute_uptime_standing().
+  std::map<std::string, std::vector<ChainUptimeSample>> chain_uptime_samples_;
+
   mutable std::recursive_mutex cache_lock_;
 
   // Configuration

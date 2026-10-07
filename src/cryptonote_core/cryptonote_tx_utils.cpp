@@ -818,7 +818,21 @@ bool construct_miner_tx_with_mevatrust(
   const bool bound_outputs = (hard_fork_version >= HF_VERSION_MEVATRUST_RULE_V2);
 
   uint64_t pool_amount, miner_reward;
-  if (bound_outputs) {
+  if (hard_fork_version >= HF_VERSION_MEVATRUST_UPTIME_V3 && node_total == 0) {
+    // V3, nessun nodo eleggibile: il 3% resta al miner.
+    //
+    // Il pool nasce da una chiave derivata per hash e non ne esiste una di spesa
+    // corrispondente: e' denaro che nessuno puo' incassare. E non avere ancora nodi con due
+    // giorni di uptime non e' colpa di chi sta minando, quindi togliergli il 3% sarebbe
+    // una penalita' per qualcosa che non controlla.
+    //
+    // node_total == 0 e' la stessa condizione che fa usare a compute_uptime_payouts_v3()
+    // una lista vuota, quindi questo ramo e il validatore arrivano allo stesso risultato
+    // leggendo gli stessi dati. Se i due divergessero, il miner produrrebbe un blocco che
+    // il validatore rifiuta e la catena si fermerebbe al primo blocco senza eleggibili.
+    pool_amount   = 0;
+    miner_reward  = desy_total;
+  } else if (bound_outputs) {
     // I nodi sono pagati DENTRO il 3%: al pool va solo cio' che non e' stato
     // distribuito, quindi mai piu' del 3%.
     pool_amount = (budget > node_total) ? (budget - node_total) : 0;

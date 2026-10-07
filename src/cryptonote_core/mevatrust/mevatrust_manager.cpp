@@ -270,6 +270,18 @@ void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint
     if (height>0 && height%m_period_length==0) {
     MINFO("Period boundary h="<<height);
     if (m_mevatrust_engine) m_mevatrust_engine->process_reward_period(height);
+
+    // I campioni di uptime v3 vengono salvati qui, e non solo allo shutdown.
+    //
+    // Sono dati di consenso: se un nodo li perde e li ricostruisce solo al prossimo
+    // riavvio, nel frattempo calcolerebbe zero giorni per tutti e produrrebbe liste di
+    // pagamenti diverse. Un crash a meta' periodo lascerebbe quindi il nodo in grado di
+    // validare i blocchi successivi ma incapace di costruire il prossimo blocco pagato.
+    // Una scrittura ogni 240 blocchi, cioe' ogni ora, tiene la perdita sotto una ora e
+    // costa un file di qualche KiB.
+    if (m_mevatrust_engine && hf >= HF_VERSION_MEVATRUST_UPTIME_V3)
+      m_mevatrust_engine->save_to_disk();
+
     if (m_badge_system) {
       uint32_t ch = m_badge_system->evaluate_all_badges(height);
       if (ch) MINFO("Badge changes: "<<ch<<" at h="<<height);
@@ -531,7 +543,7 @@ void MevaTrustManager::trigger_distribution(uint64_t height) {
 }
 
 std::vector<NodeCoinbaseReward> MevaTrustManager::get_coinbase_rewards(
-  uint64_t height, uint64_t total_reward, uint64_t& miner_out)
+  uint64_t height, uint64_t total_reward, uint8_t hf_version, uint64_t& miner_out)
 {
   miner_out = total_reward;
   if (!m_initialized.load()) return {};
@@ -557,7 +569,7 @@ std::vector<NodeCoinbaseReward> MevaTrustManager::get_coinbase_rewards(
   // resa non scrivibile.
   std::vector<MevaTrustManager::expected_payout> expected;
   std::string err;
-  if (!compute_expected_payouts(height, total_reward, expected, err)) {
+  if (!compute_expected_payouts(height, total_reward, hf_version, expected, err)) {
     // Non si indietreggia: un blocco senza 3% e' un blocco che il consenso
     // rifiuterebbe, quindi produrlo cosi' costa un riorg invece di un blocco.
     MERROR("[MevaTrust] ricalcolo delle quote fallito h=" << height << ": " << err);
@@ -1018,6 +1030,19 @@ void MevaTrustManager::process_mevatrust_txs(
                 if (!m_node_registry) { MWARNING("[MevaTrustManager] NodeRegistry non inizializzato"); continue; }
                 m_node_registry->record_uptime_event(upt.node_id, true, upt.timestamp, upt.peer_count, 0);
                 m_node_registry->update_node_sync(upt.node_id, upt.sync_height, upt.is_synced);
+
+                // Il campione che conta per la regola 3% v3 e' ancorato al BLOCCO, non al
+                // timestamp che il nodo si e' firmato. upt.timestamp resta una dichiarazione
+                // e resta solo informazione per l'explorer: un nodo puo' firmare il futuro,
+                // e se quella cifra entrasse nel calcolo delle quote potrebbe comprarsi dieci
+                // anni di uptime con una firma sola.
+                //
+                // bl.timestamp e' il dato che il consenso ha gia' validato e che due nodi
+                // onesti leggono identico. E' quindi l'unico orologio che un nodo e un
+                // validatore possono usare per concordare quanto tempo e' passato.
+                if (m_mevatrust_engine)
+                    m_mevatrust_engine->record_chain_uptime_sample(upt.node_id, height, bl.timestamp);
+
                 MINFO("[MevaTrustManager] Uptime commitment h=" << height
                       << " node=" << epee::string_tools::pod_to_hex(upt.node_id)
                       << " uptime=" << upt.uptime_seconds);
@@ -1319,8 +1344,42 @@ void MevaTrustManager::rebuild_registry_from_chain(
         process_mevatrust_txs(bl, h);
     }
 
-    MINFO("[MevaTrustManager] rebuild_registry_from_chain completato: "
-          << m_node_registry->get_active_node_count() << " nodi attivi");
+MINFO("[MevaTrustManager] rebuild_registry_from_chain completato: "
+      << m_node_registry->get_active_node_count() << " nodi attivi");
+}
+
+void MevaTrustManager::rebuild_uptime_samples_from_chain(
+  uint64_t start_height, uint64_t end_height)
+{
+  if (!m_initialized.load()) {
+    MERROR("[MevaTrustManager] rebuild_uptime_samples_from_chain: non inizializzato");
+    return;
+  }
+  if (!m_get_block_func) {
+    MERROR("[MevaTrustManager] rebuild_uptime_samples_from_chain: get_block_func non wired");
+    return;
+  }
+  if (!m_mevatrust_engine) return;
+
+  MINFO("[MevaTrustManager] rebuild_uptime_samples_from_chain da h="
+        << start_height << " a h=" << end_height);
+
+  // Solo i campioni: il registry resta com'e'. Azzerare tutto e' cio' che fa
+  // rebuild_registry_from_chain(), ed e' sbagliato qui.
+  m_mevatrust_engine->clear_chain_uptime_samples();
+
+  for (uint64_t h = start_height; h <= end_height; ++h) {
+    block bl;
+    if (!m_get_block_func(h, bl)) {
+      MWARNING("[MevaTrustManager] rebuild uptime: blocco non trovato h=" << h);
+      continue;
+    }
+    process_mevatrust_txs(bl, h);
+  }
+
+  m_mevatrust_engine->save_to_disk();
+
+  MINFO("[MevaTrustManager] rebuild_uptime_samples_from_chain completato");
 }
 
 
@@ -1676,6 +1735,147 @@ bool MevaTrustManager::verify_mevatrust_state_root(const block& bl, uint64_t hei
     return true;
 }
 
+bool MevaTrustManager::has_chain_uptime_samples() const {
+  return m_mevatrust_engine && m_mevatrust_engine->has_chain_uptime_samples();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// compute_uptime_payouts_v3 — la regola del 3% come l'hai descritta
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Un solo criterio decide chi viene pagato: quanti secondi di uptime sono accreditati
+// a un nodo dentro una finestra scorrevole, contati sui timestamp dei blocchi che
+// contengono le sue prove 0xA5.
+//
+//   giorni < 2            -> non eleggibile, zero
+//   giorni >= 2           -> eleggibile, peso = min(giorni, 90)
+//   peso                  -> la chiave della divisione, proporzionale come prima
+//
+// Tre scelte che meritano di essere dette adesso, perche' ognuna ha un costo.
+//
+// 1. Il peso e' proporzionale ai giorni, non lo score. Uno score mescolava uptime con
+//    sync e rapidita' di risposta, e finche' quelle voci non erano alimentate produceva
+//    una divisione che non dipendeva dall'uptime. Qui l'uptime e' l'unica variabile:
+//    se la rete funziona bene, e' perche' i nodi c'erano.
+//
+// 2. Il tetto di novanta giorni. Senza, il nodo piu' vecchio prende sempre piu' e il 3%
+//    finisce concentrato su una sola macchina, che e' l'esito peggiore possibile per
+//    una regola che vuole incentivare la rete. L'anzianita' non sparisce: resta nei
+//    badge, che non incidono sul denaro.
+//
+// 3. Nessun nodo eleggibile non vuol dire denaro bruciato. Sotto la soglia i due giorni
+//    non si dimezzano, e per un paio di giorni dall'attivazione nessuno puo' averli.
+//    In quel periodo il 3% va al miner, non al pool: il pool e' nato senza chiave di
+//    spesa e non e' spendibile per nessuno, quindi mandarlo li' e' regalare il 3% a
+//    nessuno. E un miner non deve essere punito perche' la rete non ha ancora nodi
+//    sufficienti, non essercene e' una colpa sua.
+bool MevaTrustManager::compute_uptime_payouts_v3(
+  uint64_t height, uint64_t total_block_reward, uint64_t budget,
+  const std::vector<PendingCoinbaseOutput> &welcome,
+  std::vector<expected_payout> &out_payouts, std::string &error_msg) const
+{
+  (void)total_block_reward;   // il budget e' gia' calcolato dal chiamante
+  out_payouts.clear();
+
+  if (!m_mevatrust_engine || !m_node_registry) {
+    error_msg = "engine or node registry unavailable";
+    return false;
+  }
+
+  // ── Chi e' eleggibile, e con che peso ───────────────────────────────────────
+  //
+  // Solo i nodi registrati on-chain: un nodo che si e' registrato via RPC e non ha un
+  // 0xA0 nella catena non esiste per nessuno, e pagarlo qui significherebbe mettere
+  // nel blocco una lista che nessun altro ricostruisce.
+  std::vector<std::pair<MevaTrustEngine::UptimeStanding, NodeRegistryEntry>> eligible;
+  double total_weight = 0.0;
+  for (const auto& entry : m_node_registry->get_eligible_nodes()) {
+    const auto standing = m_mevatrust_engine->compute_uptime_standing(entry.node_id, height);
+    if (!standing.eligible || standing.weight <= 0.0)
+      continue;
+    total_weight += standing.weight;
+    eligible.emplace_back(standing, entry);
+  }
+
+  // ── La divisione ───────────────────────────────────────────────────────────
+  //
+  // Stessa forma aritmetica del percorso storico: quota = budget * peso / peso_totale,
+  // troncata. Stessa regola di troncamento perche' due implementazioni che differiscono
+  // solo nell'ultimo atomo fanno litigare il miner con il validatore al primo confine.
+  std::vector<PendingCoinbaseOutput> pending;
+  pending.reserve(eligible.size() + welcome.size());
+
+  if (total_weight > 0.0) {
+    for (const auto& [standing, entry] : eligible) {
+      const uint64_t share = static_cast<uint64_t>(
+          static_cast<double>(budget) * standing.weight / total_weight);
+      if (share == 0) continue;   // arrotondamento a zero: era cosi' anche prima
+
+      PendingCoinbaseOutput pco;
+      pco.node_id_str    = epee::string_tools::pod_to_hex(entry.node_id);
+      pco.wallet_address = entry.wallet_address;
+      pco.amount         = share;
+      pco.score          = static_cast<float>(standing.weight);
+      pending.push_back(std::move(pco));
+    }
+  }
+  // Se total_weight == 0 nessun nodo ha raggiunto i due giorni: la divisione non
+  // produce quote, ma i bonus di benvenuto vanno pagati lo stesso. I welcome sono
+  // cifre promosse alla registrazione, non quote di un peso: non dipendono dall'uptime,
+  // e saltarli qui significherebbe che un nodo che si registra e riceve il bonus
+  // non lo incassa mai se si trova in un periodo senza nodi eleggibili.
+
+  // Bonus di benvenuto: cifre promosse alla registrazione, non quote di un peso. Vanno
+  // fuori dalla divisione anche qui, e per lo stesso motivo di allora.
+  for (const auto& w : welcome) pending.push_back(w);
+
+  if (pending.empty()) return true;
+
+  // ── Gli indirizzi stanno nel registro, non nelle quote ─────────────────────
+  //
+  // Un nodo eleggibile ma privo di indirizzo on-chain e' un buco nella catena: non si
+  // puo' costruire un blocco che lo paghi, e non si puo' nemmeno dire al validatore di
+  // ignorarlo, perche' l'elenco dei pagamenti deve essere identico da tutte le parti.
+  // Quindi e' un errore, non un caso da saltare.
+  std::vector<cryptonote::NodeCoinbaseReward> resolved;
+  resolved.reserve(pending.size());
+  for (auto& pco : pending) {
+    if (pco.wallet_address.empty()) {
+      error_msg = "no wallet address on chain for a node due a payout";
+      return false;
+    }
+    cryptonote::NodeCoinbaseReward ncr{};
+    if (!parse_wallet_address(pco.wallet_address, ncr.address)) {
+      error_msg = "unparseable wallet address on chain";
+      return false;
+    }
+    ncr.amount  = pco.amount;
+    ncr.node_id = pco.node_id_str;
+    resolved.push_back(std::move(ncr));
+  }
+
+  out_payouts.resize(resolved.size());
+  for (size_t i = 0; i < resolved.size(); ++i) {
+    out_payouts[i].address = resolved[i].address;
+    out_payouts[i].amount  = resolved[i].amount;
+  }
+
+  // Ordine canonico per chiave di spesa. Il validatore confronta le liste voce per voce,
+  // e una lista equivalente ma ordinata diversamente viene respinta come se fosse un
+  // blocco diverso. Non e' un ordine estetico.
+  std::sort(out_payouts.begin(), out_payouts.end(),
+            [](const expected_payout& a, const expected_payout& b) {
+              const int c = memcmp(&a.address.m_spend_public_key,
+                                   &b.address.m_spend_public_key,
+                                   sizeof(crypto::public_key));
+              if (c != 0) return c < 0;
+              return memcmp(&a.address.m_view_public_key,
+                            &b.address.m_view_public_key,
+                            sizeof(crypto::public_key)) < 0;
+            });
+  return true;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // compute_expected_payouts — il 3% ricalcolato da chi verifica
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1708,6 +1908,7 @@ bool MevaTrustManager::verify_mevatrust_state_root(const block& bl, uint64_t hei
 // gia' in catena: contributi 3% meno distribuzioni 0xAA. Costa una scansione, ma
 // risponde a una domanda che tutti i nodi rispondono uguale.
 bool MevaTrustManager::compute_expected_payouts(uint64_t height, uint64_t total_block_reward,
+                                               uint8_t hf_version,
                                                std::vector<MevaTrustManager::expected_payout> &out_payouts,
                                                std::string &error_msg) const
 {
@@ -1755,8 +1956,23 @@ bool MevaTrustManager::compute_expected_payouts(uint64_t height, uint64_t total_
   // resta un concetto contabile, e va tenuto separato dal calcolo delle quote:
   // confonderli e' il modo piu' rapido per arrivare a due nodi che non si
   // riconoscono.
-  const uint64_t budget = total_block_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
+const uint64_t budget = total_block_reward * mevatrust::consensus::NODE_REWARD_PERCENT / 100;
   if (budget == 0) return true;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Regola 3% v3 — l'uptime della catena come unico criterio
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // Da qui in poi tutto il resto del calcolo e' il percorso v2, che resta intatto e
+  // continua a valere per i blocchi prodotti prima della v17.
+  //
+  // La v2 non e' sbagliata per quello che misura: e' semplicemente una misura che in
+  // produzione non era alimentata, e il suo tetto raggiungibile stava sotto la soglia.
+  // La v3 non la corregge a meta': la sostituisce, e la sostituzione deve stare in una
+  // funzione a se' perche' il percorso antico contino a produrre esattamente il
+  // risultato che ha prodotto finora, o quei blocchi diventerebbero invalidi al replay.
+  if (hf_version >= HF_VERSION_MEVATRUST_UPTIME_V3)
+    return compute_uptime_payouts_v3(height, total_block_reward, budget, welcome, out_payouts, error_msg);
 
   const float min_score = m_reward_distributor->min_score_for_reward();
 
