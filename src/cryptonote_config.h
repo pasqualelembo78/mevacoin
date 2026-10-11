@@ -291,6 +291,7 @@
 // Perche' 18 e non 15/16: stessa ragione della v3 (vedi sopra). 18 e' il primo
 // numero libero dopo 17.
 #define HF_VERSION_MEVATRUST_ANTISYBIL    18
+#define HF_VERSION_MEVATRUST_ANTISYBIL_BOND 19
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2

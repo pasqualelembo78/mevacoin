@@ -19,6 +19,7 @@
 #include "penalty.h"
 #include "pool_distribution.h"
 #include "pool_address.h"
+#include "../foundation_vesting.h"
 #include "frost_threshold.h"
 
 extern "C" {
@@ -743,6 +744,27 @@ void MevaTrustManager::process_mevatrust_txs(
                 if (!mevatrust::verify_registration_signature(reg)) {
                     MWARNING("[MevaTrustManager] Registration sig INVALIDA, skip");
                     continue;
+                }
+                // Anti-Sybil Fase 3: bond economico non rimborsabile per registrazione
+                if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL_BOND) {
+                    bool has_bond = false;
+                    account_public_address nf_addr = get_network_fund_address(m_nettype);
+                    for (const auto& vout : tx.vout) {
+                        txout_to_key tk;
+                        if (vout.target.type() == typeid(txout_to_key)) {
+                            tk = boost::get<txout_to_key>(vout.target);
+                            if (tk.key == nf_addr.m_spend_public_key) {
+                                if (vout.amount >= mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC) {
+                                    has_bond = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!has_bond) {
+                        MWARNING("[MevaTrustManager] Registration rifiutata: bond mancante o insufficiente (>= 100 MVC)");
+                        continue;
+                    }
                 }
                 if (m_node_registry->register_node_onchain(reg, height, hf_version)) {
                     MINFO("[MevaTrustManager] Nodo registrato on-chain h="

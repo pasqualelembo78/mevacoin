@@ -28,6 +28,7 @@
 #include "common/scoped_message_writer.h"
 #include "cryptonote_core/mevatrust/mevatrust_tx_parser.h"
 #include "cryptonote_core/mevatrust/pool_address.h"
+#include "cryptonote_core/foundation_vesting.h"
 
 // ── Helper: build self-send tx with custom tx_extra and submit ──────────────
 static std::string submit_mevatrust_tx(tools::wallet2* w, const std::vector<uint8_t>& extra)
@@ -428,7 +429,38 @@ bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
   tools::msg_writer() << "\nRegistrazione nodo on-chain in corso...";
   tools::msg_writer() << "  Node : " << node_pk_hex.substr(0, 16) << "...";
   tools::msg_writer() << "  Wallet: " << address_str.substr(0, 24) << "...";
-  const std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  // 7. Submit tx di registrazione con bond a network fund (Fase 3)
+  auto submit_registration_tx_fn = [&](tools::wallet2* w, const std::vector<uint8_t>& x) -> std::string {
+    try {
+      const uint64_t fee_min = 1000000000ULL;
+      const uint64_t bond = 100ULL * 1'000'000'000'000ULL;
+      std::vector<cryptonote::tx_destination_entry> dsts;
+      cryptonote::tx_destination_entry nf;
+      nf.addr = get_network_fund_address(w->nettype());
+      nf.amount = bond;
+      nf.is_subaddress = false;
+      dsts.push_back(nf);
+      std::set<uint32_t> subaddr_indices;
+      uint64_t unlocked = w->unlocked_balance(0, false, nullptr, nullptr);
+      if (unlocked < bond + fee_min) {
+        tools::fail_msg_writer() << tr("Fondi insufficienti per registrazione (richiede ~100 MVC + fee)");
+        return std::string{};
+      }
+      const size_t fake_outs_count = w->get_min_ring_size() - 1;
+      auto ptx_vector = w->create_transactions_2(dsts, fake_outs_count, tools::fee_priority::Normal, x, 0, subaddr_indices);
+      if (ptx_vector.empty()) {
+        tools::fail_msg_writer() << tr("Errore creazione tx registrazione");
+        return std::string{};
+      }
+      const crypto::hash tx_hash = cryptonote::get_transaction_hash(ptx_vector[0].tx);
+      w->commit_tx(ptx_vector);
+      return epee::string_tools::pod_to_hex(tx_hash);
+    } catch (const std::exception& e) {
+      tools::fail_msg_writer() << tr("ERRORE TX REG: ") << e.what();
+      return std::string{};
+    }
+  };
+  const std::string txid = submit_registration_tx_fn(m_wallet.get(), extra);
   if (txid.empty()) {
     tools::fail_msg_writer() << tr("Invio tx fallito. Verifica saldo e riconnessione al daemon.");
     return true;

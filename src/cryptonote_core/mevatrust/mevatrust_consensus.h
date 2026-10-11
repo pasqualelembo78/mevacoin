@@ -160,6 +160,15 @@ constexpr uint64_t CHAIN_PROOF_MAX_ANCHOR_LAG = 60;
 /// cosi' non esistono due orologi di decadimento diversi da riconciliare.
 constexpr uint64_t CHAIN_PROOF_VALIDITY_BLOCKS = UPTIME_WINDOW_BLOCKS;
 
+// ════════════════════════════════════════════════════════════════════════════
+// Anti-Sybil Fase 3 — Bond economico per registrazione nodo
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Non-refundable deposit per registrazione (sunk cost). Il bond viene inviato
+// al network fund (0xC0) e non viene mai restituito. Ciò rende costoso
+// creare molte identità da un singolo nodo reale.
+constexpr uint64_t NODE_REGISTRATION_BOND_ATOMIC = 100ULL * 1'000'000'000'000ULL; // 100 MVC
+
 } // namespace consensus
 } // namespace mevatrust
 } // namespace cryptonote
