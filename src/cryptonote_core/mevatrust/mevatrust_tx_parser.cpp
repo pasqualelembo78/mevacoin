@@ -130,10 +130,6 @@ bool verify_uptime_signature(const tx_extra_mevatrust_uptime& u) {
 bool parse_mevatrust_challenge_from_tx(const transaction& tx, tx_extra_mevatrust_challenge& out) {
     return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CHALLENGE, "challenge", out);
 }
-bool build_mevatrust_challenge_extra(const tx_extra_mevatrust_challenge& c, std::vector<uint8_t>& o) {
-    std::string b; tx_extra_mevatrust_challenge ch = c; if (!::serialization::dump_binary(ch,b)) return false;
-    return pack_blob(TX_EXTRA_TAG_MEVATRUST_CHALLENGE, b, o);
-}
 bool verify_challenge_signatures(const tx_extra_mevatrust_challenge& c) {
     try {
         crypto::hash h = challenge_message_hash(c);

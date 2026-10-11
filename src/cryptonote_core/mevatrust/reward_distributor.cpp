@@ -150,15 +150,6 @@ bool RewardDistributor::append_reward_record(const RewardRecord& rec) {
     return false;
 }
 
-// ── accumulate_reward ─────────────────────────────────────────────────────────
-bool RewardDistributor::accumulate_reward(uint64_t amount, uint64_t block_height) {
-    std::lock_guard<std::mutex> lk(m_pool_lock);
-    m_pool_balance += amount;
-    // Periodic pool-state save every 60 blocks
-    if (block_height % 60 == 0) save_pool_state();
-    return true;
-}
-
 // ── Welcome bonus LMDB ────────────────────────────────────────────────────────
 bool RewardDistributor::schedule_welcome_bonus(const crypto::hash& nid, uint64_t maturity_height, uint64_t amount) {
     if (!m_env) return false;
@@ -171,17 +162,6 @@ bool RewardDistributor::schedule_welcome_bonus(const crypto::hash& nid, uint64_t
         MDB_txn* txn = MevaTrustLMDB::begin_write(m_env);
         int rc = mdb_put(txn, m_dbi_welcome, &mk, &mv, 0);
         if (rc==0) { mdb_txn_commit(txn); return true; }
-        mdb_txn_abort(txn);
-    } catch(...) {}
-    return false;
-}
-bool RewardDistributor::remove_welcome_bonus(const crypto::hash& nid) {
-    if (!m_env) return false;
-    MDB_val mk{32, const_cast<void*>((const void*)nid.data)};
-    try {
-        MDB_txn* txn = MevaTrustLMDB::begin_write(m_env);
-        int rc = mdb_del(txn, m_dbi_welcome, &mk, nullptr);
-        if (rc==0 || rc==MDB_NOTFOUND) { mdb_txn_commit(txn); return true; }
         mdb_txn_abort(txn);
     } catch(...) {}
     return false;
@@ -392,29 +372,6 @@ bool RewardDistributor::has_pending_outputs() const {
 }
 
 // ── Query helpers ─────────────────────────────────────────────────────────────
-uint64_t RewardDistributor::get_node_reward(const crypto::hash& nid, uint64_t period_height) {
-    if (!m_env) return 0;
-    MDB_val mk{32, const_cast<void*>((const void*)nid.data)}, mv{};
-    uint64_t total=0;
-    try {
-        MDB_txn* txn = MevaTrustLMDB::begin_read(m_env);
-        MDB_cursor* cur; mdb_cursor_open(txn, m_dbi_rewards, &cur);
-        int rc = mdb_cursor_get(cur, &mk, &mv, MDB_SET);
-        while (rc==0) {
-            if (mv.mv_size >= 32) {
-                uint8_t* d = (uint8_t*)mv.mv_data;
-                uint64_t h=0; for(int i=0;i<8;++i) h=(h<<8)|d[i];
-                if (h == period_height) {
-                    uint64_t a; memcpy(&a, d+8, 8); total += a;
-                }
-            }
-            rc = mdb_cursor_get(cur, &mk, &mv, MDB_NEXT_DUP);
-        }
-        mdb_cursor_close(cur); mdb_txn_abort(txn);
-    } catch(...) {}
-    return total;
-}
-
 std::vector<RewardRecord> RewardDistributor::get_reward_history(const crypto::hash& nid, uint64_t limit) {
     std::vector<RewardRecord> hist;
     if (!m_env) return hist;
@@ -454,13 +411,13 @@ std::vector<DistributionEvent> RewardDistributor::get_distribution_history(uint6
 }
 bool RewardDistributor::is_distribution_due(uint64_t current_height) const {
     std::lock_guard<std::mutex> lk(m_pool_lock);
-    return (current_height - m_last_distribution_height) >= m_distribution_period;
-}
-bool RewardDistributor::calculate_node_share(const crypto::hash&, float score,
-                                              float total, uint64_t pool, uint64_t& out) {
-    if (total <= 0.0f || pool == 0) { out=0; return false; }
-    out = static_cast<uint64_t>((double)pool * score / total);
-    return out > 0;
+    // F5: regola di scadenza = multiplo esatto del periodo (240), la stessa che
+    // usa on_new_block per triggerare. La formula precedente
+    // (height - m_last_distribution_height) >= periodo era degenera: quel campo
+    // resta 0 (nessun chiamante lo aggiorna), quindi "ogni blocco h >= 240"
+    // risultava dovuto, e in piu' dipendeva da stato locale non deterministico
+    // tra i nodi. Multiplo puro e' una funzione della sola altezza.
+    return current_height > 0 && (current_height % m_distribution_period) == 0;
 }
 
 // ── Migration from legacy flat files ─────────────────────────────────────────

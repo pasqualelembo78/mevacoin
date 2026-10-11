@@ -209,32 +209,6 @@ bool frost_keygen(FrostKeyPackage& key_pkg)
     return true;
 }
 
-// Reconstruct the group public key Y from Lagrange-weighted signer pubkeys.
-bool reconstruct_group_pubkey(
-    const std::vector<std::pair<uint8_t, crypto::public_key>>& signer_pubkeys,
-    crypto::public_key& Y_out)
-{
-    if (signer_pubkeys.size() < FROST_T) return false;
-    std::vector<uint8_t> indices;
-    for (const auto& e : signer_pubkeys) indices.push_back(e.first);
-    std::vector<crypto::ec_scalar> lambdas;
-    if (!compute_lagrange_coeffs(indices, lambdas)) return false;
-
-    ge_p3 acc;
-    bool first = true;
-    for (size_t i = 0; i < signer_pubkeys.size(); ++i) {
-        ge_p3 P;
-        if (!point_from_bytes(reinterpret_cast<const unsigned char*>(&signer_pubkeys[i].second), P))
-            return false;
-        ge_p3 lamP;
-        scalar_mult_generic(reinterpret_cast<const unsigned char*>(&lambdas[i]), P, lamP);
-        if (first) { acc = lamP; first = false; }
-        else { ge_p3 tmp; point_add_p3(acc, lamP, tmp); acc = tmp; }
-    }
-    point_to_bytes(acc, reinterpret_cast<unsigned char*>(&Y_out));
-    return true;
-}
-
 // ── Nonces / commitments ──────────────────────────────────────────────────
 bool generate_nonces(NoncePair& nonce_out) {
     crypto::secret_key a, b;
@@ -486,24 +460,6 @@ crypto::hash create_distribution_message_hash(
         msg.append(reinterpret_cast<const char*>(&amount), 8);
     }
     return crypto::cn_fast_hash(msg.data(), msg.size());
-}
-
-// ── Encode / Decode ───────────────────────────────────────────────────────
-bool encode_frost_signature(const FrostSignature& sig, std::vector<uint8_t>& out) {
-    out.clear();
-    out.resize(96);
-    memcpy(out.data(), &sig.R, 32);
-    memcpy(out.data() + 32, &sig.z, 32);
-    memcpy(out.data() + 64, sig.msg_hash.data, 32);
-    return true;
-}
-
-bool decode_frost_signature(const std::vector<uint8_t>& in, FrostSignature& sig_out) {
-    if (in.size() < 96) return false;
-    memcpy(&sig_out.R, in.data(), 32);
-    memcpy(&sig_out.z, in.data() + 32, 32);
-    memcpy(sig_out.msg_hash.data, in.data() + 64, 32);
-    return true;
 }
 
 // ── Consensus keys (ceremony output, hardcoded) ───────────────────────────

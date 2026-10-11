@@ -46,13 +46,8 @@ public:
   explicit RewardDistributor(const std::string& db_path);
   ~RewardDistributor();
 
-  bool accumulate_reward(uint64_t amount, uint64_t block_height);
-  uint64_t calculate_pool_contribution(uint64_t block_reward) const {
-    return block_reward * m_pool_fraction / 100;
-  }
   bool distribute_rewards(std::shared_ptr<MevaTrustEngine> engine, uint64_t height = 0);
   bool schedule_welcome_bonus(const crypto::hash& nid, uint64_t maturity_height, uint64_t amount);
-  bool remove_welcome_bonus(const crypto::hash& nid);
   // Restituisce i bonus di benvenuto maturati a questa altezza, senza consumarli.
   //
   // E' il fratello non distruttivo di process_welcome_bonones(). La differenza
@@ -66,7 +61,6 @@ public:
   std::vector<PendingCoinbaseOutput> process_welcome_bonuses(uint64_t current_height);
   std::vector<PendingCoinbaseOutput> get_pending_coinbase_outputs();
   bool has_pending_outputs() const;
-  uint64_t get_node_reward(const crypto::hash& node_id, uint64_t period_height);
   std::vector<RewardRecord> get_reward_history(const crypto::hash& node_id, uint64_t limit = 100);
   std::vector<DistributionEvent> get_distribution_history(uint64_t limit = 50) const;
   uint64_t get_pool_balance();
@@ -97,7 +91,6 @@ private:
   uint32_t  m_pool_fraction;
   float     m_min_score_for_reward;
   std::vector<DistributionEvent> m_distribution_events;
-  bool calculate_node_share(const crypto::hash&, float, float, uint64_t, uint64_t&);
   bool append_reward_record(const RewardRecord&);
   bool save_pool_state() const;
   bool load_pool_state();

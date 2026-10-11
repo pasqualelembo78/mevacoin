@@ -100,13 +100,6 @@ public:
     uint64_t current_height
   );
 
-  // Get historical score for a specific period
-  bool get_historical_score(
-    const crypto::hash& node_id,
-    uint64_t period_height,
-    MevaTrustScoreSnapshot& score
-  );
-
   // ========================================================================
   // UPTIME TRACKING
   // ========================================================================
@@ -194,12 +187,6 @@ public:
   // CHALLENGE & RESPONSIVENESS TRACKING
   // ========================================================================
 
-  bool record_challenge_response(
-    const crypto::hash& node_id,
-    uint32_t response_time_ms,
-    bool success
-  );
-
   float get_average_response_time(const crypto::hash& node_id);
   float get_challenge_success_rate(const crypto::hash& node_id);
 
@@ -207,7 +194,6 @@ public:
   // ACTIVITY TRACKING
   // ========================================================================
 
-  bool increment_activity_counter(const crypto::hash& node_id, const std::string& activity_type);
   float get_activity_score(const crypto::hash& node_id, uint64_t lookback_height = 14400);
 
   // ========================================================================
@@ -216,11 +202,6 @@ public:
 
   // Called every 240 blocks (~4 hours)
   bool process_reward_period(uint64_t current_height);
-
-  // Get current period info
-  uint64_t get_current_period_start() const;
-  uint64_t get_current_period_end() const;
-  uint64_t get_blocks_since_last_period(uint64_t current_height) const;
 
   // ========================================================================
   // AGGREGATES & REPORTING
@@ -265,9 +246,6 @@ public:
     float responsiveness_weight;   // Default: 0.20
     float activity_weight;         // Default: 0.10
   };
-
-  void set_scoring_weights(const ScoringWeights& weights);
-  ScoringWeights get_scoring_weights() const;
 
   // ========================================================================
   // THRESHOLDS & PARAMETERS (Configurable)
@@ -342,9 +320,6 @@ private:
     const crypto::hash& node_id,
     uint64_t period_end_height
   );
-
-  bool load_uptime_history(const crypto::hash& node_id);
-  bool save_uptime_history(const crypto::hash& node_id);
 
   bool open_database();
   bool close_database();

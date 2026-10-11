@@ -184,12 +184,6 @@ public:
     return false;
   }
 
-  void record_response(const std::string& peer_ip, const crypto::hash& peer_id) {
-    std::lock_guard<std::mutex> lock(m_);
-    auto it = peers_.find(make_key(peer_ip, peer_id));
-    if (it != peers_.end()) ++it->second.response_count;
-  }
-
   void cleanup(uint64_t now_ms) {
     std::lock_guard<std::mutex> lock(m_);
     for (auto it = peers_.begin(); it != peers_.end(); ) {

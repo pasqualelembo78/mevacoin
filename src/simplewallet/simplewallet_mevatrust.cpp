@@ -126,26 +126,55 @@ static const char* badge_color(const std::string& n) {
   return "\033[36m";
 }
 bool read_node_pubkey(std::string& node_pk_hex) {
-  const char* h = std::getenv("HOME");
-  std::vector<std::string> paths = {
-    std::string(h ? h : "") + "/.mevacoin/mevatrust/node_signing_key",
-    "/root/.mevacoin/mevatrust/node_signing_key",
-  };
-  for (const auto& kp : paths) {
-    std::ifstream kf(kp, std::ios::binary);
-    if (!kf.is_open()) continue;
-    unsigned char seed[32] = {};
-    kf.read(reinterpret_cast<char*>(seed), 32);
-    if (kf.gcount() != 32) continue;
-    kf.close();
-    // Deriva la public key MevaCoin (stessa derivazione usata dal demone)
+  auto derive = [&](const unsigned char* seed) -> bool {
     crypto::secret_key node_sk;
     memcpy(node_sk.data, seed, 32);
     crypto::public_key node_pk;
     crypto::secret_key_to_public_key(node_sk, node_pk);
     node_pk_hex = epee::string_tools::pod_to_hex(node_pk);
     return true;
+  };
+  auto read_seed_file = [&](const std::string& kp) -> bool {
+    std::ifstream kf(kp, std::ios::binary);
+    if (!kf.is_open()) return false;
+    unsigned char seed[32] = {};
+    kf.read(reinterpret_cast<char*>(seed), 32);
+    if (kf.gcount() != 32) return false;
+    kf.close();
+    return derive(seed);
+  };
+  // W1: override da ambiente. MEVACOIN_NODE_SIGNING_KEY = seed hex da 64
+  // caratteri (stesso contenuto del file node_signing_key) oppure percorso di
+  // un file che contiene i 32 byte dello seed. Serve dove $HOME e' diverso da
+  // quello del daemon o dove la chiave vive in un percorso non di default.
+  // Un valore imposto ma invalido e' un errore, non un invito a cascare sui
+  // percorsi di default con un'identita' diversa da quella voluta.
+  if (const char* env = std::getenv("MEVACOIN_NODE_SIGNING_KEY")) {
+    const std::string v(env);
+    if (!v.empty()) {
+      if (v.size() == 64) {
+        crypto::secret_key sk{};
+        if (epee::string_tools::hex_to_pod(v, sk)) {
+          crypto::public_key node_pk;
+          crypto::secret_key_to_public_key(sk, node_pk);
+          node_pk_hex = epee::string_tools::pod_to_hex(node_pk);
+          return true;
+        }
+        tools::fail_msg_writer() << tr("MEVACOIN_NODE_SIGNING_KEY: hex non valido (attesi 64 caratteri).");
+        return false;
+      }
+      if (read_seed_file(v)) return true;
+      tools::fail_msg_writer() << tr("MEVACOIN_NODE_SIGNING_KEY: file non leggibile: ") << v;
+      return false;
+    }
   }
+  const char* h = std::getenv("HOME");
+  std::vector<std::string> paths = {
+    std::string(h ? h : "") + "/.mevacoin/mevatrust/node_signing_key",
+    "/root/.mevacoin/mevatrust/node_signing_key",
+  };
+  for (const auto& kp : paths)
+    if (read_seed_file(kp)) return true;
   return false;
 }
 static std::string node_id_path() {
@@ -298,7 +327,11 @@ bool simple_wallet::cmd_commit_uptime(const std::vector<std::string>& args) {
   rpc::COMMAND_RPC_COMMIT_UPTIME::response res;
   req.peer_count = peers;
 
-  const bool ok = m_wallet->invoke_http_json("/commit_uptime", req, res);
+  // F6: commit_uptime e' registrata solo come JSON-RPC (MAP_JON_RPC_WE in
+  // core_rpc_server.h, dentro BEGIN_JSON_RPC_MAP("/json_rpc")). La chiamata
+  // REST precedente puntava a /commit_uptime, path inesistente -> 404 e il
+  // commitment non arrivava mai a nessuno.
+  const bool ok = m_wallet->invoke_http_json_rpc("/json_rpc", "commit_uptime", req, res);
   if (!ok || !res.ok) {
     tools::fail_msg_writer() << tr("Commitment uptime non riuscito.");
     if (!res.status.empty())
@@ -310,11 +343,12 @@ bool simple_wallet::cmd_commit_uptime(const std::vector<std::string>& args) {
     return true;
   }
 
-  std::vector<uint8_t> extra;
-  if (!epee::string_tools::hex_to_pod(res.extra_hex, extra)) {
+  std::string extra_str;
+  if (!epee::string_tools::parse_hexstr_to_binbuff(res.extra_hex, extra_str)) {
     tools::fail_msg_writer() << tr("Blob 0xA5 non decodificabile dal daemon.");
     return true;
   }
+  std::vector<uint8_t> extra(extra_str.begin(), extra_str.end());
 
   tools::msg_writer() << "\nInvio commitment uptime on-chain...";
   tools::msg_writer() << "  Node ID   : " << res.node_id.substr(0, 24) << "...";

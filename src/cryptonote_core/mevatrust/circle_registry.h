@@ -32,7 +32,6 @@ struct ProposalEntry {
   uint8_t  convocation;              // 0=prima, 1=seconda (attuale)
   uint8_t  status;                   // 0=open_first, 1=open_second, 2=passed, 3=failed
   uint64_t finalize_height;          // 0 = non ancora finalizzata
-  bool passed_first_convocation() const { return status == 2; }
   bool is_open() const { return status == 0 || status == 1; }
 };
 
@@ -77,10 +76,8 @@ public:
 
   // Query
   bool get_circle(const crypto::hash& circle_id, CircleEntry& out) const;
-  bool get_circle_by_name(const std::string& name, CircleEntry& out) const;
   std::vector<CircleEntry> list_circles() const;
   std::vector<CircleEntry> get_circles_for_member(const crypto::public_key& pubkey) const;
-  bool is_member(const crypto::hash& circle_id, const crypto::public_key& pubkey) const;
   bool name_exists(const std::string& name) const;
 
   // ── Voting (prima/seconda convocazione) ──────────────────────────────────
@@ -99,8 +96,6 @@ public:
   // ── Vote persistence ─────────────────────────────────────────────────────
   bool db_put_proposal(const ProposalEntry& e);
   bool db_put_vote(const VoteEntry& e);
-  bool db_get_proposal(const crypto::hash& proposal_id, ProposalEntry& out) const;
-  bool db_del_proposal(const crypto::hash& proposal_id);
 
   // Anti-replay: verifica e marca un tx_hash usato per una cerchia
   // Usa il tx_hash come nonce implicito (globalmente unico, senza serializzazione extra)

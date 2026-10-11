@@ -241,16 +241,6 @@ bool CircleRegistry::get_circle(const crypto::hash& circle_id, CircleEntry& out)
     return true;
 }
 
-bool CircleRegistry::get_circle_by_name(const std::string& name, CircleEntry& out) const {
-    std::lock_guard<std::mutex> lk(lock_);
-    auto ni = name_to_id_.find(name);
-    if (ni == name_to_id_.end()) return false;
-    auto it = circles_.find(ni->second);
-    if (it == circles_.end()) return false;
-    out = it->second;
-    return true;
-}
-
 std::vector<CircleEntry> CircleRegistry::list_circles() const {
     std::lock_guard<std::mutex> lk(lock_);
     std::vector<CircleEntry> r; r.reserve(circles_.size());
@@ -267,14 +257,6 @@ std::vector<CircleEntry> CircleRegistry::get_circles_for_member(
             r.push_back(kv.second);
     }
     return r;
-}
-
-bool CircleRegistry::is_member(const crypto::hash& circle_id,
-                               const crypto::public_key& pubkey) const {
-    std::lock_guard<std::mutex> lk(lock_);
-    auto it = circles_.find(hk(circle_id));
-    if (it == circles_.end()) return false;
-    return it->second.has_member(pubkey);
 }
 
 bool CircleRegistry::name_exists(const std::string& name) const {
@@ -517,27 +499,6 @@ bool CircleRegistry::db_put_vote(const VoteEntry& e) {
     if (rc == 0) { mdb_txn_commit(txn); return true; }
     mdb_txn_abort(txn);
     MERROR("[CircleRegistry] db_put_vote: " << mdb_strerror(rc));
-    return false;
-}
-
-bool CircleRegistry::db_get_proposal(const crypto::hash& proposal_id, ProposalEntry& out) const {
-    if (!m_env_) return false;
-    MDB_txn* txn = MevaTrustLMDB::begin_read(m_env_);
-    MDB_val k{32, const_cast<void*>((const void*)proposal_id.data)};
-    MDB_val v{0, nullptr};
-    int rc = mdb_get(txn, m_dbi_proposals_, &k, &v);
-    mdb_txn_abort(txn);
-    if (rc != 0) return false;
-    return unpack_proposal(v.mv_data, v.mv_size, out);
-}
-
-bool CircleRegistry::db_del_proposal(const crypto::hash& proposal_id) {
-    if (!m_env_) return true;
-    MDB_txn* txn = MevaTrustLMDB::begin_write(m_env_);
-    MDB_val k{32, const_cast<void*>((const void*)proposal_id.data)};
-    int rc = mdb_del(txn, m_dbi_proposals_, &k, nullptr);
-    if (rc == 0 || rc == MDB_NOTFOUND) { mdb_txn_commit(txn); return true; }
-    mdb_txn_abort(txn);
     return false;
 }
 

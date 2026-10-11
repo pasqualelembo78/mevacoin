@@ -14,6 +14,7 @@
 #include "mevatrust_lmdb.h"
 #include "misc_log_ex.h"
 #include "string_tools.h"
+#include "cryptonote_config.h"
 #include <ctime>
 #include <algorithm>
 #include <fstream>
@@ -58,6 +59,13 @@ static std::string pack_entry(const NodeRegistryEntry& e) {
     lmdb_write_pod(b, is_val);
     lmdb_write_pod(b, e.validator_since_height);
     lmdb_write_pod(b, e.validator_tx_amount);
+    // v4: registered_onchain. Senza questa coda il campo vive solo in memoria:
+    // al riavvio l'entry veniva ricaricata con il default false e il nodo
+    // "registrato solo localmente" perdeva la differenza che distingue chi
+    // merita il 3% — e commit_uptime veniva rifiutato con
+    // "registration exists only in the local registry".
+    uint8_t onchain = e.registered_onchain ? 1 : 0;
+    lmdb_write_pod(b, onchain);
     return b;
 }
 
@@ -97,6 +105,12 @@ static bool unpack_entry(const void* data, size_t sz, NodeRegistryEntry& e) {
             lmdb_read_pod(p, end, e.validator_since_height);
             lmdb_read_pod(p, end, e.validator_tx_amount);
         }
+    }
+    // v4+: registered_onchain (retrocompatibile — default false se assente)
+    if (p < end) {
+        uint8_t onchain = 0;
+        if (lmdb_read_pod(p, end, onchain))
+            e.registered_onchain = (onchain != 0);
     }
     return true;
 }
@@ -260,16 +274,6 @@ bool NodeRegistry::update_node_status(const crypto::hash& n, NodeStatus s, const
     if (!r.empty()) it->second.metadata=r;
     return db_put(m_env,m_dbi,it->second);
 }
-bool NodeRegistry::update_node_heartbeat(const crypto::hash& n, uint64_t ts, uint32_t peers, uint64_t sh) {
-    std::lock_guard<std::mutex> lk(nodes_lock_);
-    auto it=nodes_.find(hk(n)); if(it==nodes_.end()) return false;
-    auto& e=it->second;
-    uint64_t prev=e.last_seen_timestamp;
-    e.last_seen_timestamp=ts; e.peer_count=peers; e.last_sync_height=sh;
-    if (prev>0 && ts>prev) e.total_uptime_seconds+=(ts-prev);
-    e.updated_at=ts;
-    return db_put(m_env,m_dbi,e);
-}
 bool NodeRegistry::update_node_sync(const crypto::hash& n, uint64_t sh, bool synced) {
     std::lock_guard<std::mutex> lk(nodes_lock_);
     auto it=nodes_.find(hk(n)); if(it==nodes_.end()) return false;
@@ -305,12 +309,6 @@ bool NodeRegistry::update_reputation(const crypto::hash& n, float d) {
     auto it=nodes_.find(hk(n)); if(it==nodes_.end()) return false;
     it->second.reputation_score=std::max(0.0f,std::min(1.0f,it->second.reputation_score+d));
     it->second.updated_at=(uint64_t)std::time(nullptr);
-    return db_put(m_env,m_dbi,it->second);
-}
-bool NodeRegistry::reset_reputation_suspect(const crypto::hash& n) {
-    std::lock_guard<std::mutex> lk(nodes_lock_);
-    auto it=nodes_.find(hk(n)); if(it==nodes_.end()) return false;
-    it->second.reputation_score=0.5f; it->second.updated_at=(uint64_t)std::time(nullptr);
     return db_put(m_env,m_dbi,it->second);
 }
 
@@ -374,14 +372,6 @@ uint32_t NodeRegistry::get_active_node_count() const {
 uint32_t NodeRegistry::count_active_nodes() {
     std::lock_guard<std::mutex> lk(nodes_lock_);
     uint32_t n=0; for(auto& kv:nodes_) if(kv.second.status==NodeStatus::ACTIVE) ++n; return n;
-}
-uint32_t NodeRegistry::get_total_registered_nodes() const {
-    std::lock_guard<std::mutex> lk(nodes_lock_); return (uint32_t)nodes_.size();
-}
-uint32_t NodeRegistry::get_nodes_registered_this_period() const {
-    std::lock_guard<std::mutex> lk(nodes_lock_);
-    uint64_t ps=(uint64_t)std::time(nullptr)-86400; uint32_t n=0;
-    for (auto& kv:nodes_) { if(kv.second.registered_timestamp>=ps) ++n; } return n;
 }
 float NodeRegistry::get_network_average_uptime() const {
     std::lock_guard<std::mutex> lk(nodes_lock_);
@@ -457,7 +447,7 @@ NodeStatus string_to_node_status(const std::string& s) {
 }
 
 // ── On-chain registration helpers ────────────────────────────────────────────
-bool NodeRegistry::register_node_onchain(const tx_extra_mevatrust_registration& reg, uint64_t height) {
+bool NodeRegistry::register_node_onchain(const tx_extra_mevatrust_registration& reg, uint64_t height, uint8_t hf_version) {
     // Must use reg.node_id directly for consensus:
     // register_node() recomputes node_id from time(nullptr) which is non-deterministic
     std::lock_guard<std::mutex> lk(nodes_lock_);
@@ -472,6 +462,21 @@ bool NodeRegistry::register_node_onchain(const tx_extra_mevatrust_registration& 
         if (active >= MAX_NODES_PER_WALLET) {
             MWARNING("[NodeRegistry] Anti-Sybil: wallet=" << reg.wallet_address << " has " << active << " nodes");
             return false;
+        }
+    }
+    // Anti-Sybil Fase 1 (HF18): la node_pubkey e' unica tra i nodi on-chain attivi.
+    // Senza questo, una sola chiave puo' firmare l'uptime per decine di node_id e
+    // incassare piu' quote con un solo nodo reale. Deterministico: stesso esito su
+    // ogni nodo, quindi sicuro per il consenso.
+    if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL) {
+        for (const auto& kv : nodes_) {
+            const auto& other = kv.second;
+            if (other.status == NodeStatus::BANNED || other.status == NodeStatus::OFFLINE) continue;
+            if (memcmp(&other.node_pubkey, &reg.node_pubkey, sizeof(reg.node_pubkey)) == 0) {
+                MWARNING("[NodeRegistry] Anti-Sybil Fase 1: node_pubkey gia' attiva per node_id="
+                         << epee::string_tools::pod_to_hex(other.node_id));
+                return false;
+            }
         }
     }
     uint64_t now = (uint64_t)std::time(nullptr);

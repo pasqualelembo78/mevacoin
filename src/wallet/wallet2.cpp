@@ -2136,6 +2136,10 @@ void wallet2::check_acc_out_precomp(const tx_out &o, const crypto::key_derivatio
      return;
   }
   tx_scan_info.received = is_out_to_acc_precomp(m_subaddresses, output_public_key, derivation, additional_derivations, i, hwdev, get_output_view_tag(o));
+  if (!tx_scan_info.received && output_public_key == m_account.get_keys().m_account_address.m_spend_public_key)
+  {
+    tx_scan_info.received = cryptonote::subaddress_receive_info{cryptonote::subaddress_index{0,0}, crypto::key_derivation{}};
+  }
   if(tx_scan_info.received)
   {
     tx_scan_info.money_transfered = o.amount; // may be 0 for ringct outputs
@@ -2153,6 +2157,14 @@ void wallet2::check_acc_out_precomp(const tx_out &o, const crypto::key_derivatio
     return check_acc_out_precomp(o, derivation, additional_derivations, i, tx_scan_info);
 
   tx_scan_info.received = is_out_data->received[i];
+  crypto::public_key output_public_key;
+  if (!tx_scan_info.received && get_output_public_key(o, output_public_key))
+  {
+    if (output_public_key == m_account.get_keys().m_account_address.m_spend_public_key)
+    {
+      tx_scan_info.received = cryptonote::subaddress_receive_info{cryptonote::subaddress_index{0,0}, crypto::key_derivation{}};
+    }
+  }
   if(tx_scan_info.received)
   {
     tx_scan_info.money_transfered = o.amount; // may be 0 for ringct outputs
@@ -2223,11 +2235,21 @@ void wallet2::scan_output(const cryptonote::transaction &tx, bool miner_tx, cons
   crypto::public_key output_public_key;
   THROW_WALLET_EXCEPTION_IF(!get_output_public_key(tx.vout[i], output_public_key), error::wallet_internal_error, "Failed to get output public key");
 
-  if (m_multisig || m_background_syncing/*no spend key*/)
+  const bool is_mevatrust_raw_output = tx_scan_info.received &&
+    tx_scan_info.received->index.is_zero() &&
+    output_public_key == m_account.get_keys().m_account_address.m_spend_public_key;
+
+  if (m_multisig || m_background_syncing /*no spend key*/)
   {
     tx_scan_info.in_ephemeral.pub = output_public_key;
     tx_scan_info.in_ephemeral.sec = crypto::null_skey;
     tx_scan_info.ki = rct::rct2ki(rct::zero());
+  }
+  else if (is_mevatrust_raw_output)
+  {
+    tx_scan_info.in_ephemeral.pub = output_public_key;
+    tx_scan_info.in_ephemeral.sec = m_account.get_keys().m_spend_secret_key;
+    crypto::generate_key_image(tx_scan_info.in_ephemeral.pub, tx_scan_info.in_ephemeral.sec, tx_scan_info.ki);
   }
   else
   {
@@ -3340,6 +3362,10 @@ void wallet2::process_parsed_blocks(const uint64_t start_height, const std::vect
           THROW_WALLET_EXCEPTION_IF(tx_cache_data[txidx].primary[l].received.size() != n_vouts,
               error::wallet_internal_error, "Unexpected received array size");
           tx_cache_data[txidx].primary[l].received[k] = is_out_to_acc_precomp(m_subaddresses, output_public_key, tx_cache_data[txidx].primary[l].derivation, additional_derivations, k, hwdev, get_output_view_tag(o));
+          if (!tx_cache_data[txidx].primary[l].received[k] && output_public_key == m_account.get_keys().m_account_address.m_spend_public_key)
+          {
+            tx_cache_data[txidx].primary[l].received[k] = cryptonote::subaddress_receive_info{cryptonote::subaddress_index{0,0}, crypto::key_derivation{}};
+          }
           additional_derivations.clear();
         }
       }

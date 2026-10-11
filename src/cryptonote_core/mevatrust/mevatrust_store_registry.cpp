@@ -328,16 +328,6 @@ bool StoreRegistry::db_put_store(const StoreEntry& e) {
   return true;
 }
 
-bool StoreRegistry::db_del_store(const crypto::hash& store_id) {
-  std::string key(reinterpret_cast<const char*>(store_id.data), 32);
-  MDB_txn* txn = MevaTrustLMDB::begin_write(m_env_);
-  MDB_val mk{ key.size(), const_cast<char*>(key.data()) };
-  mdb_del(txn, m_dbi_stores_, &mk, nullptr);
-  mdb_txn_commit(txn);
-  stores_.erase(key);
-  return true;
-}
-
 bool StoreRegistry::db_put_item(const StoreItemEntry& e) {
   std::string key(reinterpret_cast<const char*>(e.item_id.data), 32);
   std::string data; pack_item(e, data);
@@ -348,16 +338,6 @@ bool StoreRegistry::db_put_item(const StoreItemEntry& e) {
   if (rc) { mdb_txn_abort(txn); return false; }
   mdb_txn_commit(txn);
   items_[key] = e;
-  return true;
-}
-
-bool StoreRegistry::db_del_item(const crypto::hash& item_id) {
-  std::string key(reinterpret_cast<const char*>(item_id.data), 32);
-  MDB_txn* txn = MevaTrustLMDB::begin_write(m_env_);
-  MDB_val mk{ key.size(), const_cast<char*>(key.data()) };
-  mdb_del(txn, m_dbi_items_, &mk, nullptr);
-  mdb_txn_commit(txn);
-  items_.erase(key);
   return true;
 }
 
@@ -1053,19 +1033,6 @@ bool StoreRegistry::is_item_purchased(const crypto::hash& item_id,
       return true;
   }
   return false;
-}
-
-// ── Reorg helpers ──────────────────────────────────────────────────────────
-bool StoreRegistry::restore_item(const StoreItemEntry& e) {
-  std::lock_guard<std::mutex> lk(lock_);
-  std::string ikey(reinterpret_cast<const char*>(e.item_id.data), 32);
-  items_[ikey] = e;
-  return db_put_item(e);
-}
-
-bool StoreRegistry::reverse_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
-                                      const crypto::public_key& buyer_pubkey) {
-  return db_del_purchase(store_id, item_id, buyer_pubkey);
 }
 
 } // namespace cryptonote

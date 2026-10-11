@@ -87,13 +87,6 @@ struct PublicKeyPackage {
 /// destroyed/deleted by the dealer.
 bool frost_keygen(FrostKeyPackage& key_pkg);
 
-/// Reconstruct the group public key Y from a subset of signer pubkeys P_i and the
-/// Lagrange coefficients for interpolation at x = 0 over that subset.  Used for
-/// cross-checking Y (this equals the master Y for any subset of size >= T).
-bool reconstruct_group_pubkey(
-    const std::vector<std::pair<uint8_t, crypto::public_key>>& signer_pubkeys,
-    crypto::public_key& Y_out);
-
 /// Lagrange coefficients for interpolation at x = 0 over `signer_indices` (each in
 /// 1..N).  These are the correct, non-degenerate coefficients: the index set
 /// NEVER contains 0.  lambda_i = prod_{j != i} (0 - j) / (i - j)  (mod l).
@@ -199,12 +192,6 @@ crypto::hash create_distribution_message_hash(
     uint64_t height,
     uint32_t period,
     const std::vector<std::pair<crypto::public_key, uint64_t>>& outputs);
-
-/// Encode FrostSignature to binary for tx extra (R || z || msg_hash).
-bool encode_frost_signature(const FrostSignature& sig, std::vector<uint8_t>& out);
-
-/// Decode FrostSignature from binary.
-bool decode_frost_signature(const std::vector<uint8_t>& in, FrostSignature& sig_out);
 
 /// Consensus proposer public keys (ceremony output) + group public key Y.
 /// Fixed at build time by a one-time ceremony; NEVER derived.

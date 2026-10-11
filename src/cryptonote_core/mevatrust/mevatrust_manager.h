@@ -111,7 +111,8 @@ public:
   using BroadcastTxFunc = std::function<bool(const std::vector<uint8_t>&, uint64_t)>;
 
   // ?? Fase 2: On-Chain processing ????????????????????????????????????????
-  void process_mevatrust_txs(const cryptonote::block& bl, uint64_t height);
+  void process_mevatrust_txs(const cryptonote::block& bl, uint64_t height,
+                             uint8_t hf_version = 0);
   void rebuild_registry_from_chain(uint64_t start_height, uint64_t end_height);
 
   /// Ricostruisce SOLO i campioni di uptime v3, senza toccare il registry.
@@ -208,7 +209,6 @@ public:
   void promote_to_validator(const crypto::hash& node_id, uint64_t height, uint64_t stake = 0);
   bool check_auto_validator_promotion(uint64_t height);
   bool is_validator(const crypto::hash& node_id) const;
-  uint32_t get_validator_count() const;
 
   // Attiva/disattiva verifica state root allo switch HF
   // ── Node public key accessor (per RPC get_node_pubkey) ────────────
@@ -231,11 +231,6 @@ public:
   void set_frost_broadcast_func(FrostBroadcaster::BroadcastFunc fn);
   FrostBroadcaster* frost_broadcaster() { return m_frost_broadcaster.get(); }
   const FrostBroadcaster* frost_broadcaster() const { return m_frost_broadcaster.get(); }
-
-  void set_pool_fraction_percent(uint32_t pct);
-  void set_min_score_threshold(float s);
-  void set_period_length(uint32_t blocks);
-  uint32_t period_length() const { return m_period_length; }
 
 private:
   std::atomic<bool>  m_initialized{false};

@@ -173,11 +173,6 @@ public:
   static constexpr uint64_t ITEM_DEPOSIT  = 1ULL * 1'000'000'000'000ULL;    // 1 MVC
   static constexpr uint64_t CONFIRM_WINDOW_BLOCKS = 1440;                   // ~24h a 1 min/blocco
 
-  // ── Reorg helpers ───────────────────────────────────────────────────────
-  bool restore_item(const StoreItemEntry& e);
-  bool reverse_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
-                        const crypto::public_key& buyer_pubkey);
-
 private:
   std::string db_path_;
   MDB_env* m_env_{nullptr};
@@ -191,9 +186,7 @@ private:
   mutable std::mutex lock_;
 
   bool db_put_store(const StoreEntry& e);
-  bool db_del_store(const crypto::hash& store_id);
   bool db_put_item(const StoreItemEntry& e);
-  bool db_del_item(const crypto::hash& item_id);
   bool db_put_purchase(const StorePurchaseEntry& e);
   bool db_del_purchase(const crypto::hash& store_id, const crypto::hash& item_id,
                        const crypto::public_key& buyer);

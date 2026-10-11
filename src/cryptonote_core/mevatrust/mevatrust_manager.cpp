@@ -251,15 +251,6 @@ bool MevaTrustManager::is_validator(const crypto::hash& node_id) const {
     return m_node_registry->get_node_by_id(node_id, entry) && entry.is_validator;
 }
 
-uint32_t MevaTrustManager::get_validator_count() const {
-    if (!m_node_registry) return 0;
-    uint32_t count = 0;
-    auto nodes = m_node_registry->get_active_nodes();
-    for (const auto& n : nodes)
-        if (n.is_validator) ++count;
-    return count;
-}
-
 void MevaTrustManager::on_new_block(uint64_t height, uint64_t block_reward, uint8_t hf) {
   if (!m_initialized.load()) return;
   std::lock_guard<std::mutex> lk(m_lock);
@@ -604,7 +595,13 @@ std::vector<NodeCoinbaseReward> MevaTrustManager::get_coinbase_rewards(
            << ") h=" << height << ": nessun miner da pagare, blocco incoerente");
     return {};
   }
-  miner_out = total_reward - node_total;
+  // F4: miner_out resta total_reward (assegnato all'ingresso). Il costruttore
+  // scala il budget 3% dal totale (miner_reward = desy_total - budget, pool =
+  // budget - node_total), quindi la somma torna a total_reward. Sottrarre qui
+  // node_total passava R-N a construct_miner_tx_with_mevatrust, che produceva
+  // money_in_use = R-N contro l'atteso R (blockchain.cpp:1479,
+  // HF_VERSION_EXACT_COINBASE): halt della catena al primo blocco di
+  // distribuzione con nodi eleggibili.
 
   // Il manifesto 0xAA si costruisce ADESSO, dalla stessa lista che sta per
   // finire in tx.vout. Non nel giro di prima, non dalla cache: dalla lista.
@@ -675,18 +672,6 @@ bool MevaTrustManager::parse_wallet_address(
   return ok;
 }
 
-void MevaTrustManager::set_pool_fraction_percent(uint32_t p) {
-  std::lock_guard<std::mutex> lk(m_lock); if (m_reward_distributor) m_reward_distributor->set_pool_fraction(p);
-}
-void MevaTrustManager::set_min_score_threshold(float s) {
-  std::lock_guard<std::mutex> lk(m_lock); if (m_reward_distributor) m_reward_distributor->set_min_score(s);
-}
-void MevaTrustManager::set_period_length(uint32_t b) {
-  std::lock_guard<std::mutex> lk(m_lock); m_period_length=b;
-  if (m_reward_distributor) m_reward_distributor->set_distribution_period(b);
-}
-
-
 void MevaTrustManager::set_broadcast_tx_func(BroadcastTxFunc fn) {
   std::lock_guard<std::mutex> lk(m_lock);
   if (m_snapshot_broadcaster)
@@ -706,6 +691,16 @@ void MevaTrustManager::set_frost_broadcast_func(FrostBroadcaster::BroadcastFunc 
     m_node_sk = sk; m_node_pk = pk; m_node_key_set = true;
     if (m_snapshot_broadcaster)
       m_snapshot_broadcaster->set_node_key(sk, pk);
+    // Identita': se questo nodo e' gia' registrato su chain, il registry contiene
+    // gia' il node_id corrispondente alla nostra pubkey. Copriamo il caso di boot
+    // (registrazione avvenuta in un run precedente); il caso live e' gestito
+    // nel processing dell'0xA0. Senza questi due hook get_my_node_id() non
+    // restituiva mai nulla: challenge PoA e elite-unlock restavano spenti.
+    if (m_node_registry) {
+      NodeRegistryEntry e;
+      if (m_node_registry->get_node_by_pubkey(pk, e))
+        mevatrust::set_my_node_id(e.node_id);
+    }
   }
 
 
@@ -726,7 +721,7 @@ void MevaTrustManager::set_get_tx_func(GetTxFunc fn) {
 }
 
 void MevaTrustManager::process_mevatrust_txs(
-    const block& bl, uint64_t height)
+    const block& bl, uint64_t height, uint8_t hf_version)
 {
     if (!m_initialized.load()) return;
 
@@ -749,10 +744,16 @@ void MevaTrustManager::process_mevatrust_txs(
                     MWARNING("[MevaTrustManager] Registration sig INVALIDA, skip");
                     continue;
                 }
-                if (m_node_registry->register_node_onchain(reg, height)) {
+                if (m_node_registry->register_node_onchain(reg, height, hf_version)) {
                     MINFO("[MevaTrustManager] Nodo registrato on-chain h="
                           << height << " node_id="
                           << epee::string_tools::pod_to_hex(reg.node_id));
+                    // Identita' di QUESTO nodo: se la registrazione porta la
+                    // nostra node pubkey, il node_id (hash con timestamp, scelto
+                    // dalla wallet) e' ora noto: installiamolo. Alimenta
+                    // get_my_node_id(), usata da challenge PoA e elite-unlock.
+                    if (m_node_key_set && reg.node_pubkey == m_node_pk)
+                        mevatrust::set_my_node_id(reg.node_id);
                     // Welcome badge immediato
                     if (m_badge_system) {
                         m_badge_system->award_badge(reg.node_id, BadgeType::WELCOME,
@@ -1028,7 +1029,38 @@ void MevaTrustManager::process_mevatrust_txs(
                     continue;
                 }
                 if (!m_node_registry) { MWARNING("[MevaTrustManager] NodeRegistry non inizializzato"); continue; }
-                m_node_registry->record_uptime_event(upt.node_id, true, upt.timestamp, upt.peer_count, 0);
+                // Anti-Sybil Fase 1 (HF18): l'uptime deve essere legato alla chiave
+                // registrata on-chain per QUEL node_id. Senza questo la firma 0xA5
+                // era verificata contro la node_pubkey trasportata dentro la 0xA5
+                // stessa (cioè contro se stessa): bastava inventare un node_id e una
+                // chiave qualsiasi per accreditarsi uptime. Qui invece una chiave può
+                // postare uptime solo per il node_id con cui si è registrata.
+                if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL) {
+                    NodeRegistryEntry upt_entry;
+                    if (!m_node_registry->get_node_by_id(upt.node_id, upt_entry) ||
+                        !upt_entry.registered_onchain ||
+                        memcmp(&upt_entry.node_pubkey, &upt.node_pubkey, sizeof(upt.node_pubkey)) != 0) {
+                        MWARNING("[MevaTrustManager] Anti-Sybil Fase 1: uptime per node_id non registrato "
+                                 "o node_pubkey non corrispondente, skip. node="
+                                 << epee::string_tools::pod_to_hex(upt.node_id));
+                        continue;
+                    }
+                }
+                // F1: l'evento va al motore, non solo al registry. E' il motore a
+                // popolare uptime_history_ (fonte dell'uptime score v2) e a girare
+                // l'evento al registry: chiamare direttamente il registry lasciava
+                // uptime_history_ vuoto e il punteggio restava di default 0.40.
+                if (m_mevatrust_engine) {
+                    UptimeEvent ev;
+                    ev.timestamp        = upt.timestamp;
+                    ev.online           = true;
+                    ev.block_height     = height;
+                    ev.peer_count       = upt.peer_count;
+                    ev.response_time_ms = 0;
+                    m_mevatrust_engine->record_uptime_event(upt.node_id, ev);
+                } else {
+                    m_node_registry->record_uptime_event(upt.node_id, true, upt.timestamp, upt.peer_count, 0);
+                }
                 m_node_registry->update_node_sync(upt.node_id, upt.sync_height, upt.is_synced);
 
                 // Il campione che conta per la regola 3% v3 e' ancorato al BLOCCO, non al
@@ -1341,7 +1373,7 @@ void MevaTrustManager::rebuild_registry_from_chain(
             MWARNING("[MevaTrustManager] rebuild: blocco non trovato h=" << h);
             continue;
         }
-        process_mevatrust_txs(bl, h);
+        process_mevatrust_txs(bl, h, bl.major_version);
     }
 
 MINFO("[MevaTrustManager] rebuild_registry_from_chain completato: "

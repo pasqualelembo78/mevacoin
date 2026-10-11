@@ -273,6 +273,25 @@
 // regola maidiscussa costa tutta la catena.
 #define HF_VERSION_MEVATRUST_UPTIME_V3    17
 
+// Anti-Sybil Fase 1 (binding). Non tocca il 3%: cambia CHI puo' risultare
+// eleggibile, non quanto prende. Due serrature, entrambe deterministiche (nessun
+// input esterno, nessuna chiave), quindi valide per il consenso:
+//
+//   1. Unicita' della node_pubkey on-chain. Due registrazioni 0xA0 che portano la
+//      stessa node_pubkey non possono restare entrambe ACTIVE: la seconda viene
+//      ignorata. Prima una sola chiave poteva firmare uptime (0xA5) per decine di
+//      node_id diversi, pagando piu' quote con un solo nodo vero.
+//
+//   2. Binding dell'uptime 0xA5 alla chiave registrata. Un commitment di uptime
+//      conta solo se il node_id e' stato registrato on-chain E la node_pubkey che
+//      firma e' esattamente quella con cui quel node_id si e' registrato. Prima la
+//      firma era verificata contro la node_pubkey trasportata dentro la 0xA5 stessa,
+//      cioe' contro se stessa: bastava inventarsi un node_id e una chiave qualsiasi.
+//
+// Perche' 18 e non 15/16: stessa ragione della v3 (vedi sopra). 18 e' il primo
+// numero libero dopo 17.
+#define HF_VERSION_MEVATRUST_ANTISYBIL    18
+
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2
 

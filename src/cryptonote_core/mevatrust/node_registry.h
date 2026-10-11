@@ -112,15 +112,10 @@ public:
   std::vector<NodeRegistryEntry> get_nodes_by_status(NodeStatus s);
   uint32_t count_active_nodes();
   uint32_t get_active_node_count() const;
-  uint32_t get_total_registered_nodes() const;
-  uint32_t get_nodes_registered_this_period() const;
   float    get_network_average_uptime() const;
 
   // ── Aggiornamenti stato nodo ──────────────────────────────────────────────
   bool update_node_status(const crypto::hash&, NodeStatus, const std::string& reason="");
-  // FIX: update_node_heartbeat corrisponde a .cpp L249 (era update_node_seen in .h)
-  bool update_node_heartbeat(const crypto::hash&, uint64_t timestamp_ms,
-                             uint32_t peers, uint64_t sync_height);
   // FIX: update_node_sync corrisponde a .cpp L259 (era update_node_sync_status in .h)
   bool update_node_sync(const crypto::hash&, uint64_t sync_height, bool synced);
   // FIX: update_node_challenge_result corrisponde a .cpp L266 (era record_challenge_attempt)
@@ -128,14 +123,16 @@ public:
   bool update_node_challenge_time(const crypto::hash&, uint64_t next_ms);
   bool update_node_validator(const crypto::hash& n, bool is_val, uint64_t since_h, uint64_t tx_amt);
   bool update_reputation(const crypto::hash&, float delta);
-  bool reset_reputation_suspect(const crypto::hash&);
   bool ban_node(const crypto::hash&, const std::string& reason);
   bool unban_node(const crypto::hash&);
   bool record_uptime_event(const crypto::hash&, bool online, uint64_t ts, uint32_t peers, uint32_t discon);
   bool verify_node_signature(const crypto::hash&, const crypto::signature&, const crypto::hash& msg);
 
   // ── Fase 2 (on-chain) ─────────────────────────────────────────────────────
-  bool register_node_onchain(const tx_extra_mevatrust_registration&, uint64_t height);
+  // hf_version decide se applicare l'Anti-Sybil Fase 1 (unicità node_pubkey).
+  // Default 0 = regole pre-fork, per retrocompatibilità dei test.
+  bool register_node_onchain(const tx_extra_mevatrust_registration&, uint64_t height,
+                             uint8_t hf_version = 0);
   bool deregister_node_onchain(const tx_extra_mevatrust_deregister&);
   uint32_t expire_inactive_nodes(uint64_t current_height, uint64_t max_offline_blocks=720);
 

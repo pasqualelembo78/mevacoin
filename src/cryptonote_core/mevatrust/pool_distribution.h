@@ -54,11 +54,5 @@ bool validate_pool_distribution(
     std::string& error_msg
 );
 
-/// Verify FROST signature on distribution data
-bool verify_distribution_signature(
-    const tx_extra_mevatrust_pool_distribution& dist,
-    const ProposerState& proposers
-);
-
 } // namespace mevatrust
 } // namespace cryptonote

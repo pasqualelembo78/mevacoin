@@ -4570,14 +4570,24 @@ leave:
       uint64_t coinbase_reward = get_outs_money_amount(bl.miner_tx);
       uint8_t cur_hf = get_current_hard_fork_version();
       uint64_t block_height = new_height - 1;
-      pm->on_new_block(block_height, coinbase_reward, cur_hf);
-      pm->process_mevatrust_txs(bl, block_height);
+      // ── State root: verificare PRIMA di applicare gli effetti del blocco ──
+      // Il minatore calcola il root sullo stato del template, costruito con
+      // tip = height-1, cioe' prima che questo blocco esista. on_new_block()
+      // (badge/punizioni ai confini di periodo) e process_mevatrust_txs()
+      // (registrazioni 0xA0, reputazione, ...) mutano registry, badge e
+      // cerchie: se la verifica girava DOPO, ogni blocco che toccava lo stato
+      // produceva root locale != root in catena e finiva in fork loop
+      // infinito (aggiungi -> mismatch -> pop -> ri-aggiungi, indefinitamente).
+      // Il root e' lo stato pre-blocco: la verifica deve guardare lo stesso
+      // stato che il minatore ha hashato.
       if (!pm->verify_mevatrust_state_root(bl, block_height)) {
         MWARNING("[Blockchain] FORK DETECTED via MevaTrust state root mismatch h=" << block_height);
         pop_block_from_blockchain();
         bvc.m_verifivation_failed = true;
         return false;
       }
+      pm->on_new_block(block_height, coinbase_reward, cur_hf);
+      pm->process_mevatrust_txs(bl, block_height, bl.major_version);
     }
   }
 

@@ -112,18 +112,6 @@ MevaTrustEngine::calculate_all_scores(uint64_t current_height)
     return scores;
 }
 
-bool MevaTrustEngine::get_historical_score(
-    const crypto::hash& node_id,
-    uint64_t,
-    MevaTrustScoreSnapshot& score)
-{
-    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
-    auto it = score_cache_.find(hk(node_id));
-    if (it == score_cache_.end()) return false;
-    score = it->second;
-    return true;
-}
-
 // ============================================================================
 // UPTIME TRACKING
 // ============================================================================
@@ -133,10 +121,24 @@ bool MevaTrustEngine::record_uptime_event(
     const UptimeEvent& event)
 {
     std::lock_guard<std::recursive_mutex> lock(cache_lock_);
-    uptime_history_[hk(node_id)].push_back(event);
+    auto& hist = uptime_history_[hk(node_id)];
+    // F3: idemperenza per altezza. uptime.dat persiste al restart e i rebuild
+    // (rebuild_registry_from_chain / rebuild_uptime_samples_from_chain) riprocessano
+    // tutti i 0xA5: senza questo controllo ogni replay raddoppierebbe gli eventi e
+    // altererebbe l'online ratio dell'uptime score. Un evento di altezza 0 (fuori
+    // catena) non viene deduppato.
+    bool dup = false;
+    if (event.block_height > 0) {
+        for (const auto& e : hist)
+            if (e.block_height == event.block_height) { dup = true; break; }
+    }
+    if (!dup)
+        hist.push_back(event);
+    // F2: al registry passiamo il timestamp (come faceva il chiamante diretto), non
+    // l'altezza: registry lo usa per last_seen/updated_at/total_uptime_seconds.
     if (node_registry_)
         node_registry_->record_uptime_event(node_id, event.online,
-            event.block_height, event.peer_count, event.response_time_ms);
+            event.timestamp, event.peer_count, event.response_time_ms);
     return true;
 }
 
@@ -280,21 +282,6 @@ uint64_t MevaTrustEngine::get_total_uptime_seconds(const crypto::hash& node_id) 
 // CHALLENGE & RESPONSIVENESS
 // ============================================================================
 
-bool MevaTrustEngine::record_challenge_response(
-    const crypto::hash& node_id, uint32_t response_time_ms, bool success)
-{
-    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
-    UptimeEvent ev;
-    ev.timestamp        = static_cast<uint64_t>(std::time(nullptr));
-    ev.online           = success;
-    ev.block_height     = 0;
-    ev.peer_count       = 0;
-    ev.response_time_ms = response_time_ms;
-    uptime_history_[hk(node_id)].push_back(ev);
-    if (node_registry_) node_registry_->update_node_challenge_result(node_id, success);
-    return true;
-}
-
 float MevaTrustEngine::get_average_response_time(const crypto::hash& node_id) {
     std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = uptime_history_.find(hk(node_id));
@@ -319,17 +306,6 @@ float MevaTrustEngine::get_challenge_success_rate(const crypto::hash& node_id) {
 // ACTIVITY
 // ============================================================================
 
-bool MevaTrustEngine::increment_activity_counter(
-    const crypto::hash& node_id, const std::string&)
-{
-    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
-    UptimeEvent ev;
-    ev.timestamp = static_cast<uint64_t>(std::time(nullptr));
-    ev.online = true; ev.block_height = 0; ev.peer_count = 1; ev.response_time_ms = 0;
-    uptime_history_[hk(node_id)].push_back(ev);
-    return true;
-}
-
 float MevaTrustEngine::get_activity_score(const crypto::hash& node_id, uint64_t) {
     return calculate_activity_score(node_id, 0);
 }
@@ -346,10 +322,6 @@ bool MevaTrustEngine::process_reward_period(uint64_t current_height) {
     current_period_start_height_  = current_height;
     return true;
 }
-
-uint64_t MevaTrustEngine::get_current_period_start() const { return current_period_start_height_; }
-uint64_t MevaTrustEngine::get_current_period_end() const { return current_period_start_height_ + parameters_.period_length; }
-uint64_t MevaTrustEngine::get_blocks_since_last_period(uint64_t h) const { return h - last_period_processed_height_; }
 
 // ============================================================================
 // AGGREGATES
@@ -409,12 +381,6 @@ MevaTrustEngine::get_top_nodes(uint32_t count, uint64_t current_height) {
 // WEIGHTS & PARAMS
 // ============================================================================
 
-void MevaTrustEngine::set_scoring_weights(const ScoringWeights& w) {
-    std::lock_guard<std::recursive_mutex> lock(cache_lock_); scoring_weights_ = w;
-}
-MevaTrustEngine::ScoringWeights MevaTrustEngine::get_scoring_weights() const {
-    std::lock_guard<std::recursive_mutex> lock(cache_lock_); return scoring_weights_;
-}
 void MevaTrustEngine::set_parameters(const MevaTrustParameters& p) {
     std::lock_guard<std::recursive_mutex> lock(cache_lock_); parameters_ = p;
 }
@@ -641,8 +607,6 @@ bool MevaTrustEngine::load_from_disk() {
 bool MevaTrustEngine::sync_database()       { return save_to_disk(); }
 bool MevaTrustEngine::open_database()       { return true; }
 bool MevaTrustEngine::close_database()      { return save_to_disk(); }
-bool MevaTrustEngine::load_uptime_history(const crypto::hash&) { return true; }
-bool MevaTrustEngine::save_uptime_history(const crypto::hash&) { return true; }
 
 bool MevaTrustEngine::prune_old_data(uint64_t keep_before_height) {
     std::lock_guard<std::recursive_mutex> lock(cache_lock_);

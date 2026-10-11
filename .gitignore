@@ -121,3 +121,6 @@ __pycache__/
 
 # binario daemon deployato
 /mevacoind
+
+# credenziali deploy (mai commitare)
+/deploy.env

@@ -15,14 +15,11 @@
 
 namespace cryptonote { namespace rpc {
 
-struct COMMAND_RPC_GET_PARTICIPATION_SCORE {
-  struct request_t { std::string node_id;
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(node_id) END_KV_SERIALIZE_MAP() };
-  typedef epee::misc_utils::struct_init<request_t> request;
-  struct response_t { std::string node_id; double score; std::string status;
-    BEGIN_KV_SERIALIZE_MAP() KV_SERIALIZE(node_id) KV_SERIALIZE(score) KV_SERIALIZE(status) END_KV_SERIALIZE_MAP() };
-  typedef epee::misc_utils::struct_init<response_t> response;
-};
+// F7: COMMAND_RPC_GET_PARTICIPATION_SCORE rimossa. Non era mai registrata
+// (nessun MAP_JON_RPC, nessun handler) e la sua funzione e' gia' coperta da
+// get_mevatrust_score (core_rpc_server), che ritorna score + status dallo
+// stesso calcolo. La specifica in docs/implementation (FASE 5) faceva riferimento
+// a API inesistenti (get_participation_engine, --participation-db).
 
 struct COMMAND_RPC_GET_NODE_UPTIME {
   struct request_t { std::string node_id;

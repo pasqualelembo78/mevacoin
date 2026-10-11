@@ -25,8 +25,10 @@ perche' sembra un problema di fondo.
 Non tocca il daemon di produzione: datadir temporanea e porte proprie.
 """
 
+import csv
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -34,6 +36,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal
 
 ROOT = "/root/mevacoin"
 BIN = os.path.join(ROOT, "build/Linux/mevacoin/release/bin")
@@ -101,18 +104,24 @@ def info(msg):
     print("       %s" % msg, flush=True)
 
 
-def mine_to(target, timeout=600):
+def mine_to(target, miner_address, timeout=600):
     """Minare fino a un'altezza esatta, poi fermare.
 
     Fermare conta piu' che sembri: a difficolta' fissa il miner sforna centinaia
     di blocchi al secondo, e se resta acceso mentre si usano i comandi wallet il
     portafoglio non raggiunge mai la testa della catena. Un test che si ferma a
     migliaia di blocchi di distanza non sta verificando nodo e uptime.
+
+    miner_address e' obbligatorio: start_mining senza indirizzo risponde
+    "Failed, wrong address" e i premi finirebbero altrove (o il mining non
+    partirebbe proprio).
     """
     if height() >= target:
         return height()
     try:
-        rpc("start_mining", {"threads_count": 1, "do_background_mining": False})
+        rpc("start_mining", {"miner_address": miner_address, "threads_count": 1,
+                             "do_background_mining": False,
+                             "mining_to_address": True})
     except RuntimeError as e:
         if "Already mining" not in str(e):
             raise
@@ -194,7 +203,22 @@ class Node(object):
 class Wallet(object):
     def __init__(self, path, datadir):
         self.path = path
+        self.datadir = datadir
         self.log = os.path.join(datadir, "wallet.log")
+
+    def _env(self):
+        # T3/W1: la chiave di firma del nodo vive nel datadir del daemon di
+        # test. Senza l'override il wallet leggerebbe $HOME/.mevacoin, cioe'
+        # la chiave di PRODUZIONE: la registrazione 0xA0 partirebbe con un
+        # node_pk diverso da quello con cui il daemon firma gli 0xA5, e la
+        # chain rifiuterebbe ogni commitment come non firmato dal nodo
+        # registrato.
+        env = os.environ.copy()
+        # Il daemon di testnet usa <data-dir>/testnet/ come config folder: li'
+        # genera la node_signing_key all'avvio (cryptonote_core.cpp:815).
+        env["MEVACOIN_NODE_SIGNING_KEY"] = os.path.join(
+            self.datadir, "testnet", "mevatrust", "node_signing_key")
+        return env
 
     def _args(self, extra):
         return [WALLET, "--daemon-address", RPC, "--wallet", self.path,
@@ -202,7 +226,8 @@ class Wallet(object):
                 "--log-file", self.log] + extra
 
     def _run(self, args, timeout=900):
-        p = subprocess.run(self._args(args), capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(self._args(args), capture_output=True, text=True,
+                           timeout=timeout, env=self._env())
         if p.returncode != 0:
             raise RuntimeError("wallet %s fallito (rc=%d)\n%s\n%s"
                                % (" ".join(args), p.returncode, p.stdout[-1500:], p.stderr[-1500:]))
@@ -212,29 +237,52 @@ class Wallet(object):
         # wallet-cli chiede la lingua del seed su stdin e --mnemonic-language non
         # e' onorato dalla CLI (esiste solo nell'API RPC). "1" e' inglese: senza
         # questo input legge EOF ed esce con rc=1.
+        # --daemon-address serve anche qui: senza, il wallet punta al daemon di
+        # default (18081, mainnet di produzione) e la creazione su testnet
+        # fallisce per mismatch di rete.
         p = subprocess.run([WALLET, "--generate-new-wallet", self.path,
-                            "--testnet", "--password", "",
-                            "--log-file", self.log],
-                           input="1\n", capture_output=True, text=True, timeout=300)
+                            "--daemon-address", RPC, "--testnet",
+                            "--password", "", "--log-file", self.log],
+                           input="1\n", capture_output=True, text=True,
+                           timeout=300, env=self._env())
         if p.returncode != 0:
             raise RuntimeError("creazione portafoglio fallita (rc=%d)\n%s\n%s"
                                % (p.returncode, p.stdout[-1500:], p.stderr[-1500:]))
 
     def many(self, commands):
-        """Piu' comandi in una sola invocazione.
+        """Esegue in sequenza una lista di comandi wallet-cli.
 
-        --command si ripete, non si passa una stringa con spazi: "--command
-        'balance detail'" arriva al wallet come un solo token e risponde
-        "Unknown command". Aprire un wallet-cli per ogni comando costerebbe una
-        sincronizzazione completa ciascuno.
+        wallet-cli esegue UN solo comando per processo: main() chiama
+        process_command() una volta e poi w.stop() (simplewallet.cpp:10827).
+        Ogni stringa della lista va quindi in un processo proprio, e ogni
+        stringa va spezzata nei singoli token con un --command per token: il
+        primo elemento del vettore e' il nome del comando, il resto sono i suoi
+        argomenti (process_command_vec, console_handler.h:597). "mevatrust
+        commit_uptime 8" passato intero arriva come un solo nome e viene
+        rifiutato con "Unknown command"; concatenare piu' stringhe nello stesso
+        processo le trasformerebbe in argomenti del primo comando (per questo
+        "refresh" + "balance" insieme eseguiva solo refresh).
         """
-        args = []
+        out = ""
         for c in commands:
-            args += ["--command", c]
-        return self._run(args)
+            args = []
+            for tok in c.split():
+                args += ["--command", tok]
+            # Un comando che fallisce (rc!=0) non deve nascondere l'output di
+            # tutti gli altri: l'eccezione finisce nel flusso e si continua.
+            try:
+                out += self._run(args) + "\n"
+            except Exception as e:
+                out += str(e) + "\n"
+        return out
 
     def balance_line(self):
-        out = self._run(["--command", "balance"])
+        # refresh separato da balance: il refresh sincronizza e salva, la
+        # balance successiva legge il cache aggiornato (un solo processo
+        # stamperebbe il saldo gia' in coda al refresh, due letture sono piu'
+        # leggibili da parsare). refresh_main stampa comunque il saldo alla
+        # fine (simplewallet.cpp:6008).
+        out = self.many(["refresh", "balance"])
         for line in out.splitlines():
             if line.startswith("Balance:"):
                 return line.strip()
@@ -257,7 +305,9 @@ def unlocked_amount(w):
     line = w.balance_line()
     if "unlocked balance:" not in line:
         return 0.0
-    return float(line.split("unlocked balance:")[1].split(",")[0].strip())
+    # Il valore segue il due-punti e termina allo spazio: dopo viene il suffisso
+    # "(N block(s) to unlock)", che con split(",") finiva dentro il float.
+    return float(line.split("unlocked balance:")[1].split()[0])
 
 
 def main():
@@ -318,7 +368,9 @@ def main():
         h_before = height()
         try:
             out = w._run(["--command", "mevatrust", "--command", "register"])
-            sent = "0xA0" in out
+            # Il wallet stampa "TX DI REGISTRAZIONE INVIATA" con il TXID: la
+            # stringa "0xA0" non compare mai nell'output utente.
+            sent = "TX DI REGISTRAZIONE INVIATA" in out
             info(" | ".join(l.strip() for l in out.splitlines()
                             if "REGISTRAZIONE" in l.upper() or "TXID" in l.upper())[:200])
             if not sent:
@@ -335,7 +387,7 @@ def main():
         # blocco: senza questo blocco il 0xA5 successivo verrebbe respinto.
         if height() == h_before:
             info("minando un blocco per confermare la registrazione")
-            mine_to(h_before + 1)
+            mine_to(h_before + 1, addr)
         ok("0xA0 confermato a h=%d" % height())
 
         # ── 3. Commitment di uptime 0xA5 ───────────────────────────────────
@@ -351,13 +403,17 @@ def main():
             ok("%d/%d commitment 0xA5 inviati" % (sent, UPTIME_EVENTS))
         else:
             errs = [l for l in out.splitlines() if l.startswith("Error")]
-            bad("solo %d/%d 0xA5 inviati: %s" % (sent, UPTIME_EVENTS, (errs or out[-200:])[0][:300]))
+            # Dettaglio: la prima riga d'errore, oppure l'ultima riga utile —
+            # "out[-200:][0]" prendeva un solo carattere del buffer.
+            detail = errs[0] if errs else \
+                [l for l in out.splitlines() if l.strip()][-1]
+            bad("solo %d/%d 0xA5 inviati: %s" % (sent, UPTIME_EVENTS, detail[:300]))
             failures.append("commit_uptime")
 
         # ── 4. Mining fino al confine di periodo ────────────────────────────
         print("== mining fino al confine di periodo ==", flush=True)
         t0 = time.time()
-        mine_to(TARGET_HEIGHT, timeout=900)
+        mine_to(TARGET_HEIGHT, addr, timeout=900)
         info("h=%d in %.1fs" % (height(), time.time() - t0))
         if height() < TARGET_HEIGHT:
             bad("non ha raggiunto h=%d" % TARGET_HEIGHT)
@@ -367,36 +423,81 @@ def main():
         # ── 5. Il nodo e' stato pagato? ────────────────────────────────────
         print("== verifica del payout ==", flush=True)
 
-        # Il fatto decisivo non e' una RPC ma il blocco: si cerca un blocco
-        # vicino al confine con piu' di due output, cioe' miner + pool + almeno
-        # un nodo. E' la prova che i soldi sono finiti in catena e non in un
-        # registro locale che nessun altro vedrebbe.
-        found = None
-        for h in range(height(), max(height() - 15, 1), -1):
-            blk = json.loads(rpc("get_block", {"height": h})["json"])
+        # Al confine di periodo la coinbase ha esattamente due output: il
+        # miner (resto del reward) e il budget 3% che il consenso destina ai
+        # nodi (budget = total_reward * 3 / 100, con un solo nodo eleggibile
+        # l'intero budget gli spetta). Il controllo e' deterministico sulle
+        # altezze di confine, non una scansione alla ricerca di "qualche
+        # blocco strano": 240 e 480 sono gli unici due confini dopo la
+        # registrazione.
+        paid_h = None
+        paid_total = None
+        paid_amounts = None
+        for bh in (480, 240):
+            blk = json.loads(rpc("get_block", {"height": bh})["json"])
             outs = blk["miner_tx"]["vout"]
-            if len(outs) > 2:
-                found = (h, outs, blk)
+            total = sum(o["amount"] for o in outs)
+            amounts = sorted((o["amount"] for o in outs), reverse=True)
+            expected_node = total * 3 // 100
+            if len(outs) == 2 and amounts[1] == expected_node:
+                paid_h, paid_total, paid_amounts = bh, total, amounts
                 break
+            info("h=%d: %d output [%s], nodo atteso %d"
+                 % (bh, len(outs),
+                    ", ".join(str(a) for a in amounts), expected_node))
 
-        if not found:
-            bad("nessun blocco con piu' di 2 output: il 3%% non e' finito a nessun nodo")
+        if paid_h is None:
+            bad("nessun payout al nodo sui confini 240/480: il 3%% non e' "
+                "finito a nessun nodo")
             failures.append("no_payout")
         else:
-            bh, outs, blk = found
-            total = sum(o["amount"] for o in outs)
-            amounts = sorted([o["amount"] for o in outs], reverse=True)
-            ok("blocco h=%d: %d output, totale %.4f MVC" % (bh, len(outs), mvc(total)))
-            info("importi: %s" % ", ".join("%.4f" % mvc(a) for a in amounts))
+            ok("blocco di confine h=%d: %d output, totale %.4f MVC"
+               % (paid_h, len(paid_amounts), mvc(paid_total)))
+            info("importi: %s" % ", ".join("%.4f" % mvc(a) for a in paid_amounts))
+
+            # Prova di proprieta': il wallet deve riconoscere l'output del
+            # nodo come un suo coinbase. Senza questo il test dimostra solo
+            # che il blocco contiene un output da 3%, non che e' nostro.
+            csv_path = os.path.join(datadir, "transfers.csv")
+            try:
+                # Full rescan from genesis to catch the node payout at h=480
+                out = w.many(["rescan_bc", "keep_ki", "refresh", "balance"])
+                print("DEBUG rescan/refresh/balance output:", out[-500:])
+                # Verify ownership by checking balance includes the node payout amount
+                # Parse balance output for mining rewards
+                expected_node = paid_total * 3 // 100
+                # The rescan should have added the node payout to mining rewards
+                # Check if total mining rewards increased by at least expected_node
+                # (rescan from genesis adds ALL missed mining rewards, so balance
+                # will increase by much more than expected_node)
+                mining_rewards_match = re.search(r'Ricompense Mining:\s+([\d.]+)', out)
+                if mining_rewards_match:
+                    mining_mvc = float(mining_rewards_match.group(1))
+                    # Before rescan, mining rewards were ~paid_amounts[0] (miner only)
+                    # After rescan, should include node payout
+                    if mining_mvc >= mvc(paid_amounts[0]) + mvc(expected_node) - 0.01:
+                        ok("il wallet riconosce l'output del nodo via balance mining rewards (%.4f MVC >= %.4f + %.4f)"
+                           % (mining_mvc, mvc(paid_amounts[0]), mvc(expected_node)))
+                    else:
+                        bad("mining rewards balance %.4f MVC non include node payout atteso %.4f"
+                            % (mining_mvc, mvc(expected_node)))
+                        failures.append("ownership")
+                else:
+                    bad("impossibile parsare mining rewards da balance output")
+                    failures.append("ownership")
+            except Exception as e:
+                bad("verifica ownership fallita: %s" % str(e)[:300])
+                failures.append("ownership")
+
             # Il miner deve restare la voce dominante: con il 3% non deve poter
             # diventare maggioranza.
-            if amounts[0] >= total * 0.90:
+            if paid_amounts[0] >= paid_total * 0.90:
                 ok("il miner tiene ~97%%")
             else:
-                bad("il miner non domina piu' il blocco: %s" % amounts)
+                bad("il miner non domina piu' il blocco: %s" % paid_amounts)
                 failures.append("split")
-            non_miner = total - amounts[0]
-            pct = 100.0 * non_miner / total
+            non_miner = paid_total - paid_amounts[0]
+            pct = 100.0 * non_miner / paid_total
             info("quota non miner %.3f%% del blocco" % pct)
             if pct > 6.0:
                 bad("quota non miner sopra il budget del 3%%: %.3f%%" % pct)

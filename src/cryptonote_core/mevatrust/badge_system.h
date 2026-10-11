@@ -105,7 +105,6 @@ public:
   std::vector<Badge> get_node_badges(const crypto::hash& node_id);
   std::vector<Badge> get_active_badges(const crypto::hash& node_id);
   bool has_badge(const crypto::hash& node_id, BadgeType badge_type);
-  bool get_badge_details(BadgeType badge_type, Badge& badge_out);
   std::vector<BadgeType> get_badge_types_for_wallet(const std::string& wallet_address);
 
   bool award_badge(
@@ -157,7 +156,6 @@ public:
     float badge_score;
   };
   NodeBadgeInfo get_node_badge_info(const crypto::hash& node_id);
-  std::vector<crypto::hash> get_nodes_with_badge(BadgeType badge_type);
 
   /// Ritorna (node_id, BadgeType) per badge assegnati in [from_height, to_height].
   /// Usato da SnapshotBroadcaster per costruire il payload della TX 0xA2.

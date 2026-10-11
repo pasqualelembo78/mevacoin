@@ -35,7 +35,6 @@ bool verify_uptime_signature(const tx_extra_mevatrust_uptime& u);
 
 // ── Tag 0xA6: Challenge Result ────────────────────────────────────────────
 bool parse_mevatrust_challenge_from_tx(const transaction& tx, tx_extra_mevatrust_challenge& out);
-bool build_mevatrust_challenge_extra(const tx_extra_mevatrust_challenge& c, std::vector<uint8_t>& extra);
 bool verify_challenge_signatures(const tx_extra_mevatrust_challenge& c);
 
 // ── Tag 0xA7: State Root ───────────────────────────────────────────────────

@@ -1,5 +1,14 @@
 # Agent Summary
 
+## Mandato — Deploy binari
+
+- **Ogni rebuild di `mevacoind` va deployato su seed2 e seed3** (87.106.40.193, 87.106.233.72): stop pulito del processo esistente (systemd `mevacoind`), backup binario `.prev`, sostituzione, restart, verifica (md5 + RPC height + stabilità). Rollback automatico su fallimento.
+- **Le credenziali SSH stanno in `/root/mevacoin/deploy.env`** (chmod 600, gitignored). Mai commitare, mai scrivere password in AGENTS.md, script o commit. `tools/deploy.sh` fa il source del file.
+- **Catena**: si tiene sempre (mainnet h=1). Wipe/resync SOLO se un nodo non parte/si sincronizza dopo il restart, con evidenza dai log.
+- **Binari verificati prima di toccare i remote**: rebuild → canary locale (seed1, systemd punta all'albero di build) → boot verificato → E2E verde → deploy su seed2/seed3. I remote ricevono solo binari verificati; rollback `.prev` su crash.
+- Solo-modifiche Python: nessun rebuild, nessun deploy. `wallet-cli` resta locale.
+- Binari di build: `/root/mevacoin/build/Linux/mevacoin/release/bin/` (mevacoind, wallet-cli); artefatto di deploy: `/root/mevacoin/mevacoind`.
+
 ## Completed
 
 ### Circular Dependency Fix

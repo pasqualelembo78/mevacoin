@@ -58,22 +58,6 @@ std::vector<AvailabilityChallenge> AvailabilityProofEngine::get_pending_challeng
     return std::vector<AvailabilityChallenge>();
 }
 
-bool AvailabilityProofEngine::has_expired_challenges(const crypto::hash& node_id, uint64_t current_timestamp) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
-    auto it = pending_challenges_.find(node_id);
-    if (it == pending_challenges_.end()) {
-        return false;
-    }
-    
-    for (const auto& challenge : it->second) {
-        uint64_t elapsed_ms = (current_timestamp - challenge.sent_timestamp) * 1000;
-        if (elapsed_ms > challenge.timeout_ms) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool AvailabilityProofEngine::get_challenge(const crypto::hash& challenge_id, AvailabilityChallenge& challenge) {
     std::lock_guard<std::mutex> lock(cache_lock_);
     for (const auto& node_challenges : pending_challenges_) {
@@ -82,28 +66,6 @@ bool AvailabilityProofEngine::get_challenge(const crypto::hash& challenge_id, Av
                 challenge = ch;
                 return true;
             }
-        }
-    }
-    return false;
-}
-
-bool AvailabilityProofEngine::record_response(
-    const AvailabilityChallenge& challenge,
-    const AvailabilityResponse& response,
-    uint64_t current_timestamp) {
-    
-    std::lock_guard<std::mutex> lock(cache_lock_);
-    
-    auto& pending = pending_challenges_[challenge.node_id];
-    for (auto it = pending.begin(); it != pending.end(); ++it) {
-        if (it->challenge_id == challenge.challenge_id) {
-            it->responded = true;
-            it->response_timestamp = current_timestamp;
-            it->response_time_ms = current_timestamp - it->sent_timestamp;
-            it->response_data = response.response_data;
-            challenge_history_[challenge.node_id].push_back(*it);
-            pending.erase(it);
-            return true;
         }
     }
     return false;
@@ -167,14 +129,6 @@ uint32_t AvailabilityProofEngine::schedule_period_challenges(
         }
     }
     return total_scheduled;
-}
-
-uint64_t AvailabilityProofEngine::get_next_challenge_time(const crypto::hash& node_id)
-{
-    if (!node_registry_) return 0;
-    NodeRegistryEntry entry;
-    if (!node_registry_->get_node_by_id(node_id,entry)) return 0;
-    return entry.next_challenge_time;
 }
 
 AvailabilityProofEngine::ChallengeStatistics AvailabilityProofEngine::get_node_challenge_statistics(const crypto::hash& node_id) {
@@ -314,14 +268,6 @@ void AvailabilityProofEngine::set_block_hash_func(GetBlockHashFunc func) {
     get_block_hash_ = func;
 }
 
-void AvailabilityProofEngine::set_block_height_func(GetBlockHeightFunc func) {
-    get_block_height_ = func;
-}
-
-void AvailabilityProofEngine::set_tx_hash_func(GetTxHashFunc func) {
-    get_tx_hash_ = func;
-}
-
 bool AvailabilityProofEngine::save_to_disk() const {
     static constexpr uint64_t POA_MAGIC=0x504F4148495354FFULL;
     static constexpr uint32_t POA_VERSION=1;
@@ -410,36 +356,6 @@ bool AvailabilityProofEngine::sync_database() {
     return true;
 }
 
-bool AvailabilityProofEngine::prune_old_challenges(uint64_t keep_before_timestamp) {
-    std::lock_guard<std::mutex> lock(cache_lock_);
-    
-    for (auto& node_history : challenge_history_) {
-        auto& challenges = node_history.second;
-        challenges.erase(
-            std::remove_if(challenges.begin(), challenges.end(),
-                [keep_before_timestamp](const AvailabilityChallenge& c) {
-                    return c.sent_timestamp < keep_before_timestamp;
-                }),
-            challenges.end()
-        );
-    }
-    
-    return true;
-}
-
-std::string AvailabilityProofEngine::generate_random_data(size_t bytes) {
-    std::string result(bytes, '\0');
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 255);
-    
-    for (size_t i = 0; i < bytes; ++i) {
-        result[i] = static_cast<char>(dis(gen));
-    }
-    
-    return result;
-}
-
 crypto::hash AvailabilityProofEngine::compute_challenge_id(
     const crypto::hash& node_id,
     uint64_t timestamp,
@@ -480,25 +396,6 @@ bool AvailabilityProofEngine::open_database() {
 
 bool AvailabilityProofEngine::close_database() {
     return true;
-}
-
-std::string AvailabilityProofEngine::challenge_type_to_string(ChallengeType type) const {
-    switch (type) {
-        case ChallengeType::BLOCK_HASH:
-            return "BLOCK_HASH";
-        case ChallengeType::BLOCK_HEIGHT:
-            return "BLOCK_HEIGHT";
-        case ChallengeType::TX_HASH:
-            return "TX_HASH";
-        case ChallengeType::TX_EXISTS:
-            return "TX_EXISTS";
-        case ChallengeType::UTXO_EXISTS:
-            return "UTXO_EXISTS";
-        case ChallengeType::LAST_BLOCK_HASH:
-            return "LAST_BLOCK_HASH";
-        default:
-            return "UNKNOWN";
-    }
 }
 
 void AvailabilityProofEngine::set_send_challenge_func(SendChallengeFunc func) { send_challenge_func_=std::move(func); }

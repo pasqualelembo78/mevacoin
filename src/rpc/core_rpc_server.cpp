@@ -5345,7 +5345,7 @@ bool core_rpc_server::on_commit_uptime(const cryptonote::rpc::COMMAND_RPC_COMMIT
   }
 
   res.ok             = true;
-  res.extra_hex      = epee::string_tools::pod_to_hex(extra);
+  res.extra_hex      = epee::to_hex::string(epee::to_span(extra));
   res.node_id        = node_id_hex;
   res.uptime_seconds = uptime_seconds;
   res.sync_height    = height;

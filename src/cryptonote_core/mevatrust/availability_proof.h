@@ -116,22 +116,12 @@ public:
   // Get all pending challenges
   std::vector<AvailabilityChallenge> get_pending_challenges(const crypto::hash& node_id);
 
-  // Check if node has expired challenges
-  bool has_expired_challenges(const crypto::hash& node_id, uint64_t current_timestamp);
-
   // Get challenge by ID
   bool get_challenge(const crypto::hash& challenge_id, AvailabilityChallenge& challenge);
 
   // ========================================================================
   // RESPONSE HANDLING
   // ========================================================================
-
-  // Record a response to a challenge
-  bool record_response(
-    const AvailabilityChallenge& challenge,
-    const AvailabilityResponse& response,
-    uint64_t current_timestamp
-  );
 
   // Validate response correctness
   enum class ResponseValidation {
@@ -162,9 +152,6 @@ public:
     uint64_t current_timestamp,
     uint32_t challenges_per_node = 3
   );
-
-  // Get next challenge time for node
-  uint64_t get_next_challenge_time(const crypto::hash& node_id);
 
   // ========================================================================
   // STATISTICS & REPORTING
@@ -242,12 +229,8 @@ public:
   // These are called to validate responses
   // Implemented in blockchain/core layer
   typedef std::function<bool(uint64_t, crypto::hash&)> GetBlockHashFunc;
-  typedef std::function<bool(const crypto::hash&, uint64_t&)> GetBlockHeightFunc;
-  typedef std::function<bool(uint32_t, crypto::hash&)> GetTxHashFunc;
 
   void set_block_hash_func(GetBlockHashFunc func);
-  void set_block_height_func(GetBlockHeightFunc func);
-  void set_tx_hash_func(GetTxHashFunc func);
 
   // ========================================================================
   // PERSISTENCE
@@ -256,13 +239,6 @@ public:
   bool save_to_disk() const;
   bool load_from_disk();
   bool sync_database();
-
-  // ========================================================================
-  // DATA CLEANUP
-  // ========================================================================
-
-  // Prune old challenge history (keep last 30 days)
-  bool prune_old_challenges(uint64_t keep_before_timestamp);
 
   typedef std::function<bool(const AvailabilityChallenge& challenge)> SendChallengeFunc;
   void set_send_challenge_func(SendChallengeFunc func);
@@ -284,11 +260,8 @@ private:
 
   // Blockchain data access functions
   GetBlockHashFunc get_block_hash_;
-  GetBlockHeightFunc get_block_height_;
-  GetTxHashFunc get_tx_hash_;
 
   // Helper methods
-  std::string generate_random_data(size_t bytes);
   crypto::hash compute_challenge_id(
     const crypto::hash& node_id,
     uint64_t timestamp,
@@ -304,7 +277,6 @@ private:
   bool open_database();
   bool close_database();
 
-  std::string challenge_type_to_string(ChallengeType type) const;
   SendChallengeFunc send_challenge_func_;
 };
 

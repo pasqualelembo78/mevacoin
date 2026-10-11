@@ -220,7 +220,7 @@ protected:
     std::vector<MevaTrustManager::expected_payout> expected_at(uint64_t height) const {
         std::vector<MevaTrustManager::expected_payout> out;
         std::string err;
-        EXPECT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, out, err))
+        EXPECT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, out, err))
             << "expected payouts non calcolabili: " << err;
         return out;
     }
@@ -641,9 +641,9 @@ TEST_F(RuleFixture, two_independent_nodes_with_the_same_chain_agree_on_the_payou
     // nessuna cache condivisa. Ognuno ricalcola il proprio conto.
     std::vector<MevaTrustManager::expected_payout> a, b;
     std::string err_a, err_b;
-    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, a, err_a))
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, a, err_a))
         << "il nodo A non e' riuscito a calcolare: " << err_a;
-    ASSERT_TRUE(manager_b.compute_expected_payouts(height, kBlockReward, b, err_b))
+    ASSERT_TRUE(manager_b.compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, b, err_b))
         << "il nodo B non e' riuscito a calcolare: " << err_b;
 
     ASSERT_FALSE(a.empty())
@@ -736,15 +736,15 @@ TEST_F(RuleFixture, recomputing_the_same_height_twice_gives_the_same_answer)
     std::vector<MevaTrustManager::expected_payout> first, second, third;
     std::string err;
 
-    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, first, err))
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, first, err))
         << "primo ricalcolo fallito: " << err;
-    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, second, err))
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, second, err))
         << "secondo ricalcolo fallito: " << err;
     // Terza chiamata a un'altra altezza e poi di nuovo a questa: se il ricalcolo
     // dipendesse dall'ordine delle chiamate, il rientro mostrerebbe la crepa.
     std::vector<MevaTrustManager::expected_payout> elsewhere;
-    ASSERT_TRUE(m_manager->compute_expected_payouts(480, kBlockReward, elsewhere, err));
-    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, third, err))
+    ASSERT_TRUE(m_manager->compute_expected_payouts(480, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, elsewhere, err));
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, HF_VERSION_MEVATRUST_RULE_V2, third, err))
         << "terzo ricalcolo fallito: " << err;
 
     ASSERT_FALSE(first.empty())
@@ -1049,7 +1049,7 @@ TEST_F(RuleFixture, the_budget_is_three_percent_and_nothing_is_minted) {
     uint64_t node_total = 0;
     {
         uint64_t miner_out = 0;
-        claimed = m_manager->get_coinbase_rewards(height, reward, miner_out);
+        claimed = m_manager->get_coinbase_rewards(height, reward, HF_VERSION_MEVATRUST_RULE_V2, miner_out);
         ASSERT_EQ(claimed.size(), expected.size());
         for (size_t i = 0; i < claimed.size(); ++i)
             ASSERT_EQ(claimed[i].amount, expected[i].amount);
@@ -1183,7 +1183,7 @@ TEST_F(RuleFixture, the_real_miner_output_passes_the_real_validator)
     // prima le quote e il manifesto, poi la coinbase che li contiene. E' il punto
     // del primo refactor — il miner non calcola nulla, chiede.
     uint64_t miner_out = 0;
-    const auto claimed = m_manager->get_coinbase_rewards(height, reward, miner_out);
+    const auto claimed = m_manager->get_coinbase_rewards(height, reward, HF_VERSION_MEVATRUST_RULE_V2, miner_out);
     ASSERT_EQ(claimed.size(), node_rewards.size());
     for (size_t i = 0; i < claimed.size(); ++i)
         ASSERT_EQ(claimed[i].amount, node_rewards[i].amount);
@@ -1440,6 +1440,181 @@ TEST_F(RuleFixture, uptime_blob_survives_tx_construction_and_stays_findable) {
         << "il commitment e' sopravvissuto alla costruzione ma il consumatore non lo trova";
     EXPECT_TRUE(mevatrust::verify_uptime_signature(u));
     EXPECT_EQ(u.node_pubkey, pk);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-Sybil Fase 1 (HF18): binding
+//
+// Fino a HF17 una sola node_pubkey poteva firmare l'uptime (0xA5) di decine di
+// node_id diversi, e la firma era verificata contro la chiave trasportata dentro
+// la 0xA5 stessa: bastava inventarsi un node_id e una chiave. Questi test
+// bloccano entrambe le scorciatoie e, altrettanto importante, verificano che
+// sotto la soglia del fork il comportamento vecchio resti intatto: la nuova
+// regola non e' retroattiva.
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_F(RuleFixture, antisypil_same_node_pubkey_rejected_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+
+    tx_extra_mevatrust_registration a{};
+    a.wallet_pubkey   = pk;
+    a.node_pubkey     = pk;
+    a.wallet_address  = "addrA";
+    a.node_id         = crypto::cn_fast_hash("a", 1);
+    ASSERT_TRUE(m_manager->node_registry()->register_node_onchain(a, 1, 18));
+
+    // Wallet diverso (quindi il cap "3 per wallet" non c'entra): l'unica cosa
+    // che respinge e' la node_pubkey gia' in uso.
+    tx_extra_mevatrust_registration b{};
+    b.wallet_pubkey   = fresh_key();
+    b.node_pubkey     = pk;
+    b.wallet_address  = "addrB";
+    b.node_id         = crypto::cn_fast_hash("b", 1);
+    EXPECT_FALSE(m_manager->node_registry()->register_node_onchain(b, 1, 18))
+        << "una node_pubkey gia' attiva e' stata accettata una seconda volta";
+}
+
+TEST_F(RuleFixture, antisypil_same_node_pubkey_allowed_before_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+
+    tx_extra_mevatrust_registration a{};
+    a.wallet_pubkey   = pk;
+    a.node_pubkey     = pk;
+    a.wallet_address  = "addrA";
+    a.node_id         = crypto::cn_fast_hash("a", 1);
+    ASSERT_TRUE(m_manager->node_registry()->register_node_onchain(a, 1, 0));
+
+    tx_extra_mevatrust_registration b{};
+    b.wallet_pubkey   = fresh_key();
+    b.node_pubkey     = pk;
+    b.wallet_address  = "addrB";
+    b.node_id         = crypto::cn_fast_hash("b", 1);
+    EXPECT_TRUE(m_manager->node_registry()->register_node_onchain(b, 1, 0))
+        << "sotto la soglia del fork la regola vecchia deve restare intatta";
+}
+
+/// Mette una singola tx con extra 0xA5 in un blocco e lo consegna al processing
+/// reale del manager: stesso percorso che gira su ogni blocco della catena.
+static uint64_t feed_uptime_block(MevaTrustManager& mgr, const tx_extra_mevatrust_uptime& u,
+                                  uint64_t height, uint8_t hf_version) {
+    std::vector<uint8_t> extra;
+    if (!mevatrust::build_mevatrust_uptime_extra(u, extra)) return UINT64_MAX;
+    transaction tx{};
+    tx.version     = 1;
+    tx.unlock_time = 60;
+    tx.extra       = extra;
+    const crypto::hash txid = get_transaction_hash(tx);
+
+    block bl{};
+    bl.major_version = hf_version;
+    bl.miner_tx.version = 1;
+    bl.tx_hashes.push_back(txid);
+    mgr.set_get_tx_func([&tx, &txid](const crypto::hash& id, transaction& out) -> bool {
+        if (id == txid) { out = tx; return true; }
+        return false;
+    });
+    mgr.process_mevatrust_txs(bl, height, hf_version);
+    return 0;
+}
+
+TEST_F(RuleFixture, antisypil_uptime_bound_to_registered_key_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    NodeRegistryEntry alpha{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(m_node_id["alpha"], alpha));
+    ASSERT_TRUE(alpha.registered_onchain);
+
+    tx_extra_mevatrust_uptime u{};
+    u.node_id        = alpha.node_id;
+    u.uptime_seconds = 100;
+    u.timestamp      = 1700000000;
+    u.peer_count     = 3;
+    u.is_synced      = true;
+    u.sync_height    = 240;
+    u.node_pubkey    = pk;
+    crypto::generate_signature(mevatrust::uptime_message_hash(u), pk, sk, u.signature);
+    ASSERT_TRUE(mevatrust::verify_uptime_signature(u));
+
+    ASSERT_EQ(feed_uptime_block(*m_manager, u, 100, 18), 0u);
+
+    NodeRegistryEntry after{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(alpha.node_id, after));
+    EXPECT_EQ(after.last_sync_height, 240u)
+        << "un uptime legittimo, firmato con la chiave registrata, e' stato scartato";
+}
+
+TEST_F(RuleFixture, antisypil_uptime_with_foreign_key_rejected_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    NodeRegistryEntry alpha{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(m_node_id["alpha"], alpha));
+    ASSERT_EQ(alpha.last_sync_height, 1u);
+
+    // Il node_id e' quello vero di alpha, ma la chiave che firma e' un'altra:
+    // la firma e' valida rispetto a se stessa, non rispetto al registro. E' la
+    // scorciatoia che HF18 chiude.
+    crypto::secret_key other_sk{};
+    crypto::public_key other_pk{};
+    crypto::generate_keys(other_pk, other_sk);
+
+    tx_extra_mevatrust_uptime u{};
+    u.node_id        = alpha.node_id;
+    u.uptime_seconds = 100;
+    u.timestamp      = 1700000000;
+    u.peer_count     = 3;
+    u.is_synced      = true;
+    u.sync_height    = 999;
+    u.node_pubkey    = other_pk;
+    crypto::generate_signature(mevatrust::uptime_message_hash(u), other_pk, other_sk, u.signature);
+    ASSERT_TRUE(mevatrust::verify_uptime_signature(u));
+
+    ASSERT_EQ(feed_uptime_block(*m_manager, u, 100, 18), 0u);
+
+    NodeRegistryEntry after{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(alpha.node_id, after));
+    EXPECT_EQ(after.last_sync_height, 1u)
+        << "un uptime firmato con una chiave non registrata e' stato accettato";
+}
+
+TEST_F(RuleFixture, antisypil_uptime_foreign_key_allowed_before_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    NodeRegistryEntry alpha{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(m_node_id["alpha"], alpha));
+
+    crypto::secret_key other_sk{};
+    crypto::public_key other_pk{};
+    crypto::generate_keys(other_pk, other_sk);
+
+    tx_extra_mevatrust_uptime u{};
+    u.node_id        = alpha.node_id;
+    u.uptime_seconds = 100;
+    u.timestamp      = 1700000000;
+    u.peer_count     = 3;
+    u.is_synced      = true;
+    u.sync_height    = 999;
+    u.node_pubkey    = other_pk;
+    crypto::generate_signature(mevatrust::uptime_message_hash(u), other_pk, other_sk, u.signature);
+
+    ASSERT_EQ(feed_uptime_block(*m_manager, u, 100, 0), 0u);
+
+    NodeRegistryEntry after{};
+    ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(alpha.node_id, after));
+    EXPECT_EQ(after.last_sync_height, 999u)
+        << "sotto la soglia del fork la regola vecchia deve restare intatta";
 }
 
 } // namespace

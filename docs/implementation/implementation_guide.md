@@ -584,72 +584,12 @@ const command_line::arg_descriptor<std::string> daemon_args::arg_participation_d
 
 ## FASE 5: RPC ENDPOINTS (Week 3)
 
-### 5.1 Aggiungere commands in core_rpc_server.cpp
-
-```cpp
-// Add to core_rpc_server.cpp
-
-bool core_rpc_server::on_get_participation_score(
-  const COMMAND_RPC_GET_PARTICIPATION_SCORE::request& req,
-  COMMAND_RPC_GET_PARTICIPATION_SCORE::response& res,
-  const connection_context& cctx)
-{
-  if (m_core.get_blockchain_core().get_participation_engine() == nullptr)
-  {
-    res.status = "PARTICIPATION_DISABLED";
-    return false;
-  }
-  
-  auto engine = m_core.get_blockchain_core().get_participation_engine();
-  auto registry = m_core.get_blockchain_core().get_node_registry();
-  
-  // Find node by ID or wallet address
-  crypto::hash node_id;
-  NodeRegistryEntry entry;
-  
-  if (!req.node_id.empty())
-  {
-    epee::string_tools::hex_to_pod(req.node_id, node_id);
-    if (!registry->get_node_by_id(node_id, entry))
-    {
-      res.status = "NODE_NOT_FOUND";
-      return false;
-    }
-  }
-  else if (!req.wallet_address.empty())
-  {
-    if (!registry->get_node_by_wallet(req.wallet_address, entry))
-    {
-      res.status = "WALLET_NOT_FOUND";
-      return false;
-    }
-    node_id = entry.node_id;
-  }
-  else
-  {
-    res.status = "MISSING_PARAMETERS";
-    return false;
-  }
-  
-  // Calculate score
-  uint64_t current_height = m_core.get_current_blockchain_height();
-  auto snapshot = engine->calculate_node_score(node_id, current_height);
-  
-  res.node_id = epee::string_tools::pod_to_hex(node_id);
-  res.wallet_address = entry.wallet_address;
-  res.current_score = snapshot.total_score;
-  res.uptime_percentage = snapshot.uptime_score;
-  res.sync_percentage = snapshot.sync_score;
-  res.responsiveness = snapshot.responsiveness_score;
-  res.activity_score = snapshot.activity_score;
-  res.status = "OK";
-  
-  return true;
-}
-
-// Add to URI_MAP2 in core_rpc_server.h:
-MAP_JON_RPC_WE("get_participation_score", on_get_participation_score, COMMAND_RPC_GET_PARTICIPATION_SCORE)
-```
+> **[F7 — rimosso]** La RPC `get_participation_score` non è stata integrata: la
+> funzione è già coperta da `get_mevatrust_score` (core_rpc_server), che ritorna
+> `score` + `status` dallo stesso calcolo. Il codice di questo capitolo
+> faceva inoltre riferimento a API mai create (`get_participation_engine`,
+> `--participation-db`). La struct `COMMAND_RPC_GET_PARTICIPATION_SCORE` è stata
+> eliminata da `participation_rpc_commands.h`.
 
 ---
 

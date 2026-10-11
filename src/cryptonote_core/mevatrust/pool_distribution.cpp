@@ -172,42 +172,5 @@ bool validate_pool_distribution(
     return true;
 }
 
-bool verify_distribution_signature(
-    const tx_extra_mevatrust_pool_distribution& dist,
-    const ProposerState& proposers)
-{
-    // Consensus verification MUST use the ceremony keys.  If the runtime
-    // proposer set doesn't match the ceremony set we refuse (they are not the
-    // authorized signers).
-    for (size_t i = 0; i < frost::FROST_N; ++i) {
-        if (memcmp(&proposers.pubkeys[i],
-                   &frost::CONSENSUS_PROPOSER_PUBKEYS[i], 32) != 0) {
-            MERROR("[PoolDist] Proposer set does NOT match ceremony keys "
-                   "- refusing to verify");
-            return false;
-        }
-    }
-
-    frost::PublicKeyPackage pkg;
-    pkg.signer_pubkeys = frost::CONSENSUS_PROPOSER_PUBKEYS;
-    pkg.agg_pubkey = frost::CONSENSUS_GROUP_PUBKEY;
-
-    frost::FrostSignature sig;
-    sig.R = {};
-    memcpy(&sig.R, &dist.frost_R, sizeof(dist.frost_R));  // scalar bytes -> point bytes
-    sig.z = dist.frost_z;
-
-    // Message hash over the spend-key output list (0xAA stores spend keys only)
-    std::vector<std::pair<crypto::public_key, uint64_t>> spend_outputs;
-    for (const auto& [pk, amt] : dist.outputs)
-        spend_outputs.emplace_back(pk, amt);
-
-    sig.msg_hash = frost::create_distribution_message_hash(
-        dist.height, dist.period, spend_outputs);
-
-    std::string error_out;
-    return frost::verify_signature(sig, pkg, error_out);
-}
-
 } // namespace mevatrust
 } // namespace cryptonote

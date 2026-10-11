@@ -425,10 +425,6 @@ bool BadgeSystem::has_badge(const crypto::hash& nid, BadgeType bt) {
     for (const auto& b:it->second) { if(b.type==bt&&b.is_active) return true; }
     return false;
 }
-bool BadgeSystem::get_badge_details(BadgeType bt, Badge& out) {
-    out = {};
-    out.type=bt; out.name=badge_type_to_string(bt); out.is_active=false; return true;
-}
 bool BadgeSystem::get_badge_requirements(BadgeType t, BadgeRequirements& r) {
     auto it=badge_requirements_.find(t); if(it==badge_requirements_.end()) return false; r=it->second; return true;
 }
@@ -440,11 +436,6 @@ std::vector<BadgeType> BadgeSystem::get_badge_types_for_wallet(const std::string
     NodeRegistryEntry e; if(!node_registry_->get_node_by_wallet(wa,e)) return t;
     for(const auto& b:get_active_badges(e.node_id)) t.push_back(b.type);
     return t;
-}
-std::vector<crypto::hash> BadgeSystem::get_nodes_with_badge(BadgeType bt) {
-    std::vector<crypto::hash> r; std::lock_guard<std::mutex> lk(cache_lock_);
-    for(const auto& kv:badge_cache_) for(const auto& b:kv.second) if(b.type==bt&&b.is_active){r.push_back(kv.first);break;}
-    return r;
 }
 BadgeSystem::NodeBadgeInfo BadgeSystem::get_node_badge_info(const crypto::hash& nid) {
     NodeBadgeInfo info; info.node_id=nid; info.badges=get_node_badges(nid);
