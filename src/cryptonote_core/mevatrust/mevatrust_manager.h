@@ -88,7 +88,7 @@ public:
   // condizioni. Stesso contratto di compute_expected_payouts(): pura, e stessa
   // risposta alla stessa altezza.
   bool compute_uptime_payouts_v3(uint64_t height, uint64_t total_block_reward,
-                                 uint64_t budget,
+                                 uint64_t budget, uint8_t hf_version,
                                  const std::vector<PendingCoinbaseOutput> &welcome,
                                  std::vector<expected_payout> &out_payouts,
                                  std::string &error_msg) const;
@@ -96,6 +96,11 @@ public:
   /// Ci sono prove di presenza salvate? Al boot, un archivio vuoto su una catena
   /// gia' lunga significa che i campioni vanno ricostruiti prima di pagare qualcuno.
   bool has_chain_uptime_samples() const;
+
+  /// Ci sono prove di possesso dati (0xAC) salvate? Stesso scopo di has_chain_uptime_samples()
+  /// ma per il gate Fase 2: un archivio vuoto su una catena gia' passata dalla HF
+  /// anti-sybil va ricostruito, o nessuno risulterebbe eleggibile.
+  bool has_chain_proof_samples() const;
 
   std::shared_ptr<NodeRegistry>              node_registry()        const { return m_node_registry; }
   std::shared_ptr<CircleRegistry>            circle_registry()      const { return m_circle_registry; }
@@ -188,6 +193,23 @@ public:
                                           bool        is_synced,
                                           std::vector<uint8_t>& extra_out,
                                           std::string& err);
+
+  /// Costruisce e firma una prova di possesso dati (0xAC, Anti-Sybil Fase 2).
+  ///
+  /// anchor_height e' l'estremo che il nodo sta osservando (l'altezza dell'ultimo
+  /// blocco che ha in catena). Il bersaglio e' derivato da (node_id, anchor_height)
+  /// con chain_proof_target(); il nodo recupera il blocco a quell'altezza dai propri
+  /// dati e ne attesta l'hash. Se l'anchor e' troppo basso — catena piu' corta di
+  /// MIN_DEPTH+SPAN — non esiste un bersaglio a profondita' sufficiente e la funzione
+  /// fallisce: e' corretto, prima di allora la prova non ha senso.
+  ///
+  /// La firma la fa il daemon come per l'uptime, perche' la chiave privata del nodo
+  /// non esce di qui. Il blob firmato va messo in una transazione dal wallet.
+  bool build_signed_chain_proof_for(const crypto::hash& node_id,
+                                    uint64_t anchor_height,
+                                    std::vector<uint8_t>& extra_out,
+                                    std::string& err,
+                                    uint64_t& proof_height_out);
 
   // ── Reorg rollback ──────────────────────────────────────────────────────
   // Chiamato quando un blocco viene rimosso dalla catena principale (reorg).
@@ -292,7 +314,7 @@ private:
               CIRCLE_CREATE, CIRCLE_DISBAND, CIRCLE_JOIN, CIRCLE_LEAVE,
               CIRCLE_CHANGE_ADMIN, PENALTY, UPTIME, CHALLENGE, STORE,
               CIRCLE_PROPOSE, CIRCLE_VOTE, CIRCLE_FINALIZE, POOL_DISTRIBUTION,
-              VALIDATOR_PROMOTION };
+              VALIDATOR_PROMOTION, CHAIN_PROOF };
     Op op;
     crypto::hash node_id;
     crypto::hash circle_id;

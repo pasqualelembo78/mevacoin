@@ -67,6 +67,7 @@
 #define TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE          0xA9
 #define TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION    0xAA
 #define TX_EXTRA_TAG_MEVATRUST_VALIDATOR            0xAB
+#define TX_EXTRA_TAG_MEVATRUST_CHAIN_PROOF          0xAC
 
 // ── Premine Governance tags ─────────────────────────────────────────────────
 #define TX_EXTRA_TAG_GOVERNANCE_TRANSFER         0xB0
@@ -402,6 +403,43 @@ struct tx_extra_mevatrust_challenge
     FIELD(challenged_pubkey)
     FIELD(challenger_sig)
     FIELD(challenged_sig)
+  END_SERIALIZE()
+};
+
+// ── Chain Proof — tag 0xAC (Anti-Sybil Fase 2: prova di possesso dati) ────────
+//
+// Il nodo dimostra di avere accesso alla catena rispondendo, con la propria
+// chiave registrata, alla domanda "qual e' l'hash del blocco a questa altezza?".
+// L'altezza bersaglio non e' scelta dal nodo: e' derivata deterministicamente
+// dal suo node_id e da un'altezza di ancoraggio (l'estremo che il nodo osserva
+// quando costruisce la prova), con la formula chain_proof_target(). Il nodo non
+// puo' quindi precomputare la risposta prima di possedere il blocco, e il
+// validatore ricalcola la stessa altezza e verifica l'hash contro la catena.
+//
+// anchor_height: l'estremo osservato dal nodo. Deve essere recente rispetto al
+// blocco che contiene la prova (entro MAX_ANCHOR_LAG): oltre, la prova e'
+// stantia e viene scartata, cosi' non si puo' rigiocare una risposta vecchia.
+//
+// proof_height: chain_proof_target(node_id, anchor_height). Ridondante rispetto
+// ad anchor_height, ma esplicito nel blob perche' il nodo lo firma e il
+// validatore lo confronta con quello che ha ricalcolato: se i due differiscono
+// la prova e' malformata, non "quasi valida".
+struct tx_extra_mevatrust_chain_proof
+{
+  crypto::hash       node_id;
+  crypto::public_key node_pubkey;
+  uint64_t           anchor_height{0};
+  uint64_t           proof_height{0};
+  crypto::hash       block_hash;
+  crypto::signature  signature;   // sign(domain || node_id || anchor || proof_height || block_hash)
+
+  BEGIN_SERIALIZE()
+    FIELD(node_id)
+    FIELD(node_pubkey)
+    VARINT_FIELD(anchor_height)
+    VARINT_FIELD(proof_height)
+    FIELD(block_hash)
+    FIELD(signature)
   END_SERIALIZE()
 };
 

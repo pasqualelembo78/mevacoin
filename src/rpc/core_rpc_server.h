@@ -226,6 +226,7 @@ namespace cryptonote
         MAP_JON_RPC_WE_IF("unban_node",       on_unban_node,          cryptonote::rpc::COMMAND_RPC_UNBAN_NODE,   !m_restricted)
         MAP_JON_RPC_WE("get_node_pubkey",          on_get_node_pubkey,              cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY)
         MAP_JON_RPC_WE("commit_uptime",            on_commit_uptime,                cryptonote::rpc::COMMAND_RPC_COMMIT_UPTIME)
+        MAP_JON_RPC_WE("commit_chain_proof",       on_commit_chain_proof,           cryptonote::rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF)
         MAP_JON_RPC_WE("get_pool_distribution_history",  on_get_pool_distribution_history,  cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY)
         MAP_JON_RPC_WE("get_recent_blocks",              on_get_recent_blocks,              cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS)
         MAP_JON_RPC_WE("get_governance_activity",        on_get_governance_activity,        cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY)
@@ -355,6 +356,7 @@ namespace cryptonote
     bool on_get_node_pubkey(const cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY::request& req, cryptonote::rpc::COMMAND_RPC_GET_NODE_PUBKEY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
 
     bool on_commit_uptime(const cryptonote::rpc::COMMAND_RPC_COMMIT_UPTIME::request& req, cryptonote::rpc::COMMAND_RPC_COMMIT_UPTIME::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);    bool on_get_pool_distribution_history(const cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::request& req, cryptonote::rpc::COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
+    bool on_commit_chain_proof(const cryptonote::rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::request& req, cryptonote::rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_recent_blocks(const cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::request& req, cryptonote::rpc::COMMAND_RPC_GET_RECENT_BLOCKS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     bool on_get_governance_activity(const cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::request& req, cryptonote::rpc::COMMAND_RPC_GET_GOVERNANCE_ACTIVITY::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);
     // ── Store RPC ──────────────────────────────────────────────────────────────

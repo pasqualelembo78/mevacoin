@@ -1027,20 +1027,26 @@ TEST_F(RuleFixture, the_budget_is_three_percent_and_nothing_is_minted) {
     const uint64_t height = 240;
     const uint64_t reward = kBlockReward;
 
-    // Tre nodi con lo stesso punteggio. Tre, e non due: due si dividono il budget
-    // esattamente e non lasciano resto, quindi il pool non riceverebbe niente e il
-    // caso da provare — "il 3% smette di essere contato due volte" — resterebbe
-    // addormentato. Con tre la divisione troncata lascia sempre un resto, ed e'
-    // il resto che il pool deve incassare.
+    // Cinque nodi con lo stesso punteggio. Il numero conta: la quota di ciascun
+    // nodo e' floor(budget / n), quindi il pool incassa solo il resto budget % n,
+    // e il resto esiste solo se n non divide il budget. Con questo reward budget =
+    // 998299224, che e' divisibile per 2, 3, 4, 6, 8 e 9: con tre nodi la divisione
+    // e' esatta e al pool non resta niente — il caso da provare ("il 3% smette di
+    // essere contato due volte") resterebbe addormentato. Cinque non lo divide
+    // (998299224 % 5 == 4), ed e' quel resto che il pool deve incassare.
     m_wallet["a"] = addr_of(fresh_key());
     m_wallet["b"] = addr_of(fresh_key());
     m_wallet["c"] = addr_of(fresh_key());
+    m_wallet["d"] = addr_of(fresh_key());
+    m_wallet["e"] = addr_of(fresh_key());
     add_node("a");
     add_node("b");
     add_node("c");
+    add_node("d");
+    add_node("e");
 
     const auto expected = expected_at(height);
-    ASSERT_EQ(expected.size(), 3u) << "servono tre nodi per lasciare un resto";
+    ASSERT_EQ(expected.size(), 5u) << "servono cinque nodi perche' la divisione lasci un resto";
 
     // Le quote che il miner riceve dal consenso, e il manifesto insieme. Si passa
     // da get_coinbase_rewards() perche' e' la stessa porta che apre il miner: il
@@ -1059,6 +1065,8 @@ TEST_F(RuleFixture, the_budget_is_three_percent_and_nothing_is_minted) {
     ASSERT_LT(node_total, reward);
 
     // Il budget e' il 3% del blocco. Le quote ci stanno dentro: e' il punto.
+    // Con 5 nodi a peso uguale, budget non e' divisibile per 5 (998299224 % 5 = 4)
+    // quindi la divisione per troncamento lascia un resto al pool.
     const uint64_t budget = node_budget_of(reward);
     ASSERT_LE(node_total, budget)
         << "le quote sono piu' del budget: il 3% non basta a coprirle";
@@ -1615,6 +1623,303 @@ TEST_F(RuleFixture, antisypil_uptime_foreign_key_allowed_before_hf18) {
     ASSERT_TRUE(m_manager->node_registry()->get_node_by_id(alpha.node_id, after));
     EXPECT_EQ(after.last_sync_height, 999u)
         << "sotto la soglia del fork la regola vecchia deve restare intatta";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-Sybil Fase 2 (HF18) — la prova di possesso dati (tag 0xAC)
+//
+// La Fase 1 lega fino e uptime a una chiave registrata. Resta aperto il caso piu'
+// economico: chi non possiede la catena puo' comunque firmare. La Fase 2 chiede
+// una risposta su un blocco passato scelto dal protocollo (l'altezza bersaglio e'
+// derivata da node_id e anchor, non scelta dal nodo), e la verifica contro la
+// catena. Questi test bloccano la scorciatoia e verificano che sotto la HF il
+// comportamento vecchio resti intatto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_F(RuleFixture, chainproof_target_is_deterministic_and_deep_enough) {
+    const crypto::hash id_a = crypto::cn_fast_hash("node-a", 6);
+    const crypto::hash id_b = crypto::cn_fast_hash("node-b", 6);
+    const uint64_t anchor = 50000;
+
+    uint64_t t_a1 = 0, t_a2 = 0, t_b = 0;
+    ASSERT_TRUE(mevatrust::chain_proof_target(id_a, anchor, t_a1));
+    ASSERT_TRUE(mevatrust::chain_proof_target(id_a, anchor, t_a2));
+    ASSERT_TRUE(mevatrust::chain_proof_target(id_b, anchor, t_b));
+
+    // Deterministico: due chiamate danno la stessa altezza.
+    EXPECT_EQ(t_a1, t_a2);
+    // Il nodo non sceglie la domanda: node_id diversi danno bersagli (quasi sempre)
+    // diversi; qui si verifica che l'input conta, cioe' che non sia una costante.
+    EXPECT_NE(t_a1, t_b);
+    // Sempre a profondita' minima: il bersaglio sta fra MIN_DEPTH e MIN_DEPTH+SPAN
+    // blocchi indietro. E' questo che impedisce di rispondere senza avere il blocco.
+    EXPECT_LE(t_a1, anchor - mevatrust::consensus::CHAIN_PROOF_MIN_DEPTH);
+    EXPECT_GE(t_a1, anchor - mevatrust::consensus::CHAIN_PROOF_MIN_DEPTH - (mevatrust::consensus::CHAIN_PROOF_SPAN - 1));
+}
+
+TEST_F(RuleFixture, chainproof_target_rejects_chain_too_short) {
+    const crypto::hash id = crypto::cn_fast_hash("node", 4);
+    uint64_t t = 0;
+    // Sotto MIN_DEPTH+SPAN non esiste un bersaglio a profondita' sufficiente: la
+    // funzione deve rifiutare, non produrre un bersaglio "vicino".
+    EXPECT_FALSE(mevatrust::chain_proof_target(id, mevatrust::consensus::CHAIN_PROOF_MIN_DEPTH, t));
+    EXPECT_FALSE(mevatrust::chain_proof_target(id, 0, t));
+}
+
+TEST_F(RuleFixture, chainproof_sample_window_and_idempotency) {
+    auto eng = m_manager->mevatrust_engine();
+    ASSERT_TRUE(eng);
+
+    const crypto::hash id = crypto::cn_fast_hash("n", 1);
+    EXPECT_FALSE(eng->has_recent_chain_proof(id, mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS));
+
+    // Primo campione accettato, secondo alla stessa altezza scartato (idempotenza).
+    EXPECT_TRUE(eng->record_chain_proof_sample(id, 43100, 42500));
+    EXPECT_FALSE(eng->record_chain_proof_sample(id, 43100, 42500));
+    EXPECT_TRUE(eng->has_recent_chain_proof(id, mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS));
+
+    // Fuori dalla finestra: il campione piu' vecchio non tiene piu' il nodo eleggibile.
+    const uint64_t far = 43100 + mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS + 1;
+    EXPECT_FALSE(eng->has_recent_chain_proof(id, far));
+
+    // Altezza sotto la finestra: nessuna eleggibilita' possibile.
+    EXPECT_FALSE(eng->has_recent_chain_proof(id, 100));
+
+    eng->clear_chain_proof_samples();
+    EXPECT_FALSE(eng->has_chain_proof_samples());
+}
+
+TEST_F(RuleFixture, chainproof_sample_survives_reload) {
+    auto eng = m_manager->mevatrust_engine();
+    ASSERT_TRUE(eng);
+    const crypto::hash id = crypto::cn_fast_hash("persist", 7);
+    ASSERT_TRUE(eng->record_chain_proof_sample(id, 50000, 49500));
+    ASSERT_TRUE(eng->save_to_disk());
+
+    eng->clear_chain_proof_samples();
+    ASSERT_FALSE(eng->has_chain_proof_samples());
+
+    ASSERT_TRUE(eng->load_from_disk());
+    EXPECT_TRUE(eng->has_chain_proof_samples());
+    EXPECT_TRUE(eng->has_recent_chain_proof(id, 51000))
+        << "la prova non e' sopravvissuta al giro su disco";
+}
+
+/// Costruisce un blocco che contiene una singola tx 0xAC e lo consegna al
+/// processing reale: stesso percorso che gira su ogni blocco della catena.
+static bool feed_chain_proof_block(MevaTrustManager& mgr,
+                                   const tx_extra_mevatrust_chain_proof& cp,
+                                   uint64_t height, uint8_t hf_version) {
+    std::vector<uint8_t> extra;
+    if (!mevatrust::build_mevatrust_chain_proof_extra(cp, extra)) return false;
+    transaction tx{};
+    tx.version     = 1;
+    tx.unlock_time = 60;
+    tx.extra       = extra;
+    const crypto::hash txid = get_transaction_hash(tx);
+
+    block bl{};
+    bl.major_version    = hf_version;
+    bl.miner_tx.version = 1;
+    bl.tx_hashes.push_back(txid);
+    mgr.set_get_tx_func([&tx, &txid](const crypto::hash& id, transaction& out) -> bool {
+        if (id == txid) { out = tx; return true; }
+        return false;
+    });
+    mgr.process_mevatrust_txs(bl, height, hf_version);
+    return true;
+}
+
+/// Prepara i pezzi comuni: nodo registrato con una chiave, un blocco "di catena"
+/// all'altezza bersaglio e la prova firmata che lo attesta.
+struct ChainProofScene {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    uint64_t anchor{0};
+    uint64_t target{0};
+    crypto::hash block_hash{};
+    tx_extra_mevatrust_chain_proof cp{};
+
+    bool build(MevaTrustManager& mgr, const crypto::hash& node_id) {
+        anchor = 50000;
+        if (!mevatrust::chain_proof_target(node_id, anchor, target)) return false;
+        block target_blk{};
+        target_blk.miner_tx.version  = 1;
+        target_blk.miner_tx.unlock_time = 424242;   // contenuto deterministico e non vuoto
+        block_hash = cryptonote::get_block_hash(target_blk);
+        mgr.set_get_block_func([target = target, target_blk](uint64_t h, block& out) -> bool {
+            if (h == target) { out = target_blk; return true; }
+            return false;
+        });
+        return true;
+    }
+};
+
+TEST_F(RuleFixture, chainproof_valid_proof_is_accepted_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    ChainProofScene scene;
+    scene.sk = sk;
+    scene.pk = pk;
+    ASSERT_TRUE(scene.build(*m_manager, m_node_id["alpha"]));
+
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = m_node_id["alpha"];
+    cp.node_pubkey   = pk;
+    cp.anchor_height = scene.anchor;
+    cp.proof_height  = scene.target;
+    cp.block_hash    = scene.block_hash;
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), pk, sk, cp.signature);
+    ASSERT_TRUE(mevatrust::verify_chain_proof_signature(cp));
+
+    ASSERT_TRUE(feed_chain_proof_block(*m_manager, cp, scene.anchor, 18));
+    EXPECT_TRUE(m_manager->mevatrust_engine()->has_recent_chain_proof(cp.node_id, scene.anchor))
+        << "una prova valida, firmata con la chiave registrata e con l'hash giusto, e' stata scartata";
+}
+
+TEST_F(RuleFixture, chainproof_wrong_hash_rejected_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    ChainProofScene scene;
+    scene.sk = sk;
+    scene.pk = pk;
+    ASSERT_TRUE(scene.build(*m_manager, m_node_id["alpha"]));
+
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = m_node_id["alpha"];
+    cp.node_pubkey   = pk;
+    cp.anchor_height = scene.anchor;
+    cp.proof_height  = scene.target;
+    cp.block_hash    = crypto::cn_fast_hash("not-the-block", 13);  // hash inventato
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), pk, sk, cp.signature);
+
+    ASSERT_TRUE(feed_chain_proof_block(*m_manager, cp, scene.anchor, 18));
+    EXPECT_FALSE(m_manager->mevatrust_engine()->has_chain_proof_samples())
+        << "una prova con l'hash sbagliato e' stata accettata: la verifica contro la catena non morde";
+}
+
+TEST_F(RuleFixture, chainproof_stale_anchor_rejected_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    ChainProofScene scene;
+    scene.sk = sk;
+    scene.pk = pk;
+    ASSERT_TRUE(scene.build(*m_manager, m_node_id["alpha"]));
+
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = m_node_id["alpha"];
+    cp.node_pubkey   = pk;
+    cp.anchor_height = scene.anchor;
+    cp.proof_height  = scene.target;
+    cp.block_hash    = scene.block_hash;
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), pk, sk, cp.signature);
+
+    // Il blocco che contiene la prova e' troppo avanti rispetto all'anchor: la
+    // prova e' stantia e non va rigiocata.
+    const uint64_t too_late = scene.anchor + mevatrust::consensus::CHAIN_PROOF_MAX_ANCHOR_LAG + 1;
+    ASSERT_TRUE(feed_chain_proof_block(*m_manager, cp, too_late, 18));
+    EXPECT_FALSE(m_manager->mevatrust_engine()->has_chain_proof_samples())
+        << "una prova con anchor stantio e' stata accettata";
+}
+
+TEST_F(RuleFixture, chainproof_foreign_key_rejected_under_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    ChainProofScene scene;
+    scene.sk = sk;
+    scene.pk = pk;
+    ASSERT_TRUE(scene.build(*m_manager, m_node_id["alpha"]));
+
+    crypto::secret_key other_sk{};
+    crypto::public_key other_pk{};
+    crypto::generate_keys(other_pk, other_sk);
+
+    // node_id vero, ma firma e chiave di un altro: valida rispetto a se stessa,
+    // non rispetto al registro. E' la scorciatoia che la Fase 2 deve chiudere.
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = m_node_id["alpha"];
+    cp.node_pubkey   = other_pk;
+    cp.anchor_height = scene.anchor;
+    cp.proof_height  = scene.target;
+    cp.block_hash    = scene.block_hash;
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), other_pk, other_sk, cp.signature);
+    ASSERT_TRUE(mevatrust::verify_chain_proof_signature(cp));
+
+    ASSERT_TRUE(feed_chain_proof_block(*m_manager, cp, scene.anchor, 18));
+    EXPECT_FALSE(m_manager->mevatrust_engine()->has_chain_proof_samples())
+        << "una prova firmata con una chiave non registrata e' stata accettata";
+}
+
+TEST_F(RuleFixture, chainproof_ignored_before_hf18) {
+    crypto::secret_key sk{};
+    crypto::public_key pk{};
+    crypto::generate_keys(pk, sk);
+    add_node_as("alpha", pk);
+
+    ChainProofScene scene;
+    scene.sk = sk;
+    scene.pk = pk;
+    ASSERT_TRUE(scene.build(*m_manager, m_node_id["alpha"]));
+
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = m_node_id["alpha"];
+    cp.node_pubkey   = pk;
+    cp.anchor_height = scene.anchor;
+    cp.proof_height  = scene.target;
+    cp.block_hash    = scene.block_hash;
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), pk, sk, cp.signature);
+
+    // Sotto la HF anti-sybil il tag 0xAC non esiste come concetto di consenso: non
+    // deve registrare niente. E' cio' che tiene i blocchi pre-fork identici.
+    ASSERT_TRUE(feed_chain_proof_block(*m_manager, cp, scene.anchor, 0));
+    EXPECT_FALSE(m_manager->mevatrust_engine()->has_chain_proof_samples())
+        << "sotto la soglia del fork la Fase 2 non deve avere effetto";
+}
+
+TEST_F(RuleFixture, chainproof_gates_payout_eligibility_under_hf18) {
+    auto eng = m_manager->mevatrust_engine();
+    ASSERT_TRUE(eng);
+    add_node_as("alpha", fresh_key());
+
+    const crypto::hash id = m_node_id["alpha"];
+    const uint64_t height = mevatrust::consensus::UPTIME_WINDOW_BLOCKS;   // 43200, multiplo del periodo
+
+    // Uptime sufficiente: cinque campioni a 12h l'uno dall'altro = due giorni
+    // accreditati, cioe' il minimo per essere eleggibile. Senza la Fase 2 questo
+    // nodo verrebbe pagato.
+    uint64_t ts = 100000;
+    for (int i = 0; i < 5; ++i)
+        ASSERT_TRUE(eng->record_chain_uptime_sample(id, 1000 + i * 10, ts + i * 43200));
+
+    auto standing = eng->compute_uptime_standing(id, height);
+    ASSERT_TRUE(standing.eligible) << "scenario mal costruito: il nodo non ha uptime a sufficienza";
+
+    // Con HF18 e nessuna prova di possesso dati: non eleggibile, nessun pagamento.
+    std::vector<MevaTrustManager::expected_payout> out;
+    std::string err;
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, 18, out, err))
+        << "ricalcolo fallito: " << err;
+    EXPECT_TRUE(out.empty())
+        << "un nodo senza prova di possesso dati e' stato pagato sotto HF18";
+
+    // Con la prova recente: torna eleggibile e viene pagato.
+    ASSERT_TRUE(eng->record_chain_proof_sample(id, height - 100, height - 600));
+    ASSERT_TRUE(m_manager->compute_expected_payouts(height, kBlockReward, 18, out, err))
+        << "ricalcolo fallito: " << err;
+    EXPECT_FALSE(out.empty())
+        << "un nodo con prova di possesso dati valida non e' stato pagato sotto HF18";
 }
 
 } // namespace

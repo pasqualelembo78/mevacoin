@@ -144,6 +144,17 @@ public:
     bool eligible{false};          ///< days >= soglia
   };
 
+  /// Una prova di possesso dati accettata dalla catena (Anti-Sybil Fase 2, tag 0xAC).
+  ///
+  /// height e' l'altezza del BLOCCO che contiene la prova (per la finestra di
+  /// decadimento), target_height e' l'altezza del blocco che il nodo ha attestato.
+  /// Non serve conservare l'hash: se la prova e' stata accettata, l'hash era gia'
+  /// stato verificato contro la catena al momento dell'inserimento.
+  struct ChainProofSample {
+    uint64_t height{0};
+    uint64_t target_height{0};
+  };
+
   /// Registra una prova di presenza. Idempotente per altezza: due 0xA5 dello stesso nodo
   /// nello stesso blocco valgono un campione solo, altrimenti un nodo che infila piu'
   /// firme in un blocco — cosa che puo' fare finche' i suoi 0xA5 ci stanno — guadagnerebbe
@@ -173,6 +184,30 @@ public:
 
   /// Svuota i campioni. Serve al rebuild, che deve ripartire da zero come fa col registry.
   void clear_chain_uptime_samples();
+
+  // ========================================================================
+  // CHAIN PROOF SAMPLES (Anti-Sybil Fase 2, tag 0xAC)
+  // ========================================================================
+
+  /// Registra una prova accettata. Idempotente per altezza, come l'uptime: due
+  /// 0xAC dello stesso nodo nello stesso blocco valgono un campione solo.
+  bool record_chain_proof_sample(
+    const crypto::hash& node_id,
+    uint64_t height,
+    uint64_t target_height
+  );
+
+  /// Il nodo ha una prova registrata dentro CHAIN_PROOF_VALIDITY_BLOCKS prima di
+  /// 'height'? E' il gate di eleggibilita' della Fase 2: senza una prova recente,
+  /// il nodo non e' eleggibile a prescindere dall'uptime.
+  bool has_recent_chain_proof(const crypto::hash& node_id, uint64_t height) const;
+
+  /// Ci sono prove salvate? Al boot distingue "nessuna prova perche' nessuno l'ha
+  /// mai fatta" da "archivio vuoto su catena lunga", che va ricostruito.
+  bool has_chain_proof_samples() const;
+
+  /// Svuota i campioni. Come per l'uptime, e' il rebuild a doverlo fare.
+  void clear_chain_proof_samples();
 
   float get_sync_percentage(
     const crypto::hash& node_id,
@@ -291,6 +326,10 @@ private:
   // Prove di presenza derivate dalla catena, per la regola 3% v3. Tenute separate da
   // uptime_history_ per non perturbare il percorso pre-v17: vedi compute_uptime_standing().
   std::map<std::string, std::vector<ChainUptimeSample>> chain_uptime_samples_;
+
+  // Prove di possesso dati (0xAC), Anti-Sybil Fase 2. Struttura gemella di
+  // chain_uptime_samples_: stessa finestra, stesso decadimento, stesso rebuild.
+  std::map<std::string, std::vector<ChainProofSample>> chain_proof_samples_;
 
   mutable std::recursive_mutex cache_lock_;
 

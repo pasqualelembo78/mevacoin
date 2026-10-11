@@ -37,6 +37,11 @@ bool verify_uptime_signature(const tx_extra_mevatrust_uptime& u);
 bool parse_mevatrust_challenge_from_tx(const transaction& tx, tx_extra_mevatrust_challenge& out);
 bool verify_challenge_signatures(const tx_extra_mevatrust_challenge& c);
 
+// ── Tag 0xAC: Chain Proof (Anti-Sybil Fase 2) ──────────────────────────────
+bool parse_mevatrust_chain_proof_from_tx(const transaction& tx, tx_extra_mevatrust_chain_proof& out);
+bool build_mevatrust_chain_proof_extra(const tx_extra_mevatrust_chain_proof& cp, std::vector<uint8_t>& extra);
+bool verify_chain_proof_signature(const tx_extra_mevatrust_chain_proof& cp);
+
 // ── Tag 0xA7: State Root ───────────────────────────────────────────────────
 bool parse_mevatrust_state_root_from_tx(const transaction& tx, tx_extra_mevatrust_state_root& out);
 bool build_mevatrust_state_root_extra(const tx_extra_mevatrust_state_root& sr, std::vector<uint8_t>& extra);
@@ -176,6 +181,32 @@ inline crypto::hash challenge_message_hash(const tx_extra_mevatrust_challenge& c
     m.append(reinterpret_cast<const char*>(&c.height), sizeof(c.height));
     return crypto::cn_fast_hash(m.data(), m.size());
 }
+
+// ── Tag 0xAC: Chain Proof helpers (Anti-Sybil Fase 2) ──────────────────────
+//
+// Dominio separato: senza, un blob 0xA5 e un 0xAC firmati dallo stesso nodo
+// potrebbero collidere se i campi combaciassero per costruzione. Il dominio e'
+// parte dell'hash, quindi la firma vale solo per una prova di catena.
+inline crypto::hash chain_proof_message_hash(const tx_extra_mevatrust_chain_proof& cp) {
+    std::string m;
+    static const char domain[] = "mevatrust.chainproof.v1";
+    m.append(domain, sizeof(domain) - 1);
+    m.append(reinterpret_cast<const char*>(cp.node_id.data), sizeof(cp.node_id.data));
+    m.append(reinterpret_cast<const char*>(&cp.anchor_height), sizeof(cp.anchor_height));
+    m.append(reinterpret_cast<const char*>(&cp.proof_height), sizeof(cp.proof_height));
+    m.append(reinterpret_cast<const char*>(cp.block_hash.data), sizeof(cp.block_hash.data));
+    return crypto::cn_fast_hash(m.data(), m.size());
+}
+
+/// Altezza bersaglio derivata deterministicamente da (node_id, anchor_height).
+///
+/// Il nodo non sceglie QUALE blocco attestare: e' l'hash di (node_id || anchor) a
+/// sceglierlo, sottraendo una profondita' minima piu' un offset nell'intervallo
+/// [0, SPAN). Cosi' la risposta non e' precomputabile prima di fissare l'anchor,
+/// e tutti i validatori ricalcolano la stessa altezza dal solo node_id e dall'anchor
+/// dichiarato e firmato. Ritorna false se l'anchor e' troppo in basso per garantire
+/// una profondita' minima (catena troppo corta).
+bool chain_proof_target(const crypto::hash& node_id, uint64_t anchor_height, uint64_t& target_out);
 inline crypto::hash validator_message_hash(const crypto::hash& node_id, const crypto::public_key& wallet_pubkey) {
     std::string m;
     m.append(reinterpret_cast<const char*>(node_id.data), sizeof(node_id.data));

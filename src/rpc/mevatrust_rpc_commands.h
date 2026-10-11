@@ -549,6 +549,33 @@ struct COMMAND_RPC_COMMIT_UPTIME {
   typedef epee::misc_utils::struct_init<response_t> response;
 };
 
+// ── Chain Proof (0xAC, Anti-Sybil Fase 2) ──────────────────────────────────────
+//
+// Come commit_uptime, ma attesta il possesso dei dati della catena: il daemon
+// sceglie l'anchor (l'ultimo blocco che ha), deriva l'altezza bersaglio dal proprio
+// node_id, legge il blocco da disco e ne firma l'hash. Il wallet riceve il blob
+// firmato e lo mette in una transazione. Il richiedente non manda niente: node_id,
+// anchor e risposta li decide il daemon, cosi' un nodo non puo' fabbricare una
+// prova per un altro.
+struct COMMAND_RPC_COMMIT_CHAIN_PROOF {
+  struct request_t {
+    BEGIN_KV_SERIALIZE_MAP() END_KV_SERIALIZE_MAP() };
+  typedef epee::misc_utils::struct_init<request_t> request;
+  struct response_t {
+    bool        ok{false};
+    std::string extra_hex;       // blob 0xAC pronto da mettere in tx_extra
+    std::string node_id;         // hex, per il messaggio all'operatore
+    uint64_t    anchor_height{0};
+    uint64_t    proof_height{0}; // altezza bersaglio effettivamente attestata
+    std::string status;
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(ok) KV_SERIALIZE(extra_hex) KV_SERIALIZE(node_id)
+      KV_SERIALIZE(anchor_height) KV_SERIALIZE(proof_height) KV_SERIALIZE(status)
+    END_KV_SERIALIZE_MAP()
+  };
+  typedef epee::misc_utils::struct_init<response_t> response;
+};
+
 // ── Pool Distribution History ──────────────────────────────────────────────────
 struct COMMAND_RPC_GET_POOL_DISTRIBUTION_HISTORY {
   struct request_t { uint32_t limit{50};

@@ -113,6 +113,53 @@ constexpr uint64_t UPTIME_WINDOW_BLOCKS = 43200;
 /// presenza e abbastanza rare da non affollare la mempool.
 constexpr uint64_t MAX_UPTIME_CREDIT_GAP_SECONDS = 12 * 60 * 60;
 
+// ════════════════════════════════════════════════════════════════════════════
+// Anti-Sybil Fase 2 — la prova di possesso dei dati della catena
+// ════════════════════════════════════════════════════════════════════════════
+//
+// La regola 3% paga i nodi eleggibili. Essere eleggibili finora richiedeva solo
+// di registrarsi on-chain (0xA0) e di firmare uptime (0xA5). Niente in quella
+// catena di eventi obbliga chi firma a POSSIEDERE la catena: uno script senza
+// dati puo' firmare 0xA5 per mille node_id diversi e incassare mille quote,
+// perche' una firma non costa nulla.
+//
+// La Fase 2 aggiunge una condizione: per essere eleggibile, un nodo deve aver
+// dimostrato di saper rispondere, nel recente passato, a una domanda su un
+// blocco passato. La domanda non e' scelta dal nodo: l'altezza bersaglio e'
+// derivata da (node_id, anchor_height) con chain_proof_target(), con una
+// profondita' minima che impedisce di rispondere senza avere il blocco. Un
+// nodo vero risponde in un accesso; un firmatario senza catena deve procurarsi
+// il blocco, cioe' diventare (o agganciarsi a) un nodo che ce l'ha.
+//
+// Limite dichiarato: questo NON ferma un singolo nodo vero che apre molte
+// identita' — quel nodo la catena ce l'ha e risponde per tutte. Quello lo
+// affronta la Fase 3 (bond economico). La Fase 2 alza il costo di chi non ha
+// alcun nodo, che e' il caso piu' economico da attaccare.
+
+/// Profondita' minima della domanda, in blocchi. Il bersaglio sta sempre almeno
+/// 100 blocchi indietro rispetto all'anchor: abbastanza perche' un nodo appena
+/// partito non possa rispondere con l'ultimo blocco, ma dentro la storia che
+/// ogni nodo sincronizzato conserva.
+constexpr uint64_t CHAIN_PROOF_MIN_DEPTH = 100;
+
+/// Ampiezza dell'offset casuale-deterministico, in blocchi. Il bersaglio e' a
+/// MIN_DEPTH + (hash % SPAN) blocchi indietro: entro ~1000 blocchi di profondita'
+/// (~2.7 giorni a 4 minuti/blocco) la risposta non e' precomputabile e resta
+/// nella parte di catena che nessun nodo pota.
+constexpr uint64_t CHAIN_PROOF_SPAN = 1000;
+
+/// Ritardo massimo fra l'anchor dichiarato e il blocco che contiene la prova.
+/// Oltre, la prova e' stantia: impedisce di rigiocare all'infinito una risposta
+/// calcolata una volta sola. Un'ora di blocchi (60 a 4 minuti) da' margine per
+/// la mempool senza lasciare finestre larghe per il replay.
+constexpr uint64_t CHAIN_PROOF_MAX_ANCHOR_LAG = 60;
+
+/// Finestra entro cui una prova deve essere stata registrata perche' il nodo
+/// resti eleggibile. Riusa UPTIME_WINDOW_BLOCKS: se un nodo smette di produrre
+/// prove, perde l'eleggibilita' con lo stesso orizzonte con cui perde l'uptime,
+/// cosi' non esistono due orologi di decadimento diversi da riconciliare.
+constexpr uint64_t CHAIN_PROOF_VALIDITY_BLOCKS = UPTIME_WINDOW_BLOCKS;
+
 } // namespace consensus
 } // namespace mevatrust
 } // namespace cryptonote

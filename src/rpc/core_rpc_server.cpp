@@ -5355,6 +5355,66 @@ bool core_rpc_server::on_commit_uptime(const cryptonote::rpc::COMMAND_RPC_COMMIT
   return true;
 }
 
+// -- commit_chain_proof (0xAC) -------------------------------------------------
+//
+// La prova di possesso dati della Fase 2. A differenza di commit_uptime, il
+// richiedente non manda nemmeno i suoi numeri: l'anchor e' l'ultimo blocco che il
+// daemon ha, il node_id e' quello registrato per la chiave di questo nodo, e la
+// risposta la legge il daemon dai propri dati. Se la catena e' piu' corta della
+// profondita' minima richiesta, la funzione fallisce con un motivo chiaro invece
+// di produrre una prova non verificabile.
+bool core_rpc_server::on_commit_chain_proof(const cryptonote::rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::request& /*req*/,
+                                            cryptonote::rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::response& res,
+                                            epee::json_rpc::error& /*error_resp*/, const connection_context*)
+{
+  auto* pm = cryptonote::mevatrust::get_manager();
+  if (!pm || !pm->is_initialized()) {
+    res.status = "MevaTrust non inizializzato";
+    return true;
+  }
+  if (!pm->has_node_key()) {
+    res.status = "Node key not loaded";
+    return true;
+  }
+
+  crypto::hash node_id{};
+  if (!cryptonote::mevatrust::get_my_node_id(node_id)) {
+    res.status = "node_id non disponibile (nodo non registrato?)";
+    return true;
+  }
+
+  // Anchor = ultimo blocco effettivamente in catena. get_current_blockchain_height()
+  // conta i blocchi, quindi l'ultimo indice valido e' height-1.
+  const uint64_t chain_height = m_core.get_current_blockchain_height();
+  if (chain_height == 0) {
+    res.status = "catena vuota";
+    return true;
+  }
+  const uint64_t anchor_height = chain_height - 1;
+
+  std::vector<uint8_t> extra;
+  std::string err;
+  uint64_t proof_height = 0;
+  if (!pm->build_signed_chain_proof_for(node_id, anchor_height, extra, err, proof_height)) {
+    res.ok     = false;
+    res.status = err;
+    return true;
+  }
+  if (extra.empty()) {
+    res.ok     = false;
+    res.status = "chain proof vuota: non inviare una transazione vuota";
+    return true;
+  }
+
+  res.ok            = true;
+  res.extra_hex     = epee::to_hex::string(epee::to_span(extra));
+  res.node_id       = epee::string_tools::pod_to_hex(node_id);
+  res.anchor_height = anchor_height;
+  res.proof_height  = proof_height;
+  res.status        = CORE_RPC_STATUS_OK;
+  return true;
+}
+
 // ── Store RPC handlers ─────────────────────────────────────────────────────
 bool core_rpc_server::on_store_list(
     const rpc::COMMAND_RPC_STORE_LIST::request& req,

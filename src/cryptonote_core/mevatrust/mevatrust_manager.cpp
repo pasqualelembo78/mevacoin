@@ -1104,6 +1104,76 @@ void MevaTrustManager::process_mevatrust_txs(
                 m_reorg_log[height].push_back(po);
             }
         }
+        // Tag 0xAC ? Chain proof (Anti-Sybil Fase 2)
+        {
+            tx_extra_mevatrust_chain_proof cp;
+            if (mevatrust::parse_mevatrust_chain_proof_from_tx(tx, cp)) {
+                // Sotto la HF anti-sybil la prova non esiste come concetto di consenso:
+                // ignorarla e' cio' che rende i blocchi pre-fork replayabili identici.
+                if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL) {
+                    if (!mevatrust::verify_chain_proof_signature(cp)) {
+                        MWARNING("[MevaTrustManager] Chain proof sig INVALIDA");
+                        continue;
+                    }
+                    if (!m_node_registry) { MWARNING("[MevaTrustManager] NodeRegistry non inizializzato"); continue; }
+                    // Binding a registrazione (stessa Fase 1): la chiave che firma deve
+                    // essere quella registrata on-chain per QUEL node_id. Senza, si
+                    // firmano prove per node_id inventati.
+                    NodeRegistryEntry cpe{};
+                    if (!m_node_registry->get_node_by_id(cp.node_id, cpe) ||
+                        !cpe.registered_onchain ||
+                        memcmp(&cpe.node_pubkey, &cp.node_pubkey, sizeof(cp.node_pubkey)) != 0) {
+                        MWARNING("[MevaTrustManager] Fase 2: chain proof per node_id non registrato "
+                                 "o node_pubkey non corrispondente, skip. node="
+                                 << epee::string_tools::pod_to_hex(cp.node_id));
+                        continue;
+                    }
+                    // L'anchor deve essere recente rispetto al blocco che contiene la prova:
+                    // oltre, la prova e' stantia e rigiocabile.
+                    if (cp.anchor_height > height ||
+                        height - cp.anchor_height > mevatrust::consensus::CHAIN_PROOF_MAX_ANCHOR_LAG) {
+                        MWARNING("[MevaTrustManager] Fase 2: chain proof anchor stantio o nel futuro "
+                                 "anchor=" << cp.anchor_height << " h=" << height);
+                        continue;
+                    }
+                    // Ricalcola l'altezza bersaglio dal node_id e dall'anchor firmati:
+                    // deve combaciare con quella dichiarata. Il nodo non sceglie il blocco.
+                    uint64_t expected_target = 0;
+                    if (!mevatrust::chain_proof_target(cp.node_id, cp.anchor_height, expected_target) ||
+                        cp.proof_height != expected_target) {
+                        MWARNING("[MevaTrustManager] Fase 2: chain proof proof_height non deriva "
+                                 "(anchor, node_id). proof_height=" << cp.proof_height
+                                 << " expected=" << expected_target);
+                        continue;
+                    }
+                    // La risposta: l'hash del blocco all'altezza bersaglio deve essere
+                    // quello vero. Qui sta la prova di possesso dati: senza il blocco non
+                    // si risponde. Senza get_block_func non si puo' verificare, quindi non
+                    // si registra nulla (nessuno diventa eleggibile per errore).
+                    if (!m_get_block_func) {
+                        MWARNING("[MevaTrustManager] Fase 2: get_block_func non wired, chain proof non verificabile");
+                        continue;
+                    }
+                    block target_blk{};
+                    if (!m_get_block_func(cp.proof_height, target_blk)) {
+                        MWARNING("[MevaTrustManager] Fase 2: blocco bersaglio non disponibile h=" << cp.proof_height);
+                        continue;
+                    }
+                    if (cryptonote::get_block_hash(target_blk) != cp.block_hash) {
+                        MWARNING("[MevaTrustManager] Fase 2: chain proof attesta un hash diverso dal blocco "
+                                 "h=" << cp.proof_height << " node=" << epee::string_tools::pod_to_hex(cp.node_id));
+                        continue;
+                    }
+                    if (m_mevatrust_engine)
+                        m_mevatrust_engine->record_chain_proof_sample(cp.node_id, height, cp.proof_height);
+                    MINFO("[MevaTrustManager] Chain proof accettata h=" << height
+                          << " node=" << epee::string_tools::pod_to_hex(cp.node_id)
+                          << " target=" << cp.proof_height);
+                    PoppedOp po; po.op = PoppedOp::CHAIN_PROOF; po.node_id = cp.node_id;
+                    m_reorg_log[height].push_back(po);
+                }
+            }
+        }
         // Tag 0xA7 ? State root verification (fork detection)
         {
             tx_extra_mevatrust_state_root sr;
@@ -1399,6 +1469,10 @@ void MevaTrustManager::rebuild_uptime_samples_from_chain(
   // Solo i campioni: il registry resta com'e'. Azzerare tutto e' cio' che fa
   // rebuild_registry_from_chain(), ed e' sbagliato qui.
   m_mevatrust_engine->clear_chain_uptime_samples();
+  // Anche le prove di catena (Fase 2) sono una funzione pura della catena e vanno
+  // ricostruite dallo stesso giro: se restassero vuote, un nodo risincronizzato non
+  // pagherebbe nessuno e divergerebbe dagli altri al primo confine.
+  m_mevatrust_engine->clear_chain_proof_samples();
 
   for (uint64_t h = start_height; h <= end_height; ++h) {
     block bl;
@@ -1406,7 +1480,11 @@ void MevaTrustManager::rebuild_uptime_samples_from_chain(
       MWARNING("[MevaTrustManager] rebuild uptime: blocco non trovato h=" << h);
       continue;
     }
-    process_mevatrust_txs(bl, h);
+    // bl.major_version, non il default: le regole di consenso (binding Fase 1, gate
+    // Fase 2) dipendono dalla HF del blocco. Rebuild e processing live devono
+    // applicare la stessa regola, o l'archivio ricostruito conterrebbe campioni che
+    // il nodo live non avrebbe mai accettato.
+    process_mevatrust_txs(bl, h, bl.major_version);
   }
 
   m_mevatrust_engine->save_to_disk();
@@ -1622,6 +1700,7 @@ void MevaTrustManager::on_mevatrust_block_popped(const block& bl, uint64_t heigh
                     m_node_registry->update_node_status(po.node_id, NodeStatus::ACTIVE);
                 break;
             case PoppedOp::UPTIME:
+            case PoppedOp::CHAIN_PROOF:
             case PoppedOp::CHALLENGE:
             case PoppedOp::STORE:
             case PoppedOp::CIRCLE_PROPOSE:
@@ -1771,6 +1850,10 @@ bool MevaTrustManager::has_chain_uptime_samples() const {
   return m_mevatrust_engine && m_mevatrust_engine->has_chain_uptime_samples();
 }
 
+bool MevaTrustManager::has_chain_proof_samples() const {
+  return m_mevatrust_engine && m_mevatrust_engine->has_chain_proof_samples();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // compute_uptime_payouts_v3 — la regola del 3% come l'hai descritta
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1802,7 +1885,7 @@ bool MevaTrustManager::has_chain_uptime_samples() const {
 //    nessuno. E un miner non deve essere punito perche' la rete non ha ancora nodi
 //    sufficienti, non essercene e' una colpa sua.
 bool MevaTrustManager::compute_uptime_payouts_v3(
-  uint64_t height, uint64_t total_block_reward, uint64_t budget,
+  uint64_t height, uint64_t total_block_reward, uint64_t budget, uint8_t hf_version,
   const std::vector<PendingCoinbaseOutput> &welcome,
   std::vector<expected_payout> &out_payouts, std::string &error_msg) const
 {
@@ -1821,10 +1904,21 @@ bool MevaTrustManager::compute_uptime_payouts_v3(
   // nel blocco una lista che nessun altro ricostruisce.
   std::vector<std::pair<MevaTrustEngine::UptimeStanding, NodeRegistryEntry>> eligible;
   double total_weight = 0.0;
+  const bool require_chain_proof = (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL);
   for (const auto& entry : m_node_registry->get_eligible_nodes()) {
     const auto standing = m_mevatrust_engine->compute_uptime_standing(entry.node_id, height);
     if (!standing.eligible || standing.weight <= 0.0)
       continue;
+
+    // Anti-Sybil Fase 2 (HF18): oltre all'uptime serve una prova recente di possesso
+    // dati (0xAC). Un nodo che non ha mai risposto a una domanda sulla catena non e'
+    // eleggibile, anche se ha accumulato uptime: e' il caso dello script che firma
+    // 0xA5 senza avere i blocchi. Sotto la HF la condizione non esiste, cosi' i
+    // blocchi pre-fork restano identici a quelli gia' prodotti.
+    if (require_chain_proof &&
+        !m_mevatrust_engine->has_recent_chain_proof(entry.node_id, height))
+      continue;
+
     total_weight += standing.weight;
     eligible.emplace_back(standing, entry);
   }
@@ -2004,7 +2098,7 @@ const uint64_t budget = total_block_reward * mevatrust::consensus::NODE_REWARD_P
   // funzione a se' perche' il percorso antico contino a produrre esattamente il
   // risultato che ha prodotto finora, o quei blocchi diventerebbero invalidi al replay.
   if (hf_version >= HF_VERSION_MEVATRUST_UPTIME_V3)
-    return compute_uptime_payouts_v3(height, total_block_reward, budget, welcome, out_payouts, error_msg);
+    return compute_uptime_payouts_v3(height, total_block_reward, budget, hf_version, welcome, out_payouts, error_msg);
 
   const float min_score = m_reward_distributor->min_score_for_reward();
 
@@ -2213,6 +2307,71 @@ bool MevaTrustManager::build_signed_uptime_commitment_for(const crypto::hash& no
         err = "could not serialise the 0xA5 blob";
         return false;
     }
+    return true;
+}
+
+bool MevaTrustManager::build_signed_chain_proof_for(const crypto::hash& node_id,
+                                                    uint64_t anchor_height,
+                                                    std::vector<uint8_t>& extra_out,
+                                                    std::string& err,
+                                                    uint64_t& proof_height_out)
+{
+    extra_out.clear();
+    proof_height_out = 0;
+
+    crypto::secret_key   sk{};
+    crypto::public_key   pk{};
+    {
+        std::lock_guard<std::mutex> lk(m_lock);
+        if (!m_node_key_set) { err = "this node has no signing key loaded"; return false; }
+        sk = m_node_sk;
+        pk = m_node_pk;
+    }
+
+    // Il bersaglio non lo sceglie il chiamante: si deriva. Se l'anchor e' troppo
+    // basso (catena piu' corta della profondita' minima piu' lo span) non esiste
+    // una domanda legittima, e inventare un bersaglio piu' basso vanificherebbe il
+    // requisito di profondita'.
+    uint64_t target = 0;
+    if (!mevatrust::chain_proof_target(node_id, anchor_height, target)) {
+        err = "chain too short for a chain proof (anchor below MIN_DEPTH+SPAN)";
+        return false;
+    }
+
+    // Recupera il blocco bersaglio dai dati locali. E' qui che la prova diventa
+    // "possesso dati": non si risponde con una formula, si legge il blocco.
+    if (!m_get_block_func) {
+        err = "this node has no block source wired";
+        return false;
+    }
+    block target_blk{};
+    if (!m_get_block_func(target, target_blk)) {
+        err = "target block not available locally for chain proof";
+        return false;
+    }
+
+    tx_extra_mevatrust_chain_proof cp{};
+    cp.node_id       = node_id;
+    cp.node_pubkey   = pk;
+    cp.anchor_height = anchor_height;
+    cp.proof_height  = target;
+    cp.block_hash    = cryptonote::get_block_hash(target_blk);
+
+    crypto::generate_signature(mevatrust::chain_proof_message_hash(cp), pk, sk, cp.signature);
+
+    // Come per l'uptime: firma riletta prima di consegnare il blob. Se non
+    // verificasse, il consumatore 0xAC lo scarterebbe e l'utente vedrebbe un invio
+    // riuscito senza che nulla sia stato registrato.
+    if (!mevatrust::verify_chain_proof_signature(cp)) {
+        err = "the chain proof I just signed does not verify";
+        return false;
+    }
+
+    if (!mevatrust::build_mevatrust_chain_proof_extra(cp, extra_out)) {
+        err = "could not serialise the 0xAC blob";
+        return false;
+    }
+    proof_height_out = target;
     return true;
 }
 

@@ -191,6 +191,60 @@ void MevaTrustEngine::clear_chain_uptime_samples() {
     chain_uptime_samples_.clear();
 }
 
+// ── Chain proof samples (Anti-Sybil Fase 2, tag 0xAC) ──────────────────────
+
+bool MevaTrustEngine::record_chain_proof_sample(
+    const crypto::hash& node_id,
+    uint64_t height,
+    uint64_t target_height)
+{
+    using mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    auto& v = chain_proof_samples_[hk(node_id)];
+
+    // Idempotente per altezza, come l'uptime: piu' 0xAC dello stesso nodo nello
+    // stesso blocco sono un campione solo. E come l'uptime, i blocchi arrivano in
+    // ordine crescente: un'altezza non maggiore dell'ultima (reorg) non si inserisce,
+    // per non rompere l'ordinamento su cui si regge la finestra.
+    if (!v.empty() && height <= v.back().height)
+        return false;
+
+    v.push_back(ChainProofSample{height, target_height});
+
+    // Potatura simmetrica a quella dell'uptime: la finestra non guarda oltre
+    // CHAIN_PROOF_VALIDITY_BLOCKS, quindi i campioni piu' vecchi non possono
+    // influenzare nessuna eleggibilita' futura.
+    const uint64_t window = CHAIN_PROOF_VALIDITY_BLOCKS;
+    while (!v.empty() && height >= window && v.front().height + window <= height)
+        v.erase(v.begin());
+    return true;
+}
+
+bool MevaTrustEngine::has_recent_chain_proof(const crypto::hash& node_id, uint64_t height) const {
+    using mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS;
+    if (height < CHAIN_PROOF_VALIDITY_BLOCKS)
+        return false;
+    const uint64_t window_start = height - CHAIN_PROOF_VALIDITY_BLOCKS;
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    auto it = chain_proof_samples_.find(hk(node_id));
+    if (it == chain_proof_samples_.end() || it->second.empty())
+        return false;
+    // La finestra guarda anche oltre height (difensivo sui reorg): conta se l'ultimo
+    // campione e' dentro la finestra. I campioni sono ordinati, quindi il piu' recente
+    // e' l'ultimo.
+    return it->second.back().height >= window_start;
+}
+
+bool MevaTrustEngine::has_chain_proof_samples() const {
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    return !chain_proof_samples_.empty();
+}
+
+void MevaTrustEngine::clear_chain_proof_samples() {
+    std::lock_guard<std::recursive_mutex> lock(cache_lock_);
+    chain_proof_samples_.clear();
+}
+
 MevaTrustEngine::UptimeStanding MevaTrustEngine::compute_uptime_standing(    const crypto::hash& node_id,
     uint64_t height) const
 {
@@ -469,6 +523,25 @@ bool MevaTrustEngine::save_to_disk() const {
                 }
             }
         }
+        // Save chain_proof_samples_ (Anti-Sybil Fase 2)
+        //
+        // File separato per la stessa ragione di chain_uptime.dat: non tocca il
+        // formato di un file che un binario precedente si aspetta di leggere.
+        {
+            std::string path = db_path_ + "/chain_proof.dat";
+            std::ofstream f(path, std::ios::binary | std::ios::trunc);
+            if (!f) { MERROR("save_to_disk: cannot open " << path); return false; }
+            write_u32(f, static_cast<uint32_t>(chain_proof_samples_.size()));
+            for (const auto& [key, samples] : chain_proof_samples_) {
+                write_u8(f, static_cast<uint8_t>(key.size()));
+                f.write(key.data(), key.size());
+                write_u32(f, static_cast<uint32_t>(samples.size()));
+                for (const auto& s : samples) {
+                    write_u64(f, s.height);
+                    write_u64(f, s.target_height);
+                }
+            }
+        }
         // Save score_cache_
         {
             std::string path = db_path_ + "/scores.dat";
@@ -566,6 +639,42 @@ bool MevaTrustEngine::load_from_disk() {
                         return false;
                     }
                     chain_uptime_samples_[key] = std::move(samples);
+                }
+            }
+        }
+        // Load chain_proof_samples_ (Anti-Sybil Fase 2)
+        {
+            std::string path = db_path_ + "/chain_proof.dat";
+            std::ifstream f(path, std::ios::binary);
+            if (!f) { MDEBUG("load_from_disk: no chain_proof.dat, clean start"); }
+            else {
+                chain_proof_samples_.clear();
+                uint32_t count = read_u32(f);
+                if (count > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint8_t klen = read_u8(f);
+                    std::string key(klen, '\0');
+                    f.read(key.data(), klen);
+                    uint32_t n = read_u32(f);
+                    if (n > kMaxDiskEntryCount) { f.setstate(std::ios::failbit); return false; }
+                    std::vector<ChainProofSample> samples;
+                    samples.reserve(n);
+                    for (uint32_t j = 0; j < n; ++j) {
+                        ChainProofSample s;
+                        s.height        = read_u64(f);
+                        s.target_height = read_u64(f);
+                        samples.push_back(s);
+                    }
+                    if (!std::is_sorted(samples.begin(), samples.end(),
+                                        [](const ChainProofSample& a, const ChainProofSample& b) {
+                                            return a.height < b.height;
+                                        })) {
+                        MERROR("load_from_disk: chain_proof.dat non ordinato per altezza, scarto");
+                        chain_proof_samples_.clear();
+                        f.setstate(std::ios::failbit);
+                        return false;
+                    }
+                    chain_proof_samples_[key] = std::move(samples);
                 }
             }
         }

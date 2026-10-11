@@ -779,12 +779,23 @@ namespace cryptonote
             auto* pm_up = cryptonote::mevatrust::get_manager();
             const uint64_t chain_h2 =
               m_blockchain_storage.get_current_blockchain_height();
-            if (pm_up && !pm_up->has_chain_uptime_samples()
+            // Due motivi per ricostruire, e la stessa procedura: campioni di uptime
+            // assenti (regola v3 non alimentata), oppure prove di catena assenti su
+            // una catena che ha gia' superato la HF anti-sybil (Fase 2) — caso di un
+            // nodo che ha girato prima della HF e riparte dopo, o ripristinato da un
+            // datadir antecedente. In entrambi i casi le quote uscirebbero diverse
+            // da quelle degli altri, quindi si ricostruisce prima di calcolare.
+            const uint8_t boot_hf = m_blockchain_storage.get_current_hard_fork_version();
+            const bool need_uptime_rebuild = pm_up && !pm_up->has_chain_uptime_samples();
+            const bool need_proof_rebuild  = pm_up && boot_hf >= HF_VERSION_MEVATRUST_ANTISYBIL
+                                             && !pm_up->has_chain_proof_samples();
+            if (pm_up && (need_uptime_rebuild || need_proof_rebuild)
                 && chain_h2 > 0
-                && m_blockchain_storage.get_current_hard_fork_version()
-                     >= HF_VERSION_MEVATRUST_UPTIME_V3)
+                && boot_hf >= HF_VERSION_MEVATRUST_UPTIME_V3)
             {
-              MINFO("Campioni uptime assenti post-boot (catena h=" << chain_h2
+              MINFO("Campioni MevaTrust assenti post-boot (catena h=" << chain_h2
+                    << ", uptime_missing=" << need_uptime_rebuild
+                    << ", proof_missing=" << need_proof_rebuild
                     << "): rebuild_uptime_samples_from_chain 0.." << chain_h2);
               pm_up->rebuild_uptime_samples_from_chain(0, chain_h2);
             }

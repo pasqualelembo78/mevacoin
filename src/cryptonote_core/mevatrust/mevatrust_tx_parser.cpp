@@ -1,9 +1,11 @@
 // Copyright (c) 2024, The Mevacoin Project
 // mevatrust_tx_parser.cpp — FASE 2
 #include "mevatrust_tx_parser.h"
+#include "mevatrust_consensus.h"
 #include "serialization/binary_utils.h"
 #include "crypto/crypto.h"
 #include "misc_log_ex.h"
+#include <cstring>
 
 #undef MEVACOIN_DEFAULT_LOG_CATEGORY
 #define MEVACOIN_DEFAULT_LOG_CATEGORY "mevatrust.parser"
@@ -27,7 +29,8 @@ static bool find_mevatrust_tag(const std::vector<uint8_t>& extra, uint8_t target
             tag == TX_EXTRA_TAG_MEVATRUST_STORE        ||
             tag == TX_EXTRA_TAG_MEVATRUST_CIRCLE_VOTE ||
             tag == TX_EXTRA_TAG_MEVATRUST_POOL_DISTRIBUTION ||
-            tag == TX_EXTRA_TAG_MEVATRUST_VALIDATOR) {
+            tag == TX_EXTRA_TAG_MEVATRUST_VALIDATOR ||
+            tag == TX_EXTRA_TAG_MEVATRUST_CHAIN_PROOF) {
             if (i + 2 > n) return false;
             uint16_t len = static_cast<uint16_t>(extra[i]) | (static_cast<uint16_t>(extra[i+1]) << 8);
             i += 2;
@@ -137,6 +140,37 @@ bool verify_challenge_signatures(const tx_extra_mevatrust_challenge& c) {
         if (!crypto::check_signature(h, c.challenged_pubkey, c.challenged_sig)) return false;
         return true;
     } catch (const std::exception& e) { MWARNING("mevatrust: verify_challenge_signatures failed: " << e.what()); return false; }
+}
+
+// ── Tag 0xAC: Chain Proof (Anti-Sybil Fase 2) ──────────────────────────────
+bool chain_proof_target(const crypto::hash& node_id, uint64_t anchor_height, uint64_t& target_out) {
+    using namespace cryptonote::mevatrust::consensus;
+    // Sotto questa soglia non esiste un bersaglio a profondita' minima: la catena
+    // e' troppo corta perche' la domanda abbia senso, e accettare una prova qui
+    // vorrebbe dire ammettere risposte senza profondita'.
+    if (anchor_height < CHAIN_PROOF_MIN_DEPTH + CHAIN_PROOF_SPAN)
+        return false;
+    std::string m;
+    m.append(reinterpret_cast<const char*>(node_id.data), sizeof(node_id.data));
+    m.append(reinterpret_cast<const char*>(&anchor_height), sizeof(anchor_height));
+    const crypto::hash h = crypto::cn_fast_hash(m.data(), m.size());
+    uint64_t r = 0;
+    static_assert(sizeof(r) <= sizeof(h.data), "hash too small");
+    std::memcpy(&r, h.data, sizeof(r));
+    target_out = anchor_height - CHAIN_PROOF_MIN_DEPTH - (r % CHAIN_PROOF_SPAN);
+    return true;
+}
+
+bool parse_mevatrust_chain_proof_from_tx(const transaction& tx, tx_extra_mevatrust_chain_proof& out) {
+    return parse_tagged(tx, TX_EXTRA_TAG_MEVATRUST_CHAIN_PROOF, "chain_proof", out);
+}
+bool build_mevatrust_chain_proof_extra(const tx_extra_mevatrust_chain_proof& cp, std::vector<uint8_t>& o) {
+    std::string b; tx_extra_mevatrust_chain_proof c = cp; if (!::serialization::dump_binary(c,b)) return false;
+    return pack_blob(TX_EXTRA_TAG_MEVATRUST_CHAIN_PROOF, b, o);
+}
+bool verify_chain_proof_signature(const tx_extra_mevatrust_chain_proof& cp) {
+    try { return crypto::check_signature(chain_proof_message_hash(cp), cp.node_pubkey, cp.signature); }
+    catch (const std::exception& e) { MWARNING("mevatrust: verify_chain_proof_signature failed: " << e.what()); return false; }
 }
 
 // ── Tag 0xA7: State Root ───────────────────────────────────────────────────
