@@ -50,7 +50,7 @@ RPC = "http://127.0.0.1:%d" % RPC_PORT
 
 # La distribuzione scatta a height % DISTRIBUTION_PERIOD_BLOCKS == 0, e il periodo
 # e' 240. Si arriva a 480 cosi' c'e' un confine dopo che l'uptime e' registrato.
-FUNDING_HEIGHT = 130
+FUNDING_HEIGHT = 180
 TARGET_HEIGHT = 480
 # L'activity score satura a 10 eventi con peer_count > 0: sotto, il punteggio non
 # arriva alla soglia MIN_SCORE_FOR_REWARD e il nodo non viene pagato.

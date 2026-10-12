@@ -497,6 +497,7 @@ namespace cryptonote
     bool cmd_get_uptime(const std::vector<std::string>& args);
     bool cmd_get_incentive_history(const std::vector<std::string>& args);
     bool cmd_commit_uptime(const std::vector<std::string>& args);
+    bool cmd_commit_chain_proof(const std::vector<std::string>& args);
     bool cmd_register_node(const std::vector<std::string>& args);
     bool cmd_unregister_node(const std::vector<std::string>& args);
     bool cmd_list_nodes(const std::vector<std::string>& args);

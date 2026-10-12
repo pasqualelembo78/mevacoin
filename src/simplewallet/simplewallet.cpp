@@ -3750,10 +3750,18 @@ simple_wallet::simple_wallet()
                            tr("mevatrust uptime [node_id]"),
                            tr("Uptime totale e percentuale. Senza argomenti mostra il proprio. "
                               "Uso: mevatrust uptime [node_id_hex]"));
-  m_cmd_binder.set_handler("mevatrust badges",
+  m_cmd_binder.set_handler("mevatrust commit_chain_proof",
                            boost::bind(&simple_wallet::on_command, this,
                                        &simple_wallet::mevatrust, _1),
-                           tr("mevatrust badges [node_id]"),
+                           tr("mevatrust commit_chain_proof"),
+                           tr("Invia una prova di possesso dati (0xAC, Anti-Sybil Fase 2). "
+                              "Il daemon firma la risposta su un blocco passato scelto da lui; "
+                              "il wallet la trasmette. Richiesta per restare eleggibili al 3% "
+                              "dopo la hard fork anti-sybil. Uso: mevatrust commit_chain_proof"));
+  m_cmd_binder.set_handler("mevatrust badges",
+                            boost::bind(&simple_wallet::on_command, this,
+                                        &simple_wallet::mevatrust, _1),
+                            tr("mevatrust badges [node_id]"),
                            tr("Badge assegnati on-chain. Senza argomenti mostra i propri. "
                               "Uso: mevatrust badges [node_id_hex]"));
   m_cmd_binder.set_handler("mevatrust penalties",
@@ -11916,7 +11924,7 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   {
     fail_msg_writer() << tr("Comandi MevaTrust disponibili:");
     fail_msg_writer() << tr("  registrazione:   register, unregister, list");
-    fail_msg_writer() << tr("  nodo:            status, score, uptime, badges, penalties, incentives");
+    fail_msg_writer() << tr("  nodo:            status, score, uptime, commit_uptime, commit_chain_proof, badges, penalties, incentives");
     fail_msg_writer() << tr("  dashboard:       my_status");
     fail_msg_writer() << tr("  cerchie:         circle_create, circle_info, circle_list,");
     fail_msg_writer() << tr("                   circle_join, circle_leave, circle_change_admin, circle_disband");
@@ -11939,6 +11947,7 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   if (sub == "unregister") return cmd_unregister_node(sub_args);
   // "uptime" e gia cmd_get_uptime (sola lettura): questo scrive in catena.
   if (sub == "commit_uptime") return cmd_commit_uptime(sub_args);
+  if (sub == "commit_chain_proof") return cmd_commit_chain_proof(sub_args);
   if (sub == "list")     return cmd_list_nodes(sub_args);
   if (sub == "status")   return cmd_get_node_status(sub_args);
   if (sub == "score")    return cmd_node_score(sub_args);

@@ -745,24 +745,18 @@ void MevaTrustManager::process_mevatrust_txs(
                     MWARNING("[MevaTrustManager] Registration sig INVALIDA, skip");
                     continue;
                 }
-                // Anti-Sybil Fase 3: bond economico non rimborsabile per registrazione
+                // Anti-Sybil Fase 3: bond economico non rimborsabile per registrazione.
+                // L'importo va all'indirizzo di governance (tesoreria). La tx e' RCT:
+                // l'output ha amount==0 e chiave one-time, quindi il confronto va fatto
+                // decodificando con la view key (derivabile) della tesoreria.
+                // governance_deposit_amount() somma tutti gli output alla tesoreria nella
+                // tx (trasparenti o RCT). Il consenso impedisce poi di rispendere quei
+                // fondi senza una governance_transfer (0xB0) con 2/3 firme.
                 if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL_BOND) {
-                    bool has_bond = false;
-                    account_public_address nf_addr = get_network_fund_address(m_nettype);
-                    for (const auto& vout : tx.vout) {
-                        txout_to_key tk;
-                        if (vout.target.type() == typeid(txout_to_key)) {
-                            tk = boost::get<txout_to_key>(vout.target);
-                            if (tk.key == nf_addr.m_spend_public_key) {
-                                if (vout.amount >= mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC) {
-                                    has_bond = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!has_bond) {
-                        MWARNING("[MevaTrustManager] Registration rifiutata: bond mancante o insufficiente (>= 100 MVC)");
+                    const uint64_t deposited = mevatrust::governance_deposit_amount(tx, m_nettype);
+                    if (deposited < mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC) {
+                        MWARNING("[MevaTrustManager] Registration rifiutata: bond mancante o "
+                                 "insufficiente (>= 100 MVC), depositato=" << deposited);
                         continue;
                     }
                 }

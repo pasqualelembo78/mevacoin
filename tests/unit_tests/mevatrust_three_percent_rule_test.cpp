@@ -54,6 +54,12 @@
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 
+#include "cryptonote_core/foundation_vesting.h"
+#include "ringct/rctOps.h"
+#include "ringct/rctSigs.h"
+#include "ringct/rctTypes.h"
+#include "device/device.hpp"
+
 using namespace cryptonote;
 using namespace cryptonote::mevatrust;
 
@@ -1689,6 +1695,23 @@ TEST_F(RuleFixture, chainproof_sample_window_and_idempotency) {
     EXPECT_FALSE(eng->has_chain_proof_samples());
 }
 
+TEST_F(RuleFixture, chainproof_counts_below_window_no_dead_zone) {
+    // Regressione: la HF anti-sybil entra a h2100 ma la finestra vale 43200 blocchi.
+    // Con il vecchio ritorno anticipato su `height < CHAIN_PROOF_VALIDITY_BLOCKS`
+    // nessun nodo era eleggibile per ~114 giorni dopo l'attivazione. Una prova
+    // registrata dentro la finestra (qui l'intera catena, perche' height < finestra)
+    // deve contare da subito.
+    auto eng = m_manager->mevatrust_engine();
+    ASSERT_TRUE(eng);
+    const crypto::hash id = crypto::cn_fast_hash("early", 9);
+    ASSERT_TRUE(eng->record_chain_proof_sample(id, 2100, 1500));
+    EXPECT_TRUE(eng->has_recent_chain_proof(id, 2100));
+    EXPECT_TRUE(eng->has_recent_chain_proof(id, 2101));
+    // Fuori finestra decade come qualunque campione.
+    EXPECT_FALSE(eng->has_recent_chain_proof(
+        id, 2100 + mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS + 1));
+}
+
 TEST_F(RuleFixture, chainproof_sample_survives_reload) {
     auto eng = m_manager->mevatrust_engine();
     ASSERT_TRUE(eng);
@@ -1920,6 +1943,170 @@ TEST_F(RuleFixture, chainproof_gates_payout_eligibility_under_hf18) {
         << "ricalcolo fallito: " << err;
     EXPECT_FALSE(out.empty())
         << "un nodo con prova di possesso dati valida non e' stato pagato sotto HF18";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-Sybil Fase 3 (HF19): bond per la registrazione
+//
+// La registrazione e' una tx RCT: l'output verso il network fund ha amount==0 e
+// la chiave e' quella one-time, non la spend pubkey del fondo. Il vecchio
+// controllo (amount>=bond && key==spend_pub) non trovava mai il bond. Questi test
+// bloccano l'importo decodificandolo con la view key del fondo, esattamente come
+// fara' il manager.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// Chiave one-time dell'output per `addr` come la deriva il mittente.
+crypto::public_key out_key_for(const crypto::secret_key& tx_sec,
+                               const account_public_address& addr, size_t index) {
+    crypto::key_derivation d;
+    crypto::generate_key_derivation(addr.m_view_public_key, tx_sec, d);
+    crypto::public_key out;
+    crypto::derive_public_key(d, index, addr.m_spend_public_key, out);
+    return out;
+}
+} // namespace
+
+TEST_F(RuleFixture, governance_bond_transparent_output_is_counted) {
+    const account_public_address gov = get_governance_address(MAINNET);
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hw::get_device("default"));
+
+    transaction tx{};
+    tx.version = 1;
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+
+    const uint64_t bond = mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC;
+    crypto::view_tag vt{};
+    tx_out o;
+    set_tx_out(bond, out_key_for(txkey.sec, gov, 0), false, vt, o);
+    tx.vout.push_back(o);
+
+    EXPECT_EQ(mevatrust::governance_deposit_amount(tx, MAINNET), bond);
+}
+
+TEST_F(RuleFixture, governance_bond_transparent_below_minimum_is_not_enough) {
+    const account_public_address gov = get_governance_address(MAINNET);
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hw::get_device("default"));
+
+    transaction tx{};
+    tx.version = 1;
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+
+    const uint64_t too_little = mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC - 1;
+    crypto::view_tag vt{};
+    tx_out o;
+    set_tx_out(too_little, out_key_for(txkey.sec, gov, 0), false, vt, o);
+    tx.vout.push_back(o);
+
+    EXPECT_EQ(mevatrust::governance_deposit_amount(tx, MAINNET), too_little);
+    EXPECT_LT(mevatrust::governance_deposit_amount(tx, MAINNET),
+              mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC);
+}
+
+TEST_F(RuleFixture, governance_bond_to_other_recipient_is_not_counted) {
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hw::get_device("default"));
+    cryptonote::keypair other = cryptonote::keypair::generate(hw::get_device("default"));
+    account_public_address other_addr{other.pub, other.pub};
+
+    transaction tx{};
+    tx.version = 1;
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+
+    crypto::view_tag vt{};
+    tx_out o;
+    set_tx_out(mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC,
+               out_key_for(txkey.sec, other_addr, 0), false, vt, o);
+    tx.vout.push_back(o);
+
+    EXPECT_EQ(mevatrust::governance_deposit_amount(tx, MAINNET), 0u)
+        << "un output verso un altro destinatario e' stato contato come bond";
+}
+
+TEST_F(RuleFixture, governance_bond_hidden_in_rct_output_is_decoded) {
+    const account_public_address gov = get_governance_address(MAINNET);
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hw::get_device("default"));
+    const uint64_t bond = mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC;
+
+    transaction tx{};
+    tx.version = 2;
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+
+    crypto::view_tag vt{};
+    tx_out o0;
+    set_tx_out(0, out_key_for(txkey.sec, gov, 0), false, vt, o0);  // importo nascosto
+    tx.vout.push_back(o0);
+    cryptonote::keypair other = cryptonote::keypair::generate(hw::get_device("default"));
+    tx_out o1;
+    set_tx_out(0, other.pub, false, vt, o1);                      // estraneo
+    tx.vout.push_back(o1);
+
+    hw::device& hwdev = hw::get_device("default");
+    tx.rct_signatures.type = rct::RCTTypeCLSAG;
+    tx.rct_signatures.outPk.resize(2);
+    tx.rct_signatures.ecdhInfo.resize(2);
+
+    crypto::key_derivation d0;
+    ASSERT_TRUE(crypto::generate_key_derivation(gov.m_view_public_key, txkey.sec, d0));
+    crypto::secret_key s0;
+    hwdev.derivation_to_scalar(d0, 0, s0);
+    const rct::key shared0 = rct::sk2rct(s0);
+    const rct::key mask0 = rct::genCommitmentMask(shared0);
+    rct::ecdhTuple et0;
+    et0.amount = rct::d2h(bond);
+    hwdev.ecdhEncode(et0, shared0, true);
+    tx.rct_signatures.ecdhInfo[0] = et0;
+    rct::addKeys2(tx.rct_signatures.outPk[0].mask, mask0, rct::d2h(bond), rct::H);
+
+    crypto::key_derivation d1;
+    ASSERT_TRUE(crypto::generate_key_derivation(other.pub, txkey.sec, d1));
+    crypto::secret_key s1;
+    hwdev.derivation_to_scalar(d1, 1, s1);
+    const rct::key shared1 = rct::sk2rct(s1);
+    const rct::key mask1 = rct::genCommitmentMask(shared1);
+    rct::ecdhTuple et1;
+    et1.amount = rct::zero();
+    hwdev.ecdhEncode(et1, shared1, true);
+    tx.rct_signatures.ecdhInfo[1] = et1;
+    rct::addKeys2(tx.rct_signatures.outPk[1].mask, mask1, rct::zero(), rct::H);
+
+    EXPECT_EQ(mevatrust::governance_deposit_amount(tx, MAINNET), bond)
+        << "l'importo RCT verso la tesoreria non e' stato decodificato";
+}
+
+// Il consenso protegge gli output verso la tesoreria tramite le loro key image.
+// Verifica che governance_owned_outputs() produca esattamente la key image che
+// il detentore della chiave (derivabile) produrrebbe, cosi' check_premine_spend
+// puo' pretendere il tag 0xB0 quando quell'output viene speso.
+TEST_F(RuleFixture, governance_owned_outputs_key_image_matches) {
+    const account_public_address gov = get_governance_address(MAINNET);
+    const crypto::secret_key gov_sk = derive_premine_secret_key("mevacoin_governance", MAINNET);
+    cryptonote::keypair txkey = cryptonote::keypair::generate(hw::get_device("default"));
+    const uint64_t bond = mevatrust::consensus::NODE_REGISTRATION_BOND_ATOMIC;
+
+    transaction tx{};
+    tx.version = 1;
+    add_tx_pub_key_to_extra(tx, txkey.pub);
+    crypto::view_tag vt{};
+    tx_out o;
+    set_tx_out(bond, out_key_for(txkey.sec, gov, 0), false, vt, o);
+    tx.vout.push_back(o);
+
+    std::vector<crypto::key_image> kis;
+    uint64_t total = 0;
+    mevatrust::governance_owned_outputs(tx, MAINNET, kis, total);
+
+    ASSERT_EQ(kis.size(), 1u);
+    EXPECT_EQ(total, bond);
+
+    crypto::key_derivation d;
+    ASSERT_TRUE(crypto::generate_key_derivation(txkey.pub, gov_sk, d));
+    crypto::secret_key out_sec;
+    crypto::derive_secret_key(d, 0, gov_sk, out_sec);
+    crypto::key_image expected;
+    crypto::generate_key_image(out_key_for(txkey.sec, gov, 0), out_sec, expected);
+
+    EXPECT_EQ(kis[0], expected)
+        << "la key image tracciata non corrisponde a quella dell'output di bond";
 }
 
 } // namespace

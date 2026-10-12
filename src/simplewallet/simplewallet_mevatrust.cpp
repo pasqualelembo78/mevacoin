@@ -377,6 +377,62 @@ bool simple_wallet::cmd_commit_uptime(const std::vector<std::string>& args) {
   }
 }
 
+// -- commit_chain_proof -------------------------------------------------------
+//
+// La prova di possesso dati (0xAC, Anti-Sybil Fase 2). Come per l'uptime il blob
+// lo costruisce e firma il daemon: il wallet non conosce la chiave privata del
+// nodo. A differenza dell'uptime qui non c'e' niente da dichiarare — anchor,
+// node_id e risposta li sceglie il daemon dai propri dati, perche' la prova e'
+// "possiedo il blocco", non "dichiaro un numero". Il wallet trasmette il blob.
+bool simple_wallet::cmd_commit_chain_proof(const std::vector<std::string>& args) {
+  try {
+  (void)args;
+  rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::request  req;
+  rpc::COMMAND_RPC_COMMIT_CHAIN_PROOF::response res;
+
+  const bool ok = m_wallet->invoke_http_json_rpc("/json_rpc", "commit_chain_proof", req, res);
+  if (!ok || !res.ok) {
+    tools::fail_msg_writer() << tr("Commitment chain proof non riuscito.");
+    if (!res.status.empty())
+      tools::fail_msg_writer() << tr("  Motivo: ") << res.status;
+    return true;
+  }
+  if (res.extra_hex.empty()) {
+    tools::fail_msg_writer() << tr("Il daemon ha restituito una chain proof vuota: non invio.");
+    return true;
+  }
+
+  std::string extra_str;
+  if (!epee::string_tools::parse_hexstr_to_binbuff(res.extra_hex, extra_str)) {
+    tools::fail_msg_writer() << tr("Blob 0xAC non decodificabile dal daemon.");
+    return true;
+  }
+  std::vector<uint8_t> extra(extra_str.begin(), extra_str.end());
+
+  tools::msg_writer() << "\nInvio chain proof on-chain...";
+  tools::msg_writer() << "  Node ID     : " << res.node_id.substr(0, 24) << "...";
+  tools::msg_writer() << "  Anchor      : h" << res.anchor_height;
+  tools::msg_writer() << "  Target      : h" << res.proof_height;
+  tools::msg_writer() << "  Blob        : " << extra.size() << " byte";
+
+  const std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) {
+    tools::fail_msg_writer() << tr("Invio tx fallito. Verifica saldo e connessione al daemon.");
+    return true;
+  }
+  tools::success_msg_writer()
+    << "\n\033[1;32m*** CHAIN PROOF INVIATA! ***\033[0m"
+    << "\n  TXID : " << txid;
+  tools::msg_writer()
+    << "\n  La prova resta valida per una finestra di blocchi: va rinnovata\n"
+    << "  periodicamente o il nodo perde l'eleggibilita' al 3%.";
+  return true;
+  } catch (const std::exception& e) {
+    tools::fail_msg_writer() << tr("ERRORE cmd_commit_chain_proof: ") << e.what();
+    return true;
+  }
+}
+
 bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
   try {
   // UX ZERO-ARGOMENTI: basta digitare register_node
@@ -429,17 +485,17 @@ bool simple_wallet::cmd_register_node(const std::vector<std::string>& args) {
   tools::msg_writer() << "\nRegistrazione nodo on-chain in corso...";
   tools::msg_writer() << "  Node : " << node_pk_hex.substr(0, 16) << "...";
   tools::msg_writer() << "  Wallet: " << address_str.substr(0, 24) << "...";
-  // 7. Submit tx di registrazione con bond a network fund (Fase 3)
+  // 7. Submit tx di registrazione con bond alla tesoreria (Fase 3)
   auto submit_registration_tx_fn = [&](tools::wallet2* w, const std::vector<uint8_t>& x) -> std::string {
     try {
       const uint64_t fee_min = 1000000000ULL;
       const uint64_t bond = 100ULL * 1'000'000'000'000ULL;
       std::vector<cryptonote::tx_destination_entry> dsts;
-      cryptonote::tx_destination_entry nf;
-      nf.addr = get_network_fund_address(w->nettype());
-      nf.amount = bond;
-      nf.is_subaddress = false;
-      dsts.push_back(nf);
+      cryptonote::tx_destination_entry bond_dst;
+      bond_dst.addr = get_governance_address(w->nettype());
+      bond_dst.amount = bond;
+      bond_dst.is_subaddress = false;
+      dsts.push_back(bond_dst);
       std::set<uint32_t> subaddr_indices;
       uint64_t unlocked = w->unlocked_balance(0, false, nullptr, nullptr);
       if (unlocked < bond + fee_min) {

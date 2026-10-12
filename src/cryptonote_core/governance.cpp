@@ -14,7 +14,7 @@ namespace cryptonote
 static bool serialize_state(const governance_state& state, std::string& out)
 {
     std::ostringstream oss;
-    // Format: count | original_count | balance | threshold | keys...
+    // Format: count | original_count | balance | threshold | keys... | img_count | images...
     uint32_t count = static_cast<uint32_t>(state.signers.size());
     uint32_t orig  = static_cast<uint32_t>(state.original_count);
     oss.write(reinterpret_cast<const char*>(&count), sizeof(count));
@@ -23,13 +23,18 @@ static bool serialize_state(const governance_state& state, std::string& out)
     oss.write(reinterpret_cast<const char*>(&state.threshold), sizeof(state.threshold));
     for (const auto& key : state.signers)
         oss.write(reinterpret_cast<const char*>(key.data), sizeof(key.data));
+    uint32_t img_count = static_cast<uint32_t>(state.bond_key_images.size());
+    oss.write(reinterpret_cast<const char*>(&img_count), sizeof(img_count));
+    for (const auto& ki : state.bond_key_images)
+        oss.write(reinterpret_cast<const char*>(ki.data), sizeof(ki.data));
     out = oss.str();
     return true;
 }
 
 static bool deserialize_state(const std::string& in, governance_state& state)
 {
-    if (in.size() < sizeof(uint32_t) * 2 + sizeof(uint64_t) + sizeof(uint32_t))
+    const size_t fixed = sizeof(uint32_t) * 2 + sizeof(uint64_t) + sizeof(uint32_t);
+    if (in.size() < fixed + sizeof(uint32_t))
         return false;
     std::istringstream iss(in);
     uint32_t count = 0, orig = 0;
@@ -37,11 +42,20 @@ static bool deserialize_state(const std::string& in, governance_state& state)
     iss.read(reinterpret_cast<char*>(&orig), sizeof(orig));
     iss.read(reinterpret_cast<char*>(&state.balance), sizeof(state.balance));
     iss.read(reinterpret_cast<char*>(&state.threshold), sizeof(state.threshold));
-    if (in.size() != sizeof(count) + sizeof(orig) + sizeof(state.balance) + sizeof(state.threshold) + count * sizeof(crypto::public_key))
+    size_t expected = fixed + count * sizeof(crypto::public_key) + sizeof(uint32_t);
+    if (in.size() < expected)
         return false;
     state.signers.resize(count);
     for (auto& key : state.signers)
         iss.read(reinterpret_cast<char*>(key.data), sizeof(key.data));
+    uint32_t img_count = 0;
+    iss.read(reinterpret_cast<char*>(&img_count), sizeof(img_count));
+    expected += img_count * sizeof(crypto::key_image);
+    if (in.size() != expected)
+        return false;
+    state.bond_key_images.resize(img_count);
+    for (auto& ki : state.bond_key_images)
+        iss.read(reinterpret_cast<char*>(ki.data), sizeof(ki.data));
     state.original_count = orig;
     return true;
 }

@@ -222,17 +222,24 @@ bool MevaTrustEngine::record_chain_proof_sample(
 
 bool MevaTrustEngine::has_recent_chain_proof(const crypto::hash& node_id, uint64_t height) const {
     using mevatrust::consensus::CHAIN_PROOF_VALIDITY_BLOCKS;
-    if (height < CHAIN_PROOF_VALIDITY_BLOCKS)
-        return false;
-    const uint64_t window_start = height - CHAIN_PROOF_VALIDITY_BLOCKS;
+    // Sotto l'ampiezza della finestra il bordo basso e' il blocco 0, non "nessuna
+    // prova valida". Il vecchio ritorno anticipato su height < finestra creava una
+    // zona morta lunga quanto la finestra stessa: la HF anti-sybil entra a un'altezza
+    // (2100) molto minore di CHAIN_PROOF_VALIDITY_BLOCKS (43200), quindi per ~114
+    // giorni nessun nodo sarebbe risultato eleggibile e il 3% non avrebbe pagato
+    // nessuno. Una prova fatta dopo l'attivazione deve contare da subito.
+    const uint64_t window_start = height > CHAIN_PROOF_VALIDITY_BLOCKS
+        ? height - CHAIN_PROOF_VALIDITY_BLOCKS
+        : 0;
     std::lock_guard<std::recursive_mutex> lock(cache_lock_);
     auto it = chain_proof_samples_.find(hk(node_id));
     if (it == chain_proof_samples_.end() || it->second.empty())
         return false;
-    // La finestra guarda anche oltre height (difensivo sui reorg): conta se l'ultimo
-    // campione e' dentro la finestra. I campioni sono ordinati, quindi il piu' recente
-    // e' l'ultimo.
-    return it->second.back().height >= window_start;
+    // Il campione piu' recente deve stare in [window_start, height]: sotto e' scaduto,
+    // sopra e' dal futuro (possibile solo in test o su reorg non ancora riallineati).
+    // I campioni sono ordinati, quindi il piu' recente e' l'ultimo.
+    const uint64_t latest = it->second.back().height;
+    return latest <= height && latest >= window_start;
 }
 
 bool MevaTrustEngine::has_chain_proof_samples() const {

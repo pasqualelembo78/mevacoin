@@ -6026,6 +6026,7 @@ bool Blockchain::init_premine_state()
     m_governance.original_count = GOVERNANCE_ORIGINAL_SIGNERS;
     m_governance.balance = TREASURY_ALLOCATION;
     m_governance.threshold = GOVERNANCE_THRESHOLD;
+    m_governance.bond_key_images.clear();
 
     m_network_fund.balance = NETWORK_FUND_ALLOCATION;
     m_network_fund.recent_spends.clear();
@@ -6146,6 +6147,12 @@ bool Blockchain::check_premine_spend(const transaction& tx, uint64_t height, uin
             found_treasury = true;
         if (in.k_image == m_premine_keys.network_k_image)
             found_network = true;
+        // Deposits towards the governance address (registration bonds, treasury
+        // change) are protected too: spending one of them requires a 0xB0
+        // governance_transfer with 2/3 signatures.
+        if (!found_treasury)
+            for (const auto& ki : m_governance.bond_key_images)
+                if (in.k_image == ki) { found_treasury = true; break; }
     }
 
     // ── Treasury governance check ───────────────────────────────────────
@@ -6232,12 +6239,56 @@ bool Blockchain::process_premine_actions(const transaction& tx, uint64_t height)
     if (!m_premine_initialized)
         return true;
 
-    // Parse tx_extra once — if there are no governance/network tags, skip.
-    std::vector<tx_extra_field> fields;
-    if (!parse_tx_extra(tx.extra, fields))
-        return true;
-
     bool acted = false;
+
+    // ── Scan outputs paid to the governance address (tesoreria) ──────────
+    // Il bond di registrazione (Fase 3) e il resto delle spese di tesoreria
+    // finiscono all'indirizzo di governance. Le chiavi sono derivabili dal
+    // sorgente, quindi l'unica protezione e' a livello di consenso:
+    //   - registriamo le key image di quegli output, cosi' check_premine_spend
+    //     pretendera' il tag 0xB0 (con 2/3 firme) quando verranno spesi;
+    //   - accreditiamo nel saldo i depositi esterni (bond), ma NON il resto di
+    //     una spesa di tesoreria (altrimenti il saldo conterebbe due volte).
+    {
+        std::vector<crypto::key_image> kis;
+        uint64_t total = 0;
+        mevatrust::governance_owned_outputs(tx, m_nettype, kis, total);
+        if (!kis.empty())
+        {
+            bool spends_gov = false;
+            for (const auto& vin : tx.vin)
+            {
+                if (vin.type() != typeid(txin_to_key))
+                    continue;
+                const txin_to_key& in = boost::get<txin_to_key>(vin);
+                if (in.k_image == m_premine_keys.treasury_k_image)
+                {
+                    spends_gov = true;
+                    break;
+                }
+                for (const auto& known : m_governance.bond_key_images)
+                    if (in.k_image == known) { spends_gov = true; break; }
+                if (spends_gov)
+                    break;
+            }
+            for (const auto& ki : kis)
+                if (std::find(m_governance.bond_key_images.begin(),
+                              m_governance.bond_key_images.end(), ki) ==
+                    m_governance.bond_key_images.end())
+                    m_governance.bond_key_images.push_back(ki);
+            if (!spends_gov)
+                m_governance.balance += total;
+            acted = true;
+        }
+    }
+
+    // Parse tx_extra once — if there are no governance/network tags, skip.
+    // NB: le tx di registrazione contengono tag mevatrust (es. 0xA0) fuori dalla
+    // variant di tx_extra_field, quindi parse_tx_extra puo' fallire: in quel caso
+    // `fields` resta vuoto (nessun tag processato) ma il saldo/bond sopra e' gia'
+    // stato gestito, quindi NON usciamo prima di persistere.
+    std::vector<tx_extra_field> fields;
+    parse_tx_extra(tx.extra, fields);
 
     // ── Process treasury governance actions ──────────────────────────────
     tx_extra_governance_transfer gov_transfer;
@@ -6331,6 +6382,7 @@ bool Blockchain::rebuild_premine_state()
     m_governance.original_count = GOVERNANCE_ORIGINAL_SIGNERS;
     m_governance.balance = TREASURY_ALLOCATION;
     m_governance.threshold = GOVERNANCE_THRESHOLD;
+    m_governance.bond_key_images.clear();
     m_network_fund.balance = NETWORK_FUND_ALLOCATION;
     m_network_fund.recent_spends.clear();
 

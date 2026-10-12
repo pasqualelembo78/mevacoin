@@ -4,6 +4,11 @@
 #include "mevatrust_consensus.h"
 #include "serialization/binary_utils.h"
 #include "crypto/crypto.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_basic/account.h"
+#include "ringct/rctSigs.h"
+#include "device/device.hpp"
+#include "../foundation_vesting.h"
 #include "misc_log_ex.h"
 #include <cstring>
 
@@ -268,6 +273,136 @@ bool build_mevatrust_validator_extra(const tx_extra_mevatrust_validator& v, std:
 bool verify_validator_signature(const tx_extra_mevatrust_validator& v) {
     const crypto::hash h = validator_message_hash(v.node_id, v.wallet_pubkey);
     return crypto::check_signature(h, v.wallet_pubkey, v.signature);
+}
+
+// ── Anti-Sybil Fase 3: bond di registrazione (importo verso il network fund) ─
+//
+// Riconosce un output appartenente a `addr` ricostruendo la derivazione, come fa
+// is_out_to_acc(): prima con la tx pubkey principale, poi con le additional tx
+// pubkeys (una per output). L'indice e' quello GLOBALE del vout.
+static bool derive_owned_output(const transaction& tx, size_t out_index,
+                                const account_public_address& addr,
+                                const crypto::secret_key& view_sk,
+                                const crypto::public_key& tx_pub_key,
+                                const std::vector<crypto::public_key>& additional_tx_pub_keys,
+                                crypto::key_derivation& deriv_out)
+{
+    crypto::public_key out_pub;
+    if (!get_output_public_key(tx.vout[out_index], out_pub))
+        return false;
+
+    const auto matches = [&](const crypto::public_key& pub_r) -> bool {
+        crypto::key_derivation d;
+        if (!crypto::generate_key_derivation(pub_r, view_sk, d))
+            return false;
+        crypto::public_key derived;
+        if (!crypto::derive_public_key(d, out_index, addr.m_spend_public_key, derived))
+            return false;
+        if (derived == out_pub) { deriv_out = d; return true; }
+        return false;
+    };
+
+    if (matches(tx_pub_key))
+        return true;
+    if (!additional_tx_pub_keys.empty() && out_index < additional_tx_pub_keys.size())
+        return matches(additional_tx_pub_keys[out_index]);
+    return false;
+}
+
+// Decodifica l'importo dell'output: trasparente se non-RCT, altrimenti via ECDH.
+static uint64_t decode_owned_output_amount(const transaction& tx, const crypto::key_derivation& deriv,
+                                           size_t out_index, hw::device& hwdev)
+{
+    if (out_index >= tx.vout.size())
+        return 0;
+    if (tx.vout[out_index].amount > 0)   // trasparente (non-RCT / v1)
+        return tx.vout[out_index].amount;
+
+    crypto::secret_key scalar1;
+    hwdev.derivation_to_scalar(deriv, out_index, scalar1);
+    rct::key mask;
+    try {
+        switch (tx.rct_signatures.type) {
+        case rct::RCTTypeSimple:
+        case rct::RCTTypeBulletproof:
+        case rct::RCTTypeBulletproof2:
+        case rct::RCTTypeCLSAG:
+        case rct::RCTTypeBulletproofPlus:
+            return rct::decodeRctSimple(tx.rct_signatures, rct::sk2rct(scalar1), out_index, mask, hwdev);
+        case rct::RCTTypeFull:
+            return rct::decodeRct(tx.rct_signatures, rct::sk2rct(scalar1), out_index, mask, hwdev);
+        default:
+            return 0;
+        }
+    } catch (const std::exception& e) {
+        MWARNING("mevatrust: decode_owned_output_amount failed: " << e.what());
+        return 0;
+    }
+}
+
+// Scansiona gli output della tx appartenenti a `addr`. Per ogni output
+// riconosciuto: se key_images != nullptr ne aggiunge la key image (derivando la
+// one-time secret key, possibile perche' la spend key del destinatario e'
+// nota), e somma l'importo in total_amount. Il consenso la usa per proteggere
+// gli output verso la tesoreria.
+static void scan_address_outputs(const transaction& tx,
+                                 const account_public_address& addr,
+                                 const crypto::secret_key& view_sk,
+                                 const crypto::secret_key& spend_sk,
+                                 std::vector<crypto::key_image>* key_images,
+                                 uint64_t* total_amount)
+{
+    const crypto::public_key tx_pub_key = get_tx_pub_key_from_extra(tx);
+    if (tx_pub_key == crypto::null_pkey)
+        return;
+    const std::vector<crypto::public_key> additional_tx_pub_keys =
+        get_additional_tx_pub_keys_from_extra(tx);
+
+    hw::device& hwdev = hw::get_device("default");
+    for (size_t i = 0; i < tx.vout.size(); ++i) {
+        crypto::key_derivation deriv;
+        if (!derive_owned_output(tx, i, addr, view_sk, tx_pub_key, additional_tx_pub_keys, deriv))
+            continue;
+        if (total_amount)
+            *total_amount += decode_owned_output_amount(tx, deriv, i, hwdev);
+        if (key_images) {
+            crypto::public_key out_pub;
+            if (!get_output_public_key(tx.vout[i], out_pub))
+                continue;
+            crypto::secret_key out_sec;
+            crypto::derive_secret_key(deriv, i, spend_sk, out_sec);
+            crypto::key_image ki;
+            crypto::generate_key_image(out_pub, out_sec, ki);
+            key_images->push_back(ki);
+        }
+    }
+}
+
+uint64_t network_fund_deposit_amount(const transaction& tx, network_type nettype) {
+    uint64_t total = 0;
+    scan_address_outputs(tx, get_network_fund_address(nettype),
+                         derive_premine_secret_key("mevacoin_network_fund", nettype),
+                         derive_premine_secret_key("mevacoin_network_fund", nettype),
+                         nullptr, &total);
+    return total;
+}
+
+uint64_t governance_deposit_amount(const transaction& tx, network_type nettype) {
+    uint64_t total = 0;
+    scan_address_outputs(tx, get_governance_address(nettype),
+                         derive_premine_secret_key("mevacoin_governance", nettype),
+                         derive_premine_secret_key("mevacoin_governance", nettype),
+                         nullptr, &total);
+    return total;
+}
+
+void governance_owned_outputs(const transaction& tx, network_type nettype,
+                              std::vector<crypto::key_image>& key_images,
+                              uint64_t& total_amount) {
+    scan_address_outputs(tx, get_governance_address(nettype),
+                         derive_premine_secret_key("mevacoin_governance", nettype),
+                         derive_premine_secret_key("mevacoin_governance", nettype),
+                         &key_images, &total_amount);
 }
 
 }} // namespace cryptonote::mevatrust

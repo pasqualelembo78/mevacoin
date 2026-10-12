@@ -19,6 +19,37 @@ bool build_mevatrust_snapshot_extra(const tx_extra_mevatrust_snapshot& snap, std
 bool verify_registration_signature(const tx_extra_mevatrust_registration& reg);
 bool verify_deregister_signature(const tx_extra_mevatrust_deregister& dereg);
 
+// ── Anti-Sybil Fase 3: bond di registrazione ───────────────────────────────
+//
+// Somma degli importi, in atomi, che la transazione deposita verso l'indirizzo
+// del network fund. Il bond di registrazione e' un output verso quel fondo.
+//
+// Il confronto ingenuo (vout.amount >= bond && vout.key == spend_pub) non trova
+// mai nulla: la tx e' RCT, quindi vout.amount==0 e la chiave e' quella one-time,
+// non la spend pubkey del fondo. Qui si ricostruisce la derivazione con la view
+// key del fondo — derivabile da chiunque perche' il fondo e' protocol-controlled
+// (derive_premine_secret_key) — si riconosce l'output e se ne decodifica
+// l'importo, trasparente o RCT. Ritorna 0 se il fondo non compare nella tx.
+uint64_t network_fund_deposit_amount(const transaction& tx, network_type nettype);
+
+// ── Anti-Sybil Fase 3 (variante B): bond verso la tesoreria ────────────────
+//
+// Il bond di registrazione e' un output verso l'indirizzo di governance
+// (tesoreria). Come per il network fund, la chiave e' derivabile
+// (derive_premine_secret_key("mevacoin_governance")); qui si decodifica
+// l'importo depositato nella tx. Ritorna 0 se la tesoreria non compare.
+uint64_t governance_deposit_amount(const transaction& tx, network_type nettype);
+
+// Raccoglie le key image di TUTTI gli output pagati all'indirizzo di
+// governance presenti nella tx (bond esterni e resto delle spese di
+// tesoreria), piu' il totale degli importi. Il consenso usa queste key image
+// per pretendere una governance_transfer (0xB0) con 2/3 firme quando uno di
+// questi output viene speso: senza, chiunque conosca il sorgente potrebbe
+// recuperare il bond (le chiavi sono derivabili).
+void governance_owned_outputs(const transaction& tx, network_type nettype,
+                              std::vector<crypto::key_image>& key_images,
+                              uint64_t& total_amount);
+
 bool parse_mevatrust_circle_from_tx(const transaction& tx, tx_extra_mevatrust_circle& out);
 bool build_mevatrust_circle_extra(const tx_extra_mevatrust_circle& op, std::vector<uint8_t>& extra);
 bool verify_circle_signature(const tx_extra_mevatrust_circle& op);

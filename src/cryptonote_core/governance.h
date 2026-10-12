@@ -22,6 +22,12 @@ struct governance_state
   uint64_t balance{TREASURY_ALLOCATION};
   // Always 2 (threshold never changes)
   uint32_t threshold{GOVERNANCE_THRESHOLD};
+  // Key images of every output paid to the governance address (registration
+  // bonds and change from treasury spends). Spending any of these MUST carry a
+  // 0xB0 governance_transfer with 2/3 signatures — enforced in
+  // check_premine_spend(). Without this, the coins would be recoverable by
+  // anyone since the governance key is derivable from the source.
+  std::vector<crypto::key_image> bond_key_images;
 };
 
 // ── Save/load governance state from LMDB properties ─────────────────────
