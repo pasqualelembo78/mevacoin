@@ -1687,6 +1687,31 @@ bool BlockchainLMDB::get_property(const std::string& key, std::string& value) co
   return true;
 }
 
+// The below two macros are for DB access within block add/remove, whether
+// regular batch txn is in use or not. m_write_txn is used as a batch txn, even
+// if it's only within block add/remove.
+//
+// DB access functions that may be called both within block add/remove and
+// without should use these. If the function will be called ONLY within block
+// add/remove, m_write_txn alone may be used instead of these macros.
+
+#define TXN_BLOCK_PREFIX(flags); \
+  mdb_txn_safe auto_txn; \
+  mdb_txn_safe* txn_ptr = &auto_txn; \
+  if (m_batch_active || m_write_txn) \
+    txn_ptr = m_write_txn; \
+  else \
+  { \
+    if (auto mdb_res = lmdb_txn_begin(m_env, NULL, flags, auto_txn)) \
+      throw0(DB_ERROR(lmdb_error(std::string("Failed to create a transaction for the db in ")+__FUNCTION__+": ", mdb_res).c_str())); \
+  } \
+
+#define TXN_BLOCK_POSTFIX_SUCCESS() \
+  do { \
+    if (! m_batch_active && ! m_write_txn) \
+      auto_txn.commit(); \
+  } while(0)
+
 bool BlockchainLMDB::set_property(const std::string& key, const std::string& value)
 {
   LOG_PRINT_L3("BlockchainLMDB::" << __func__);
@@ -1695,21 +1720,15 @@ bool BlockchainLMDB::set_property(const std::string& key, const std::string& val
   if (is_read_only())
     return false;
 
-  mdb_txn_safe txn;
-  auto result = mdb_txn_begin(m_env, NULL, 0, txn);
-  if (result)
-    throw0(DB_ERROR(lmdb_error("Failed to create a transaction for the db: ", result).c_str()));
+  TXN_BLOCK_PREFIX(0);
 
   MDB_val_str(k, key.c_str());
   MDB_val_sized(v, value);
-  result = mdb_put(txn, m_properties, &k, &v, 0);
+  auto result = mdb_put(*txn_ptr, m_properties, &k, &v, 0);
   if (result)
-  {
-    txn.abort();
     throw0(DB_ERROR(lmdb_error("Failed to set property '" + key + "': ", result).c_str()));
-  }
 
-  txn.commit();
+  TXN_BLOCK_POSTFIX_SUCCESS();
   return true;
 }
 
@@ -1800,31 +1819,6 @@ std::string BlockchainLMDB::get_db_name() const
 
   return std::string("lmdb");
 }
-
-// The below two macros are for DB access within block add/remove, whether
-// regular batch txn is in use or not. m_write_txn is used as a batch txn, even
-// if it's only within block add/remove.
-//
-// DB access functions that may be called both within block add/remove and
-// without should use these. If the function will be called ONLY within block
-// add/remove, m_write_txn alone may be used instead of these macros.
-
-#define TXN_BLOCK_PREFIX(flags); \
-  mdb_txn_safe auto_txn; \
-  mdb_txn_safe* txn_ptr = &auto_txn; \
-  if (m_batch_active || m_write_txn) \
-    txn_ptr = m_write_txn; \
-  else \
-  { \
-    if (auto mdb_res = lmdb_txn_begin(m_env, NULL, flags, auto_txn)) \
-      throw0(DB_ERROR(lmdb_error(std::string("Failed to create a transaction for the db in ")+__FUNCTION__+": ", mdb_res).c_str())); \
-  } \
-
-#define TXN_BLOCK_POSTFIX_SUCCESS() \
-  do { \
-    if (! m_batch_active && ! m_write_txn) \
-      auto_txn.commit(); \
-  } while(0)
 
 void BlockchainLMDB::add_txpool_tx(const crypto::hash &txid, const cryptonote::blobdata_ref &blob, const txpool_tx_meta_t &meta)
 {
