@@ -55,13 +55,8 @@ const hardfork_t mainnet_hard_forks[] = {
   // tags e fee scaling 2021 (tutte e tre alla 15) piu' l'early coinbase unlock (16),
   // cambiando cose che nessuno ha deciso di cambiare. Vedi la nota lunga accanto a
   // HF_VERSION_MEVATRUST_UPTIME_V3 in cryptonote_config.h.
-  { 17, 2000, 0, 1793491200 }, // v17 - regola 3% v3: uptime come gate  2026-11-01 UTC
-  // v18 - Anti-Sybil Fase 1: unicità node_pubkey e binding uptime alla chiave
-  //       registrata. 18 e' il primo numero libero dopo 17 (15/16 restano non
-  //       attivate: vedi nota accanto a HF_VERSION_MEVATRUST_ANTISYBIL).
-  { 18, 2100, 0, 1796083200 }, // v18 - Anti-Sybil Fase 1: binding     2026-12-01 UTC
-  // v19 - Anti-Sybil Fase 3: bond economico per registrazione nodo
-  { 19, 2200, 0, 1798675200 }, // v19 - Anti-Sybil Fase 3: bond        2027-01-01 UTC
+  // Anti-Sybil (v17-v19) + gate uptime attivati il prima possibile
+  { 19, 15, 0, 1767225601 }, // v19 - Anti-Sybil Fase 1/3 + uptime gate
 };
 const size_t num_mainnet_hard_forks = sizeof(mainnet_hard_forks) / sizeof(mainnet_hard_forks[0]);
 const uint64_t mainnet_hard_fork_version_1_till = 0;
@@ -71,9 +66,7 @@ const hardfork_t testnet_hard_forks[] = {
   { 12, 12, 0, 1748736000 },
   { 13, 13, 0, 1764547200 },  // v13 - Participation System (testnet)  2025-12-01 UTC
   { 14, 14, 0, 1767225600 },  // v14 - regola 3% v2 (testnet)
-  { 17, 2000, 0, 1793491200 }, // v17 - regola 3% v3: uptime come gate (testnet)
-  { 18, 2100, 0, 1796083200 }, // v18 - Anti-Sybil Fase 1: binding (testnet)  2026-12-01 UTC
-  { 19, 2200, 0, 1798675200 }, // v19 - Anti-Sybil Fase 3: bond (testnet)   2027-01-01 UTC
+  { 19, 15, 0, 1767225601 }, // v19 - Anti-Sybil + uptime gate (testnet)
 };
 const size_t num_testnet_hard_forks = sizeof(testnet_hard_forks) / sizeof(testnet_hard_forks[0]);
 const uint64_t testnet_hard_fork_version_1_till = 0;
@@ -83,8 +76,6 @@ const hardfork_t stagenet_hard_forks[] = {
   { 12, 12, 0, 1341378001 },
   { 13, 13, 0, 1341378002 },  // v13 - Participation System (stagenet)
   { 14, 14, 0, 1341378003 },  // v14 - regola 3% v2 (stagenet)
-  { 17, 2000, 0, 1341378004 }, // v17 - regola 3% v3: uptime come gate (stagenet)
-  { 18, 2100, 0, 1341378005 }, // v18 - Anti-Sybil Fase 1: binding (stagenet)
-  { 19, 2200, 0, 1341378006 }, // v19 - Anti-Sybil Fase 3: bond (stagenet)
+  { 19, 15, 0, 1341378004 }, // v19 - Anti-Sybil + uptime gate (stagenet)
 };
 const size_t num_stagenet_hard_forks = sizeof(stagenet_hard_forks) / sizeof(stagenet_hard_forks[0]);
