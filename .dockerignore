@@ -1,0 +1,21 @@
+# Build context excludes — keep the image build fast and deterministic.
+.git
+.gitignore
+build/
+build-docker/
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.md
+deploy.env
+# local data / logs
+*.log
+__pycache__/
+*.pyc
+
+# nested explorer build tree (rebuilt inside the image)
+explorer/build/
+
+# node / php artifacts
+node_modules/
+vendor/

@@ -4985,19 +4985,19 @@ bool core_rpc_server::on_get_proposer_status(
   res.my_index = 0;
 
   auto fb = pm->frost_broadcaster();
-    if (fb) {
-      res.my_index = fb->node_index();
-if (pm->has_proposer_keys()) {
-        for (uint8_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
-        rpc::COMMAND_RPC_GET_PROPOSER_STATUS::proposer_entry_t pe;
-        pe.index = i + 1;
-        pe.pubkey = epee::string_tools::pod_to_hex(
-            cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i]);
-        pe.active = true;  // all local proposers are active
-        pe.is_me = (i + 1 == res.my_index);
-        res.proposers.push_back(std::move(pe));
-      }
-    }
+  if (fb)
+    res.my_index = fb->node_index();
+
+  // Il set dei proposer e' deterministico dal consenso: va sempre esposto, anche
+  // dai nodi senza chiavi FROST (es. explorer). Solo is_me dipende dalle chiavi locali.
+  for (uint8_t i = 0; i < cryptonote::mevatrust::frost::FROST_N; ++i) {
+    rpc::COMMAND_RPC_GET_PROPOSER_STATUS::proposer_entry_t pe;
+    pe.index = i + 1;
+    pe.pubkey = epee::string_tools::pod_to_hex(
+        cryptonote::mevatrust::frost::CONSENSUS_PROPOSER_PUBKEYS[i]);
+    pe.active = true;  // tutti i proposer di consenso sono attivi
+    pe.is_me = res.has_proposer_keys && (i + 1 == res.my_index);
+    res.proposers.push_back(std::move(pe));
   }
 
   res.status = CORE_RPC_STATUS_OK;
@@ -5242,10 +5242,12 @@ bool core_rpc_server::on_get_penalty_history(
   res.node_id = req.node_id;
   if (!reg || !reg->get_node_by_id(nid, entry)) { res.status = "Nodo non trovato"; return true; }
   res.total_penalty = std::max(0.0, 1.0 - static_cast<double>(entry.reputation_score));
-  rpc::COMMAND_RPC_GET_PENALTY_HISTORY::penalty_entry_t pe;
+  rpc::COMMAND_RPC_GET_PENALTY_HISTORY::penalty_entry_t pe{};
   pe.offense_type = node_status_to_string(entry.status);
   pe.amount = res.total_penalty;
   pe.reason = "Stato corrente del nodo";
+  pe.height = m_core.get_current_blockchain_height();
+  pe.timestamp = entry.updated_at ? entry.updated_at : static_cast<uint64_t>(time(nullptr));
   res.entries.push_back(std::move(pe));
   res.total = 1;
   res.status = CORE_RPC_STATUS_OK;

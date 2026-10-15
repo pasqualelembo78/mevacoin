@@ -1247,6 +1247,120 @@ bool simple_wallet::cmd_store_update(const std::vector<std::string>& args) {
   return true;
 }
 
+// Il venditore conferma on-chain un acquisto (STORE_CONFIRM): sblocca il deposito
+// dell'item e chiude la finestra di conferma. Firmato con la spend key del venditore.
+bool simple_wallet::cmd_store_confirm(const std::vector<std::string>& args) {
+  if (args.size() < 3) {
+    tools::fail_msg_writer() << tr("Uso: store_confirm <store_id> <item_id> <buyer_pubkey>");
+    return true;
+  }
+  const account_keys& keys = m_wallet->get_account().get_keys();
+  cryptonote::tx_extra_mevatrust_store op{};
+  op.op = cryptonote::tx_extra_mevatrust_store::STORE_CONFIRM;
+  if (!epee::string_tools::hex_to_pod(args[0], op.store_id)) {
+    tools::fail_msg_writer() << tr("store_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[1], op.item_id)) {
+    tools::fail_msg_writer() << tr("item_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[2], op.buyer_pubkey)) {
+    tools::fail_msg_writer() << tr("buyer_pubkey non valido"); return true; }
+  op.seller_pubkey = keys.m_account_address.m_spend_public_key;
+  crypto::hash h = cryptonote::mevatrust::store_confirm_message_hash(op);
+  crypto::generate_signature(h, op.seller_pubkey, keys.m_spend_secret_key, op.seller_sig);
+  std::vector<uint8_t> extra;
+  if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
+    tools::fail_msg_writer() << tr("Errore creazione extra conferma."); return true;
+  }
+  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) return true;
+  tools::msg_writer() << tr("Acquisto confermato! TXID: ") << txid;
+  return true;
+}
+
+// Il venditore cancella on-chain un acquisto (STORE_CANCEL). Firmato con la spend
+// key del venditore.
+bool simple_wallet::cmd_store_cancel(const std::vector<std::string>& args) {
+  if (args.size() < 3) {
+    tools::fail_msg_writer() << tr("Uso: store_cancel <store_id> <item_id> <buyer_pubkey> [reason]");
+    return true;
+  }
+  const account_keys& keys = m_wallet->get_account().get_keys();
+  cryptonote::tx_extra_mevatrust_store op{};
+  op.op = cryptonote::tx_extra_mevatrust_store::STORE_CANCEL;
+  if (!epee::string_tools::hex_to_pod(args[0], op.store_id)) {
+    tools::fail_msg_writer() << tr("store_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[1], op.item_id)) {
+    tools::fail_msg_writer() << tr("item_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[2], op.buyer_pubkey)) {
+    tools::fail_msg_writer() << tr("buyer_pubkey non valido"); return true; }
+  op.cancel_reason = (args.size() > 3) ? args[3] : "";
+  op.seller_pubkey = keys.m_account_address.m_spend_public_key;
+  crypto::hash h = cryptonote::mevatrust::store_confirm_message_hash(op);
+  crypto::generate_signature(h, op.seller_pubkey, keys.m_spend_secret_key, op.seller_sig);
+  std::vector<uint8_t> extra;
+  if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
+    tools::fail_msg_writer() << tr("Errore creazione extra cancellazione."); return true;
+  }
+  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) return true;
+  tools::msg_writer() << tr("Acquisto cancellato! TXID: ") << txid;
+  return true;
+}
+
+// L'acquirente cancella on-chain un proprio acquisto (BUYER_CANCEL). Firmato con
+// la spend key dell'acquirente.
+bool simple_wallet::cmd_store_buyer_cancel(const std::vector<std::string>& args) {
+  if (args.size() < 2) {
+    tools::fail_msg_writer() << tr("Uso: store_buyer_cancel <store_id> <item_id> [reason]");
+    return true;
+  }
+  const account_keys& keys = m_wallet->get_account().get_keys();
+  cryptonote::tx_extra_mevatrust_store op{};
+  op.op = cryptonote::tx_extra_mevatrust_store::BUYER_CANCEL;
+  if (!epee::string_tools::hex_to_pod(args[0], op.store_id)) {
+    tools::fail_msg_writer() << tr("store_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[1], op.item_id)) {
+    tools::fail_msg_writer() << tr("item_id non valido"); return true; }
+  op.cancel_reason = (args.size() > 2) ? args[2] : "";
+  op.buyer_pubkey = keys.m_account_address.m_spend_public_key;
+  crypto::hash h = cryptonote::mevatrust::buyer_action_message_hash(op);
+  crypto::generate_signature(h, op.buyer_pubkey, keys.m_spend_secret_key, op.owner_sig);
+  std::vector<uint8_t> extra;
+  if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
+    tools::fail_msg_writer() << tr("Errore creazione extra cancellazione acquirente."); return true;
+  }
+  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) return true;
+  tools::msg_writer() << tr("Acquisto annullato! TXID: ") << txid;
+  return true;
+}
+
+// L'acquirente conferma on-chain la ricezione della merce (BUYER_CONFIRM_RECEIPT):
+// sblocca il deposito verso il venditore. Firmato con la spend key dell'acquirente.
+bool simple_wallet::cmd_store_buyer_confirm(const std::vector<std::string>& args) {
+  if (args.size() < 2) {
+    tools::fail_msg_writer() << tr("Uso: store_buyer_confirm <store_id> <item_id>");
+    return true;
+  }
+  const account_keys& keys = m_wallet->get_account().get_keys();
+  cryptonote::tx_extra_mevatrust_store op{};
+  op.op = cryptonote::tx_extra_mevatrust_store::BUYER_CONFIRM_RECEIPT;
+  if (!epee::string_tools::hex_to_pod(args[0], op.store_id)) {
+    tools::fail_msg_writer() << tr("store_id non valido"); return true; }
+  if (!epee::string_tools::hex_to_pod(args[1], op.item_id)) {
+    tools::fail_msg_writer() << tr("item_id non valido"); return true; }
+  op.buyer_pubkey = keys.m_account_address.m_spend_public_key;
+  crypto::hash h = cryptonote::mevatrust::buyer_action_message_hash(op);
+  crypto::generate_signature(h, op.buyer_pubkey, keys.m_spend_secret_key, op.owner_sig);
+  std::vector<uint8_t> extra;
+  if (!cryptonote::mevatrust::build_mevatrust_store_extra(op, extra)) {
+    tools::fail_msg_writer() << tr("Errore creazione extra conferma ricezione."); return true;
+  }
+  std::string txid = submit_mevatrust_tx(m_wallet.get(), extra);
+  if (txid.empty()) return true;
+  tools::msg_writer() << tr("Ricezione confermata! TXID: ") << txid;
+  return true;
+}
+
 // =============================================================================
 // Score / Penalty / Admin CLI Commands
 // =============================================================================

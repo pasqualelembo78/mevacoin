@@ -3716,6 +3716,7 @@ simple_wallet::simple_wallet()
                               "  store_list, store_show, store_create, store_update,\n"
                               "  store_add_item, store_delist, store_buy, store_search,\n"
                               "  store_my_stores, store_my_purchases,\n"
+                              "  store_confirm, store_cancel, store_buyer_cancel, store_buyer_confirm,\n"
                               "  ban, unban\n"
                               "Uso: mevatrust <subcommand> [args...]"));
   m_cmd_binder.set_handler("mevatrust register",
@@ -3921,6 +3922,30 @@ simple_wallet::simple_wallet()
                                        &simple_wallet::mevatrust, _1),
                            tr("mevatrust store_my_purchases"),
                            tr("Mostra i tuoi acquisti on-chain. Uso: mevatrust store_my_purchases"));
+  m_cmd_binder.set_handler("mevatrust store_confirm",
+                           boost::bind(&simple_wallet::on_command, this,
+                                       &simple_wallet::mevatrust, _1),
+                           tr("mevatrust store_confirm <store_id> <item_id> <buyer_pubkey>"),
+                           tr("Il venditore conferma un acquisto on-chain. "
+                              "Uso: mevatrust store_confirm <store_id> <item_id> <buyer_pubkey>"));
+  m_cmd_binder.set_handler("mevatrust store_cancel",
+                           boost::bind(&simple_wallet::on_command, this,
+                                       &simple_wallet::mevatrust, _1),
+                           tr("mevatrust store_cancel <store_id> <item_id> <buyer_pubkey> [reason]"),
+                           tr("Il venditore cancella un acquisto on-chain. "
+                              "Uso: mevatrust store_cancel <store_id> <item_id> <buyer_pubkey> [reason]"));
+  m_cmd_binder.set_handler("mevatrust store_buyer_cancel",
+                           boost::bind(&simple_wallet::on_command, this,
+                                       &simple_wallet::mevatrust, _1),
+                           tr("mevatrust store_buyer_cancel <store_id> <item_id> [reason]"),
+                           tr("L'acquirente annulla un proprio acquisto on-chain. "
+                              "Uso: mevatrust store_buyer_cancel <store_id> <item_id> [reason]"));
+  m_cmd_binder.set_handler("mevatrust store_buyer_confirm",
+                           boost::bind(&simple_wallet::on_command, this,
+                                       &simple_wallet::mevatrust, _1),
+                           tr("mevatrust store_buyer_confirm <store_id> <item_id>"),
+                           tr("L'acquirente conferma la ricezione della merce. "
+                              "Uso: mevatrust store_buyer_confirm <store_id> <item_id>"));
   // ── Admin subcommands ────────────────────────────────────────────────
   m_cmd_binder.set_handler("mevatrust ban",
                            boost::bind(&simple_wallet::on_command, this,
@@ -11932,6 +11957,7 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
     fail_msg_writer() << tr("  store:           store_list, store_show, store_create, store_update,");
     fail_msg_writer() << tr("                   store_add_item, store_delist, store_buy, store_search,");
     fail_msg_writer() << tr("                   store_my_stores, store_my_purchases");
+    fail_msg_writer() << tr("                   store_confirm, store_cancel, store_buyer_cancel, store_buyer_confirm");
     fail_msg_writer() << tr("  admin:           ban, unban");
     fail_msg_writer() << tr("Uso: mevatrust <subcomando> [args...]");
     fail_msg_writer() << tr("     help mevatrust <subcomando>  — aiuto dettagliato");
@@ -11985,6 +12011,10 @@ bool simple_wallet::mevatrust(const std::vector<std::string> &args)
   if (sub == "store_search")      return cmd_store_search(sub_args);
   if (sub == "store_my_stores")   return cmd_store_my_stores(sub_args);
   if (sub == "store_my_purchases") return cmd_store_my_purchases(sub_args);
+  if (sub == "store_confirm")     return cmd_store_confirm(sub_args);
+  if (sub == "store_cancel")      return cmd_store_cancel(sub_args);
+  if (sub == "store_buyer_cancel") return cmd_store_buyer_cancel(sub_args);
+  if (sub == "store_buyer_confirm") return cmd_store_buyer_confirm(sub_args);
 
   // ── Admin commands ─────────────────────────────────────────────────
   if (sub == "ban")   return cmd_ban_node(sub_args);

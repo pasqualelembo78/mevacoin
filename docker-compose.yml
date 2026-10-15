@@ -1,0 +1,99 @@
+name: mevacoin
+
+# One-command testnet:  docker compose up -d
+# Con explorer:         docker compose --profile explorer up -d
+# Mainnet (attento):    docker compose run --rm mevacoind --help
+#
+# L'immagine viene costruita dal Dockerfile al root del repo. La compilazione
+# e' condivisa tra i servizi (stesso stage "builder"), quindi avviene una sola
+# volta anche avviando tutti i servizi.
+
+services:
+  mevacoind:
+    build:
+      context: .
+      target: daemon
+      args:
+        BUILD_JOBS: "${BUILD_JOBS:-}"
+    image: mevacoin/mevacoind:latest
+    container_name: mevacoind
+    restart: unless-stopped
+    command:
+      - --non-interactive
+      - --testnet
+      - --data-dir=/home/mevacoind/.mevacoin
+      - --p2p-bind-ip=0.0.0.0
+      - --p2p-bind-port=28080
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=28081
+      - --confirm-external-bind
+      - --log-level=2
+    ports:
+      - "28080:28080"
+      - "127.0.0.1:28081:28081"
+    volumes:
+      - mevacoin-data:/home/mevacoind/.mevacoin
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -sf
+        - -X
+        - POST
+        - http://127.0.0.1:28081/json_rpc
+        - -H
+        - "Content-Type: application/json"
+        - -d
+        - '{"jsonrpc":"2.0","id":"0","method":"get_info"}'
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  wallet-rpc:
+    build:
+      context: .
+      target: wallet-rpc
+      args:
+        BUILD_JOBS: "${BUILD_JOBS:-}"
+    image: mevacoin/wallet-rpc:latest
+    container_name: mevacoin-wallet-rpc
+    restart: unless-stopped
+    depends_on:
+      mevacoind:
+        condition: service_healthy
+    # NB: RPC senza login, esposta solo su 127.0.0.1 dell'host. Solo testnet.
+    command:
+      - --testnet
+      - --daemon-address=mevacoind:28081
+      - --rpc-bind-ip=0.0.0.0
+      - --rpc-bind-port=28083
+      - --confirm-external-bind
+      - --disable-rpc-login
+      - --wallet-dir=/home/mevacoind/wallets
+    ports:
+      - "127.0.0.1:28083:28083"
+    volumes:
+      - mevacoin-wallets:/home/mevacoind/wallets
+
+  explorer:
+    profiles: ["explorer"]
+    build:
+      context: .
+      target: explorer
+      args:
+        BUILD_JOBS: "${BUILD_JOBS:-}"
+    image: mevacoin/explorer:latest
+    container_name: mevacoin-explorer
+    restart: unless-stopped
+    depends_on:
+      mevacoind:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:28084:18084"
+    volumes:
+      - mevacoin-data:/home/mevacoind/.mevacoin:ro
+
+volumes:
+  mevacoin-data:
+  mevacoin-wallets:

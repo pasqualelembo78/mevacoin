@@ -1107,6 +1107,28 @@ void MevaTrustManager::process_mevatrust_txs(
                     continue;
                 }
                 if (!m_node_registry) { MWARNING("[MevaTrustManager] NodeRegistry non inizializzato"); continue; }
+                // Binding a registrazione: la chiave che firma deve essere quella
+                // registrata on-chain per QUEL node_id (stesso principio di 0xAC).
+                // Senza, un firmatario puo' attestare challenge per node_id arbitrari.
+                if (hf_version >= HF_VERSION_MEVATRUST_ANTISYBIL) {
+                    NodeRegistryEntry chler{}, chled{};
+                    if (!m_node_registry->get_node_by_id(ch.challenger_node_id, chler) ||
+                        !chler.registered_onchain ||
+                        memcmp(&chler.node_pubkey, &ch.challenger_pubkey, sizeof(ch.challenger_pubkey)) != 0) {
+                        MWARNING("[MevaTrustManager] Challenge: challenger non registrato o "
+                                 "challenger_pubkey non corrispondente, skip. node="
+                                 << epee::string_tools::pod_to_hex(ch.challenger_node_id));
+                        continue;
+                    }
+                    if (!m_node_registry->get_node_by_id(ch.challenged_node_id, chled) ||
+                        !chled.registered_onchain ||
+                        memcmp(&chled.node_pubkey, &ch.challenged_pubkey, sizeof(ch.challenged_pubkey)) != 0) {
+                        MWARNING("[MevaTrustManager] Challenge: challenged non registrato o "
+                                 "challenged_pubkey non corrispondente, skip. node="
+                                 << epee::string_tools::pod_to_hex(ch.challenged_node_id));
+                        continue;
+                    }
+                }
                 m_node_registry->update_node_challenge_result(ch.challenger_node_id, ch.success);
                 m_node_registry->update_node_challenge_result(ch.challenged_node_id, ch.success);
                 if (ch.success) {
